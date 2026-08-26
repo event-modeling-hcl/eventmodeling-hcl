@@ -20,6 +20,10 @@ coverage.*
 *.coverprofile
 profile.cov
 
+# Local and release builds
+bin/
+dist/
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 

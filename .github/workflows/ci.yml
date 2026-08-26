@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.25.x", "1.26.x"]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache-dependency-path: go.sum
+      - run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+      - run: go mod tidy
+      - run: git diff --exit-code -- go.mod go.sum
+      - run: go vet ./...
+      - run: go test ./...
+      - if: matrix.go-version == '1.26.x'
+        run: go test -race ./...
+      - if: matrix.go-version == '1.26.x'
+        uses: dominikh/staticcheck-action@672a31696676d1592844bf0164b3bbfd855a4d50 # v1.4.1
+        with:
+          version: "2026.1"
+          install-go: false
+          cache-key: ${{ matrix.go-version }}
+      - if: matrix.go-version == '1.26.x'
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      - if: matrix.go-version == '1.26.x'
+        run: go tool exhaustive -default-signifies-exhaustive=false ./...
+      - run: make validate-examples
+
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: go.sum
+      - run: go build ./cmd/eventmodeling-hcl
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}

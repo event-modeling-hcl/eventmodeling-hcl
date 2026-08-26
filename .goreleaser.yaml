@@ -1,0 +1,44 @@
+version: 2
+
+project_name: eventmodeling-hcl
+
+builds:
+  - id: eventmodeling-hcl
+    main: ./cmd/eventmodeling-hcl
+    binary: eventmodeling-hcl
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: default
+    ids:
+      - eventmodeling-hcl
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: dclimber
+    name: event-modeling-hcl
