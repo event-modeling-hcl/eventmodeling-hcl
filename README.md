@@ -24,7 +24,21 @@ go build -o bin/eventmodeling-hcl ./cmd/eventmodeling-hcl
 
 Release archives for Linux, macOS, and Windows are available from the
 [GitHub Releases page](https://github.com/dclimber/event-modeling-hcl/releases).
-Verify the downloaded archive with the release's `checksums.txt` before use.
+Verify the downloaded archive with the release's `checksums.txt` before use:
+
+```bash
+sha256sum -c checksums.txt
+# macOS: shasum -a 256 -c checksums.txt
+```
+
+Stable release archives and `checksums.txt` also have GitHub build provenance.
+With GitHub CLI 2.49.0 or newer, verify the downloaded archive was produced by
+this repository's release workflow:
+
+```bash
+gh attestation verify eventmodeling-hcl_0.1.0_linux_amd64.tar.gz \
+  --repo dclimber/event-modeling-hcl
+```
 
 Validate one complete model per invocation:
 
@@ -100,6 +114,8 @@ field "pets" {
   five-slice golden model in native HCL.
 - [Mapping ADR](docs/adr/0001-slice-local-events.md): direct slice-local event
   design decision.
+- [Release runbook](RELEASING.md): stable-tag publication, verification, and
+  GitHub repository controls.
 
 ## Verification
 

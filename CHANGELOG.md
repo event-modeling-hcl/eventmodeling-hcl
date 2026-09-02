@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## v0.1.0
+## [v0.1.0] - 2026-09-02
 
 - Initial native HCL v1 Event Modeling Specification release.
 - Strict `eventmodeling-hcl validate <model.em.hcl>` validator with literal-only

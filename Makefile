@@ -4,7 +4,7 @@ EXAMPLES := $(wildcard examples/*.em.hcl)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build test test-race vet fmt-check tidy-check staticcheck exhaustive vulncheck validate-examples verify clean
+.PHONY: help build test test-race vet fmt-check tidy-check staticcheck exhaustive vulncheck validate-examples release-tag-check release-version-check verify clean
 
 help: ## List available commands.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -45,7 +45,16 @@ validate-examples: build ## Validate every shipped Event Modeling example.
 		$(BINARY) validate "$$model" || exit $$?; \
 	done
 
-verify: fmt-check tidy-check vet test test-race staticcheck exhaustive vulncheck validate-examples ## Run the complete local verification suite.
+release-tag-check: ## Test the stable semantic-version tag validator.
+	sh scripts/test-require-stable-tag.sh
+
+release-version-check: ## Verify linker-injected release versions are reported by the binary.
+	@temporary=$$(mktemp -d); \
+	trap 'rm -rf "$$temporary"' EXIT; \
+	$(GO) build -ldflags '-X main.version=v0.1.0' -o "$$temporary/eventmodeling-hcl" ./cmd/eventmodeling-hcl; \
+	test "$$($$temporary/eventmodeling-hcl version)" = 'eventmodeling-hcl v0.1.0'
+
+verify: fmt-check tidy-check vet test test-race staticcheck exhaustive vulncheck validate-examples release-tag-check release-version-check ## Run the complete local verification suite.
 
 clean: ## Remove locally built artifacts.
 	rm -rf bin dist

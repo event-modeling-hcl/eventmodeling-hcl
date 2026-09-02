@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  attestations: write
+  id-token: write
 
 jobs:
   release:
@@ -21,14 +23,9 @@ jobs:
           cache-dependency-path: go.sum
       - name: Require an annotated tag
         run: test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag
-      - run: go vet ./...
-      - run: go test ./...
-      - run: go test -race ./...
-      - uses: dominikh/staticcheck-action@672a31696676d1592844bf0164b3bbfd855a4d50 # v1.4.1
-        with:
-          version: "2026.1"
-          install-go: false
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      - name: Require a stable semantic-version tag
+        run: sh scripts/require-stable-tag.sh "$GITHUB_REF_NAME"
+      - run: make verify
       - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
         with:
           distribution: goreleaser
@@ -36,3 +33,10 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Attest release assets
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: |
+            dist/**/*.tar.gz
+            dist/**/*.zip
+            dist/checksums.txt
