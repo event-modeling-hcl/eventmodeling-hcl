@@ -22,7 +22,7 @@ jobs:
           go-version: "1.26.x"
           cache-dependency-path: go.sum
       - name: Require an annotated tag
-        run: test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag
+        run: sh scripts/require-annotated-tag.sh "$GITHUB_REF_NAME"
       - name: Require a stable semantic-version tag
         run: sh scripts/require-stable-tag.sh "$GITHUB_REF_NAME"
       - run: make verify

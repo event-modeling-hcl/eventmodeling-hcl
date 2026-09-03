@@ -42,10 +42,18 @@ git push origin v0.1.0
 Do not move, replace, or reuse `v0.1.0b0`; it remains the historical
 pre-release tag. Do not delete or retag a published stable release.
 
+If a stable tag's workflow fails before publishing its assets, merge the
+workflow fix and publish the next patch version. GitHub runs the workflow
+stored at the tagged commit, so rerunning the failed workflow cannot use a
+later workflow fix.
+
 ## Verify the GitHub Release
 
 The Release workflow reruns `make verify`, creates these assets with
 GoReleaser, and publishes GitHub provenance attestations:
+
+Before checking its type, the workflow explicitly fetches the pushed tag. This
+avoids relying on `actions/checkout` retaining a local tag ref.
 
 - Linux: `amd64` and `arm64` `.tar.gz` archives.
 - macOS: `amd64` and `arm64` `.tar.gz` archives.
