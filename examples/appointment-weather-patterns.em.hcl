@@ -1,321 +1,251 @@
-# Appointment scheduling with calendar views, an internal weather automation,
-# and a translation of weather changes from an external provider.
+# Appointment scheduling with state change, state view, automation, and translation workflows.
 
-slice "schedule-appointment" {
-  title      = "Schedule Appointment"
-  context    = "Command Pattern"
-  slice_type = "STATE_CHANGE"
-  aggregates = ["Appointments"]
+actor "scheduler" {
+  title         = "Scheduler"
+  auth_required = true
+}
 
-  screen "schedule-appointment-ui" {
-    title = "UI"
-    type  = "SCREEN"
+actor "calendar_user" {
+  title         = "Calendar user"
+  auth_required = true
+}
 
-    dependency "add-appointment" {
-      type         = "OUTBOUND"
-      title        = "Add Appointment"
-      element_type = "COMMAND"
-    }
+system "weather_provider" {
+  title    = "Weather provider"
+  external = true
+}
+
+bounded_context "appointments" {
+  title = "Appointments"
+
+  aggregate "appointment" {
   }
 
-  screen "post-appointment" {
-    title = "POST /appointment"
-    type  = "SCREEN"
-
-    dependency "add-appointment" {
-      type         = "OUTBOUND"
-      title        = "Add Appointment"
-      element_type = "COMMAND"
-    }
+  field_type "appointment_id" {
+    type         = "UUID"
+    id_attribute = true
   }
 
-  command "add-appointment" {
-    title     = "Add Appointment"
-    type      = "COMMAND"
-    aggregate = "Appointments"
-
-    field "appointment_id" {
-      type         = "UUID"
-      id_attribute = true
-    }
-    field "starts_at" {
-      type = "DateTime"
-    }
-
-    dependency "appointment-added" {
-      type         = "OUTBOUND"
-      title        = "Appointment Added"
-      element_type = "EVENT"
-    }
+  field_type "starts_at" {
+    type = "DateTime"
   }
 
-  event "appointment-added" {
+  event "appointment_added" {
     title     = "Appointment Added"
-    type      = "EVENT"
-    aggregate = "Appointments"
+    aggregate = aggregate.appointment
 
     field "appointment_id" {
-      type         = "UUID"
-      id_attribute = true
+      type = field_type.appointment_id
     }
+
     field "starts_at" {
-      type = "DateTime"
+      type = field_type.starts_at
     }
-
-    dependency "add-appointment" {
-      type         = "INBOUND"
-      title        = "Add Appointment"
-      element_type = "COMMAND"
-    }
-  }
-
-  actor "Scheduler" {
-    auth_required = true
   }
 }
 
-slice "view-calendar" {
-  title      = "View Calendar"
-  context    = "View Pattern"
-  slice_type = "STATE_VIEW"
+bounded_context "weather" {
+  title = "Weather"
+
+  aggregate "weather_forecast" {
+  }
+
+  field_type "forecast" {
+    type = "String"
+  }
+
+  field_type "changed_at" {
+    type = "DateTime"
+  }
+
+  event "weather_predicted_for_appointment" {
+    title     = "Weather predicted for appointment"
+    aggregate = aggregate.weather_forecast
+
+    field "appointment_id" {
+      type = field_type.appointments.appointment_id
+    }
+
+    field "forecast" {
+      type = field_type.forecast
+    }
+  }
+
+  event "updated_weather_prediction" {
+    title     = "Updated Weather Prediction"
+    aggregate = aggregate.weather_forecast
+
+    field "appointment_id" {
+      type = field_type.appointments.appointment_id
+    }
+
+    field "forecast" {
+      type = field_type.forecast
+    }
+  }
+}
+
+bounded_context "weather_provider" {
+  title    = "Weather Provider"
+  owner    = system.weather_provider
+  external = true
+
+  event "weather_forecast_changed" {
+    title = "Weather Forecast Changed"
+
+    field "appointment_id" {
+      type = field_type.appointments.appointment_id
+    }
+
+    field "forecast" {
+      type = field_type.weather.forecast
+    }
+
+    field "changed_at" {
+      type = field_type.weather.changed_at
+    }
+  }
+}
+
+state_change "schedule_appointment" {
+  title = "Schedule Appointment"
+
+  screen "schedule_appointment_ui" {
+    title = "UI"
+    actor = actor.scheduler
+    to    = [command.add_appointment]
+  }
+
+  screen "post_appointment" {
+    title = "POST /appointment"
+    to    = [command.add_appointment]
+  }
+
+  command "add_appointment" {
+    title     = "Add Appointment"
+    aggregate = aggregate.appointments.appointment
+    to        = [event.appointments.appointment_added]
+
+    field "appointment_id" {
+      type = field_type.appointments.appointment_id
+    }
+
+    field "starts_at" {
+      type = field_type.appointments.starts_at
+    }
+  }
+}
+
+state_view "view_calendar" {
+  title = "View Calendar"
 
   readmodel "calendar" {
-    title = "Calendar"
-    type  = "READMODEL"
+    title    = "Calendar"
+    question = "Which appointments are on the calendar?"
+    from     = [event.appointments.appointment_added]
+    to       = [screen.calendar_ui, screen.get_calendar]
 
     field "appointment_id" {
-      type         = "UUID"
-      id_attribute = true
-    }
-    field "starts_at" {
-      type = "DateTime"
+      type = field_type.appointments.appointment_id
     }
 
-    dependency "appointment-added" {
-      type         = "INBOUND"
-      title        = "Appointment Added"
-      element_type = "EVENT"
+    field "starts_at" {
+      type = field_type.appointments.starts_at
     }
   }
 
-  screen "calendar-ui" {
+  screen "calendar_ui" {
     title = "UI"
-    type  = "SCREEN"
-
-    dependency "calendar" {
-      type         = "INBOUND"
-      title        = "Calendar"
-      element_type = "READMODEL"
-    }
+    actor = actor.calendar_user
   }
 
-  screen "get-calendar" {
+  screen "get_calendar" {
     title = "GET /calendar"
-    type  = "SCREEN"
-
-    dependency "calendar" {
-      type         = "INBOUND"
-      title        = "Calendar"
-      element_type = "READMODEL"
-    }
-  }
-
-  actor "Calendar User" {
-    auth_required = true
   }
 }
 
-slice "find-appointments-without-weather" {
-  title      = "Appointments without weather forecast"
-  context    = "Automation Pattern"
-  slice_type = "STATE_VIEW"
+state_view "find_appointments_without_weather" {
+  title = "Appointments without weather forecast"
 
-  readmodel "appointments-without-weather-forecast" {
-    title = "Appointments without weather forecast"
-    type  = "READMODEL"
+  readmodel "appointments_without_weather_forecast" {
+    title    = "Appointments without weather forecast"
+    question = "Which appointments do not have a weather forecast?"
+    from     = [event.appointments.appointment_added]
 
     field "appointment_id" {
-      type         = "UUID"
-      id_attribute = true
+      type = field_type.appointments.appointment_id
     }
+
     field "starts_at" {
-      type = "DateTime"
-    }
-
-    dependency "appointment-added" {
-      type         = "INBOUND"
-      title        = "Appointment Added"
-      element_type = "EVENT"
+      type = field_type.appointments.starts_at
     }
   }
 }
 
-slice "add-weather-forecast" {
-  title      = "Add Weather Forecast"
-  context    = "Automation Pattern"
-  slice_type = "AUTOMATION"
-  aggregates = ["Weather"]
+automation "add_weather_forecast" {
+  title = "Add Weather Forecast"
 
-  processor "weather-processor" {
+  readmodel "appointments_without_weather_forecast_feed" {
+    title    = "Appointments without weather forecast feed"
+    question = "Which appointments still need a weather forecast?"
+    from     = [event.appointments.appointment_added]
+    to       = [processor.weather_processor]
+  }
+
+  processor "weather_processor" {
     title = "Weather Processor"
-    type  = "AUTOMATION"
-
-    dependency "appointments-without-weather-forecast" {
-      type         = "INBOUND"
-      title        = "Appointments without weather forecast"
-      element_type = "READMODEL"
-    }
-    dependency "add-weather-forecast" {
-      type         = "OUTBOUND"
-      title        = "Add Weather Forecast"
-      element_type = "COMMAND"
-    }
+    to    = [command.add_weather_forecast_command]
   }
 
-  command "add-weather-forecast" {
+  command "add_weather_forecast_command" {
     title     = "Add Weather Forecast"
-    type      = "COMMAND"
-    aggregate = "Weather"
+    aggregate = aggregate.weather.weather_forecast
+    to        = [event.weather.weather_predicted_for_appointment]
 
     field "appointment_id" {
-      type         = "UUID"
-      id_attribute = true
+      type = field_type.appointments.appointment_id
     }
+
     field "forecast" {
-      type = "String"
+      type = field_type.weather.forecast
     }
-
-    dependency "weather-predicted-for-appointment" {
-      type         = "OUTBOUND"
-      title        = "Weather predicted for appointment"
-      element_type = "EVENT"
-    }
-  }
-
-  event "weather-predicted-for-appointment" {
-    title     = "Weather predicted for appointment"
-    type      = "EVENT"
-    aggregate = "Weather"
-
-    field "appointment_id" {
-      type         = "UUID"
-      id_attribute = true
-    }
-    field "forecast" {
-      type = "String"
-    }
-
-    dependency "add-weather-forecast" {
-      type         = "INBOUND"
-      title        = "Add Weather Forecast"
-      element_type = "COMMAND"
-    }
-  }
-
-  actor "Weather Processor" {
-    auth_required = false
   }
 }
 
-slice "translate-weather-change" {
-  title      = "Translate Changed Weather"
-  context    = "Translation Pattern"
-  slice_type = "AUTOMATION"
-  aggregates = ["Weather"]
+translation "translate_weather_change" {
+  title = "Translate Changed Weather"
 
-  event "weather-forecast-changed" {
-    title   = "Weather Forecast changed"
-    type    = "EVENT"
-    context = "EXTERNAL"
+  readmodel "changed_predictions" {
+    title    = "Changed Predictions"
+    question = "Which external weather predictions changed?"
+    from     = [event.weather_provider.weather_forecast_changed]
+    to       = [processor.translator]
 
     field "appointment_id" {
-      type         = "UUID"
-      id_attribute = true
+      type = field_type.appointments.appointment_id
     }
+
     field "forecast" {
-      type = "String"
-    }
-    field "changed_at" {
-      type = "DateTime"
-    }
-  }
-
-  readmodel "changed-predictions" {
-    title = "Changed Predictions"
-    type  = "READMODEL"
-
-    field "appointment_id" {
-      type         = "UUID"
-      id_attribute = true
-    }
-    field "forecast" {
-      type = "String"
-    }
-
-    dependency "weather-forecast-changed" {
-      type         = "INBOUND"
-      title        = "Weather Forecast changed"
-      element_type = "EVENT"
+      type = field_type.weather.forecast
     }
   }
 
   processor "translator" {
     title = "Translator"
-    type  = "AUTOMATION"
-
-    dependency "changed-predictions" {
-      type         = "INBOUND"
-      title        = "Changed Predictions"
-      element_type = "READMODEL"
-    }
-    dependency "translate-changed-weather" {
-      type         = "OUTBOUND"
-      title        = "Translate Changed Weather"
-      element_type = "COMMAND"
-    }
+    to    = [command.translate_changed_weather]
   }
 
-  command "translate-changed-weather" {
+  command "translate_changed_weather" {
     title     = "Translate Changed Weather"
-    type      = "COMMAND"
-    aggregate = "Weather"
+    aggregate = aggregate.weather.weather_forecast
+    to        = [event.weather.updated_weather_prediction]
 
     field "appointment_id" {
-      type         = "UUID"
-      id_attribute = true
+      type = field_type.appointments.appointment_id
     }
+
     field "forecast" {
-      type = "String"
+      type = field_type.weather.forecast
     }
-
-    dependency "updated-weather-prediction" {
-      type         = "OUTBOUND"
-      title        = "Updated weather prediction"
-      element_type = "EVENT"
-    }
-  }
-
-  event "updated-weather-prediction" {
-    title     = "Updated weather prediction"
-    type      = "EVENT"
-    aggregate = "Weather"
-
-    field "appointment_id" {
-      type         = "UUID"
-      id_attribute = true
-    }
-    field "forecast" {
-      type = "String"
-    }
-
-    dependency "translate-changed-weather" {
-      type         = "INBOUND"
-      title        = "Translate Changed Weather"
-      element_type = "COMMAND"
-    }
-  }
-
-  actor "Translator" {
-    auth_required = false
   }
 }

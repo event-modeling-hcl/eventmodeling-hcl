@@ -25,7 +25,10 @@ vet: ## Run go vet.
 	$(GO) vet ./...
 
 fmt-check: ## Fail if tracked Go files are not gofmt-formatted.
-	@test -z "$$($(GO)fmt -l $$(git ls-files '*.go'))"
+	@unformatted=$$(git ls-files -co --exclude-standard '*.go' | while read -r file; do \
+		test ! -f "$$file" || $(GO)fmt -l "$$file"; \
+	done); \
+	test -z "$$unformatted"
 
 tidy-check: ## Fail if go.mod or go.sum need tidying.
 	$(GO) mod tidy
@@ -54,10 +57,19 @@ release-annotation-check: ## Test annotated-tag verification from a tagless chec
 release-version-check: ## Verify linker-injected release versions are reported by the binary.
 	@temporary=$$(mktemp -d); \
 	trap 'rm -rf "$$temporary"' EXIT; \
-	$(GO) build -ldflags '-X main.version=v0.1.0' -o "$$temporary/eventmodeling-hcl" ./cmd/eventmodeling-hcl; \
-	test "$$($$temporary/eventmodeling-hcl version)" = 'eventmodeling-hcl v0.1.0'
+	$(GO) build -ldflags '-X main.version=v0.2.0' -o "$$temporary/eventmodeling-hcl" ./cmd/eventmodeling-hcl; \
+	test "$$($$temporary/eventmodeling-hcl version)" = 'eventmodeling-hcl v0.2.0'
 
 verify: fmt-check tidy-check vet test test-race staticcheck exhaustive vulncheck validate-examples release-tag-check release-annotation-check release-version-check ## Run the complete local verification suite.
 
 clean: ## Remove locally built artifacts.
 	rm -rf bin dist
+
+# -- pre-commit --
+.PHONY: pre-commit-install pre-commit-run
+
+pre-commit-install: ## Install the repository pre-commit hook.
+	pre-commit install
+
+pre-commit-run: ## Run all repository pre-commit hooks.
+	pre-commit run --all-files

@@ -21,7 +21,7 @@ make verify
   - `staticcheck`,
   - `govulncheck`,
   - and validation of every example in `examples/`.
-  
+
 ## Code conventions
 
 - Keep the package layout as-is: `cmd/eventmodeling-hcl` is the thin CLI, the
@@ -37,7 +37,7 @@ make verify
 
 ## Changing the language grammar
 
-`eventmodeling.hclspec.md` is the normative v1 grammar. Any change to what
+`eventmodeling.hclspec.md` is the normative grammar. Any change to what
 the validator accepts must update that document, `schema/eventmodeling.hcl.schema.md`
 if the source-model mapping changes, and `CHANGELOG.md`.
 

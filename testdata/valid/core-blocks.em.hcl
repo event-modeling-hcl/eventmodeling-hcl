@@ -1,30 +1,41 @@
-slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
+bounded_context "example" {
+  title = "Example"
+
+  aggregate "pet" {
+  }
+
+  field_type "pet_id" {
+    type = "Int"
+  }
+
+  event "pet_created" {
+    title     = "Pet Created"
+    aggregate = aggregate.pet
+
+    field "pet_id" {
+      type = field_type.pet_id
+    }
+  }
+}
+
+actor "user" {
+  title         = "User"
+  auth_required = false
+}
+
+state_change "create_pet" {
+  title = "Create Pet"
 
   command "command" {
-    title = "Command"
-    type  = "COMMAND"
-  }
-
-  event "event" {
-    title = "Event"
-    type  = "EVENT"
-  }
-
-  readmodel "readmodel" {
-    title = "Read model"
-    type  = "READMODEL"
+    title            = "Command"
+    aggregate        = aggregate.example.pet
+    external_trigger = true
+    to               = [event.example.pet_created]
   }
 
   screen "screen" {
     title = "Screen"
-    type  = "SCREEN"
-  }
-
-  processor "processor" {
-    title = "Processor"
-    type  = "AUTOMATION"
+    actor = actor.user
   }
 
   screen_image "image" {
@@ -35,12 +46,34 @@ slice "example" {
     title = "Table"
   }
 
-  specification "specification" {
-    title     = "Specification"
-    linked_id = "example"
-  }
+  scenario "specification" {
+    title = "Specification"
 
-  actor "User" {
-    auth_required = false
+    when {
+      command = command.command
+    }
+
+    then {
+      event = event.example.pet_created
+    }
+  }
+}
+
+state_view "view_pets" {
+  title = "View Pets"
+
+  readmodel "readmodel" {
+    title    = "Read model"
+    question = "Which Read model are relevant?"
+    from     = [event.example.pet_created]
+  }
+}
+
+automation "notify_pet_created" {
+  title = "Notify Pet Created"
+
+  processor "processor" {
+    title = "Processor"
+    from  = [event.example.pet_created]
   }
 }

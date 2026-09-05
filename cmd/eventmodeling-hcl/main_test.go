@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
 	"github.com/hashicorp/hcl/v2"
 )
 
@@ -22,8 +23,37 @@ func TestParseCommand_RecognizesValidateInvocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %q, want nil", err)
 	}
-	if got, want := command, (cliCommand{kind: validateCommand, path: "model.em.hcl"}); got != want {
+	if got, want := command, (cliCommand{kind: validateCommand, path: "model.em.hcl", profile: validator.Valid}); got != want {
 		t.Fatalf("command = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseCommand_RecognizesValidationProfile(t *testing.T) {
+	command, err := parseCommand([]string{"validate", "--profile", "strict", "model.em.hcl"})
+
+	if err != nil {
+		t.Fatalf("err = %q, want nil", err)
+	}
+	if got, want := command, (cliCommand{kind: validateCommand, path: "model.em.hcl", profile: validator.Strict}); got != want {
+		t.Fatalf("command = %#v, want %#v", got, want)
+	}
+}
+
+func TestParseCommand_RecognizesFormatterInvocations(t *testing.T) {
+	for _, test := range []struct {
+		args  []string
+		write bool
+	}{
+		{args: []string{"fmt", "model.em.hcl"}},
+		{args: []string{"fmt", "-w", "model.em.hcl"}, write: true},
+	} {
+		command, err := parseCommand(test.args)
+		if err != nil {
+			t.Fatalf("parseCommand(%q): %v", test.args, err)
+		}
+		if command.kind != formatCommand || command.path != "model.em.hcl" || command.write != test.write {
+			t.Fatalf("command = %#v", command)
+		}
 	}
 }
 
@@ -44,6 +74,7 @@ func TestFormatDiagnostics_FormatsSourceLocatedError(t *testing.T) {
 	// Given one source-located validation error.
 	diagnostics := hcl.Diagnostics{&hcl.Diagnostic{
 		Severity: hcl.DiagError,
+		Extra:    validator.DiagnosticCodeExtra("EM007"),
 		Summary:  "Invalid attribute value",
 		Detail:   "title must be a string.",
 		Subject:  &hcl.Range{Filename: "model.em.hcl", Start: hcl.Pos{Line: 3, Column: 11}},
@@ -53,7 +84,7 @@ func TestFormatDiagnostics_FormatsSourceLocatedError(t *testing.T) {
 	got := formatDiagnostics(diagnostics)
 
 	// Then it returns the CLI rendering without writing to a stream.
-	const want = "model.em.hcl:3:11: Error: Invalid attribute value: title must be a string.\n"
+	const want = "model.em.hcl:3:11: Error EM007: Invalid attribute value: title must be a string.\n"
 	if got != want {
 		t.Fatalf("formatted diagnostics = %q, want %q", got, want)
 	}
@@ -110,11 +141,36 @@ func TestRun_InvalidFixtureFailsValidation(t *testing.T) {
 	}
 }
 
+func TestRun_CanonicalInvalidFixturesReportExpectedCodes(t *testing.T) {
+	tests := []struct {
+		path string
+		code string
+	}{
+		{path: filepath.Join("..", "..", "testdata", "invalid", "reverse-flow.em.hcl"), code: "EM201"},
+		{path: filepath.Join("..", "..", "testdata", "invalid", "state-view-when.em.hcl"), code: "EM301"},
+	}
+
+	for _, test := range tests {
+		t.Run(filepath.Base(test.path), func(t *testing.T) {
+			result := runCLI(t, "validate", test.path)
+			if result.exitCode != 1 {
+				t.Fatalf("exit code = %d, want 1; stderr = %q", result.exitCode, result.stderr)
+			}
+			if !strings.Contains(result.stderr, test.code) {
+				t.Fatalf("stderr = %q, want %s", result.stderr, test.code)
+			}
+		})
+	}
+}
+
 func TestRun_ValidateValidModelPrintsSuccess(t *testing.T) {
 	// Given a valid Event Modeling model.
-	modelPath := writeModel(t, "valid.em.hcl", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
+	modelPath := writeModel(t, "valid.em.hcl", `bounded_context "example" {
+  title = "Example"
+}
+
+state_change "example" {
+  title = "Example"
 }
 `)
 
@@ -133,11 +189,76 @@ func TestRun_ValidateValidModelPrintsSuccess(t *testing.T) {
 	}
 }
 
+func TestRun_ValidatePrintsWarningsWithoutFailing(t *testing.T) {
+	modelPath := writeModel(t, "warning.em.hcl", `state_change "example" {
+  title = "Example"
+  command "submit" { title = "Submit" }
+}`)
+
+	result := runCLI(t, "validate", modelPath)
+
+	if result.exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", result.exitCode, result.stderr)
+	}
+	if !strings.Contains(result.stderr, "Warning EM404: Every command has a reason") {
+		t.Fatalf("stderr = %q, want command-reason warning", result.stderr)
+	}
+}
+
+func TestRun_ValidateStrictProfileEscalatesCommandReason(t *testing.T) {
+	modelPath := writeModel(t, "warning.em.hcl", `state_change "example" {
+  command "submit" {}
+}`)
+
+	result := runCLI(t, "validate", "--profile", "strict", modelPath)
+
+	if result.exitCode != 1 {
+		t.Fatalf("exit code = %d, want 1; stderr = %q", result.exitCode, result.stderr)
+	}
+	if !strings.Contains(result.stderr, "Error EM404: Every command has a reason") {
+		t.Fatalf("stderr = %q, want strict command-reason error", result.stderr)
+	}
+}
+
+func TestRun_FormatWritesToStdoutOrInPlace(t *testing.T) {
+	source := `state_change "example" {
+  command "submit" {
+    to = [event.example.submitted]
+    title = "Submit"
+  }
+}`
+
+	stdoutPath := writeModel(t, "stdout.em.hcl", source)
+	stdoutResult := runCLI(t, "fmt", stdoutPath)
+	if stdoutResult.exitCode != 0 || stdoutResult.stderr != "" {
+		t.Fatalf("stdout format result = %#v", stdoutResult)
+	}
+	if !strings.Contains(stdoutResult.stdout, "title = \"Submit\"") {
+		t.Fatalf("stdout = %q, want formatted source", stdoutResult.stdout)
+	}
+
+	writePath := writeModel(t, "write.em.hcl", source)
+	writeResult := runCLI(t, "fmt", "-w", writePath)
+	if writeResult.exitCode != 0 || writeResult.stdout != "" || writeResult.stderr != "" {
+		t.Fatalf("write format result = %#v", writeResult)
+	}
+	written, err := os.ReadFile(writePath)
+	if err != nil {
+		t.Fatalf("read formatted model: %v", err)
+	}
+	if !strings.Contains(string(written), "title = \"Submit\"") {
+		t.Fatalf("written = %q, want formatted source", written)
+	}
+}
+
 func TestRun_ValidateRejectsNonEventModelExtension(t *testing.T) {
 	// Given a valid model whose file name does not end in .em.hcl.
-	modelPath := writeModel(t, "valid.hcl", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
+	modelPath := writeModel(t, "valid.hcl", `bounded_context "example" {
+  title = "Example"
+}
+
+state_change "example" {
+  title = "Example"
 }
 `)
 
@@ -175,7 +296,7 @@ func TestRun_RejectsInvalidArguments(t *testing.T) {
 			if result.exitCode != 2 {
 				t.Fatalf("exit code = %d, want 2; stderr = %q", result.exitCode, result.stderr)
 			}
-			if got, want := result.stderr, "usage: eventmodeling-hcl validate <model.em.hcl>\n"; got != want {
+			if got, want := result.stderr, "usage: eventmodeling-hcl <validate [--profile workshop|valid|strict] | fmt [-w]> <model.em.hcl>\n"; got != want {
 				t.Fatalf("stderr = %q, want %q", got, want)
 			}
 		})
@@ -184,7 +305,7 @@ func TestRun_RejectsInvalidArguments(t *testing.T) {
 
 func TestRun_ValidateSyntaxErrorIncludesSourceLocation(t *testing.T) {
 	// Given a model with an unclosed block.
-	modelPath := writeModel(t, "invalid.em.hcl", "slice \"example\" {\n")
+	modelPath := writeModel(t, "invalid.em.hcl", "bounded_context \"example\" {\n")
 
 	// When the validate command runs.
 	result := runCLI(t, "validate", modelPath)
@@ -193,7 +314,7 @@ func TestRun_ValidateSyntaxErrorIncludesSourceLocation(t *testing.T) {
 	if result.exitCode != 1 {
 		t.Fatalf("exit code = %d, want 1; stderr = %q", result.exitCode, result.stderr)
 	}
-	location := regexp.MustCompile(regexp.QuoteMeta(modelPath) + `:\d+:\d+: Error:`)
+	location := regexp.MustCompile(regexp.QuoteMeta(modelPath) + `:\d+:\d+: Error EM000:`)
 	if !location.MatchString(result.stderr) {
 		t.Fatalf("stderr = %q, want source-located error", result.stderr)
 	}

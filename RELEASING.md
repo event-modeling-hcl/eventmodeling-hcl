@@ -1,8 +1,8 @@
 # Releasing
 
 This runbook publishes a stable release of `eventmodeling-hcl`. Stable release
-tags use exactly `vMAJOR.MINOR.PATCH`; prerelease tags such as `v0.1.0b0` do
-not publish a stable release.
+tags use exactly `vMAJOR.MINOR.PATCH`; prerelease tags such as `v0.2.0-rc.1`
+are release candidates and do not publish a stable release.
 
 ## Repository Settings
 
@@ -26,8 +26,12 @@ git status --short
 make verify
 ```
 
-`git status --short` must produce no output. Review the `v0.1.0` changelog
-entry and make any release-note correction before continuing.
+`git status --short` must produce no output. Review the `v0.2.0` release
+notes and make any release-note correction before continuing.
+
+Do not push a release-candidate tag through the stable Release workflow. The
+workflow intentionally accepts only stable semantic-version tags. Candidate
+validation happens from the release branch before stable publication.
 
 ## Publish
 
@@ -35,12 +39,12 @@ Push the verified commit, then create an annotated tag that points to it:
 
 ```bash
 git push origin main
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
+git tag -a v0.2.0 -m "Release v0.2.0"
+git push origin v0.2.0
 ```
 
-Do not move, replace, or reuse `v0.1.0b0`; it remains the historical
-pre-release tag. Do not delete or retag a published stable release.
+Do not move, replace, or reuse a published release tag. Do not delete or retag
+a published stable release.
 
 If a stable tag's workflow fails before publishing its assets, merge the
 workflow fix and publish the next patch version. GitHub runs the workflow
@@ -65,8 +69,8 @@ their contents and provenance:
 
 ```bash
 sha256sum -c checksums.txt
-gh attestation verify eventmodeling-hcl_0.1.0_linux_amd64.tar.gz \
-  --repo dclimber/event-modeling-hcl
+gh attestation verify eventmodeling-hcl_0.2.0_linux_amd64.tar.gz \
+  --repo event-modeling-hcl/eventmodeling-hcl
 ```
 
 Install one archive on each supported operating-system family and confirm the
@@ -74,5 +78,5 @@ embedded release version:
 
 ```bash
 eventmodeling-hcl version
-# eventmodeling-hcl v0.1.0
+# eventmodeling-hcl v0.2.0
 ```

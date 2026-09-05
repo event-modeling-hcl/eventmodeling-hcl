@@ -1,29 +1,42 @@
-# Minimal Event Modeling document in native HCL.
-# Block labels represent the JSON `id` or `name` identity fields.
+# Minimal Event Modeling document with context-owned contracts.
 
-slice "add-pet" {
-  title      = "Add Pet"
-  slice_type = "STATE_CHANGE"
+bounded_context "pet_management" {
+  title = "Pet Management"
 
-  command "add-pet" {
-    title = "Add Pet"
-    type  = "COMMAND"
-
-    dependency "evt-pet-001" {
-      type         = "OUTBOUND"
-      title        = "Pet Added"
-      element_type = "EVENT"
-    }
+  aggregate "pet" {
   }
 
-  event "evt-pet-001" {
-    title = "Pet Added"
-    type  = "EVENT"
+  field_type "pet_id" {
+    type         = "Int"
+    id_attribute = true
+    example      = 5
+  }
+
+  event "pet_added" {
+    title     = "Pet Added"
+    aggregate = aggregate.pet
 
     field "pet_id" {
-      type         = "Int"
-      example      = 5
-      id_attribute = true
+      type = field_type.pet_id
+    }
+  }
+}
+
+state_change "add_pet" {
+  title = "Add Pet"
+
+  screen "add_pet_form" {
+    title = "Add Pet Form"
+    to    = [command.add_pet_command]
+  }
+
+  command "add_pet_command" {
+    title     = "Add Pet"
+    aggregate = aggregate.pet_management.pet
+    to        = [event.pet_management.pet_added]
+
+    field "pet_id" {
+      type = field_type.pet_management.pet_id
     }
   }
 }

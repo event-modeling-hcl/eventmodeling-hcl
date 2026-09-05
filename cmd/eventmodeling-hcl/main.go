@@ -1,5 +1,5 @@
 // Package main implements the eventmodeling-hcl command-line validator for
-// the native HCL v1 Event Modeling Specification.
+// the native HCL Event Modeling Specification.
 package main
 
 import (
@@ -9,27 +9,31 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dclimber/event-modeling-hcl/internal/validator"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/formatter"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
 	"github.com/hashicorp/hcl/v2"
 )
 
 var version = "dev"
 
-const usageMessage = "usage: eventmodeling-hcl validate <model.em.hcl>"
+const usageMessage = "usage: eventmodeling-hcl <validate [--profile workshop|valid|strict] | fmt [-w]> <model.em.hcl>"
 
 // commandKind names which subcommand a parsed command line requested.
 type commandKind uint8
 
 const (
 	validateCommand commandKind = iota
+	formatCommand
 	versionCommand
 )
 
 // cliCommand is one fully parsed command-line invocation, ready to be
 // executed by run.
 type cliCommand struct {
-	kind commandKind
-	path string
+	kind    commandKind
+	path    string
+	profile validator.Profile
+	write   bool
 }
 
 // main runs the CLI against the process's real arguments and standard
@@ -52,8 +56,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "eventmodeling-hcl %s\n", version)
 		return 0
 	}
-	if diagnostics := validator.ValidateFile(command.path); diagnostics.HasErrors() {
+	if command.kind == formatCommand {
+		return formatFile(command, stdout, stderr)
+	}
+	diagnostics := validator.ValidateFileWithProfile(command.path, command.profile)
+	if len(diagnostics) > 0 {
 		writeDiagnostics(stderr, diagnostics)
+	}
+	if diagnostics.HasErrors() {
 		return 1
 	}
 
@@ -68,13 +78,66 @@ func parseCommand(args []string) (cliCommand, error) {
 	if len(args) == 1 && args[0] == "version" {
 		return cliCommand{kind: versionCommand}, nil
 	}
-	if len(args) != 2 || args[0] != "validate" {
-		return cliCommand{}, errors.New(usageMessage)
+	if len(args) == 2 && args[0] == "validate" {
+		return validateCLICommand(args[1], validator.Valid)
 	}
-	if !strings.HasSuffix(args[1], ".em.hcl") {
+	if len(args) == 4 && args[0] == "validate" && args[1] == "--profile" {
+		profile, ok := validator.ParseProfile(args[2])
+		if !ok {
+			return cliCommand{}, errors.New("profile must be workshop, valid, or strict")
+		}
+		return validateCLICommand(args[3], profile)
+	}
+	if len(args) == 2 && args[0] == "fmt" {
+		return formatCLICommand(args[1], false)
+	}
+	if len(args) == 3 && args[0] == "fmt" && args[1] == "-w" {
+		return formatCLICommand(args[2], true)
+	}
+	return cliCommand{}, errors.New(usageMessage)
+}
+
+func validateCLICommand(path string, profile validator.Profile) (cliCommand, error) {
+	if !strings.HasSuffix(path, ".em.hcl") {
 		return cliCommand{}, errors.New("model file must use the .em.hcl extension")
 	}
-	return cliCommand{kind: validateCommand, path: args[1]}, nil
+	return cliCommand{kind: validateCommand, path: path, profile: profile}, nil
+}
+
+func formatCLICommand(path string, write bool) (cliCommand, error) {
+	if !strings.HasSuffix(path, ".em.hcl") {
+		return cliCommand{}, errors.New("model file must use the .em.hcl extension")
+	}
+	return cliCommand{kind: formatCommand, path: path, write: write}, nil
+}
+
+func formatFile(command cliCommand, stdout, stderr io.Writer) int {
+	source, err := os.ReadFile(command.path)
+	if err != nil {
+		fmt.Fprintf(stderr, "failed to read %s: %v\n", command.path, err)
+		return 1
+	}
+	formatted, diagnostics := formatter.Format(command.path, source)
+	if len(diagnostics) > 0 {
+		writeDiagnostics(stderr, diagnostics)
+	}
+	if diagnostics.HasErrors() {
+		return 1
+	}
+	if !command.write {
+		_, _ = stdout.Write(formatted)
+		return 0
+	}
+	info, err := os.Stat(command.path)
+	if err != nil {
+		fmt.Fprintf(stderr, "failed to stat %s: %v\n", command.path, err)
+		return 1
+	}
+	if err := os.WriteFile(command.path, formatted, info.Mode().Perm()); err != nil {
+		fmt.Fprintf(stderr, "failed to write %s: %v\n", command.path, err)
+		return 1
+	}
+	return 0
 }
 
 // writeDiagnostics renders diagnostics in the CLI's text format and writes
@@ -105,16 +168,21 @@ func mapSlice[T, U any](items []T, transform func(T) U) []U {
 // file, which happens before any source text exists to point at) omit the
 // "file:line:column:" prefix.
 func formatDiagnostic(diagnostic *hcl.Diagnostic) string {
-	severity := "Warning"
-	if diagnostic.Severity == hcl.DiagError {
+	severity := ""
+	switch diagnostic.Severity {
+	case hcl.DiagInvalid:
+		severity = "Info"
+	case hcl.DiagError:
 		severity = "Error"
+	case hcl.DiagWarning:
+		severity = "Warning"
 	}
-	message := diagnostic.Summary
+	message := fmt.Sprintf("%s %s: %s", severity, validator.DiagnosticCode(diagnostic), diagnostic.Summary)
 	if diagnostic.Detail != "" {
 		message += ": " + diagnostic.Detail
 	}
 	if diagnostic.Subject == nil {
-		return fmt.Sprintf("%s: %s\n", severity, message)
+		return fmt.Sprintf("%s\n", message)
 	}
-	return fmt.Sprintf("%s:%d:%d: %s: %s\n", diagnostic.Subject.Filename, diagnostic.Subject.Start.Line, diagnostic.Subject.Start.Column, severity, message)
+	return fmt.Sprintf("%s:%d:%d: %s\n", diagnostic.Subject.Filename, diagnostic.Subject.Start.Line, diagnostic.Subject.Start.Column, message)
 }

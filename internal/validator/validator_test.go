@@ -8,381 +8,302 @@ import (
 	"github.com/hashicorp/hcl/v2"
 )
 
-func TestValidateSource_SliceIndexAcceptsArbitraryPrecisionInteger(t *testing.T) {
-	// Given a slice whose index exceeds machine-sized integer precision.
-	model := `slice "example" {
-  title      = "Example"
-  index      = 999999999999999999999999999999999999999999999999999999999999
-  slice_type = "STATE_CHANGE"
-}
-`
-
-	// When the model is validated.
-	diagnostics := validateModel(t, model)
-
-	// Then it is valid.
-	requireValid(t, diagnostics)
-}
-
-func TestValidateSource_FieldPIIAcceptsBoolean(t *testing.T) {
-	// Given a field marked as personally identifiable information.
-	model := `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  event "event" {
-    title = "Event"
-    type  = "EVENT"
-    field "name" {
-      type = "String"
-      pii  = true
-    }
+func TestValidateSource_AcceptsArbitraryPrecisionIntegerExample(t *testing.T) {
+	model := `bounded_context "example" {
+  title = "Example"
+  field_type "large_number" {
+    type    = "Int"
+    example = 999999999999999999999999999999999999999999999999999999999999
   }
-}
-`
+}`
 
-	// When the model is validated.
-	diagnostics := validateModel(t, model)
-
-	// Then it is valid.
-	requireValid(t, diagnostics)
+	requireNoErrors(t, validateModel(t, model))
 }
 
-func TestValidateSource_FieldPIIRejectsNonBoolean(t *testing.T) {
-	// Given a field whose pii metadata is not a boolean.
-	model := `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  event "event" {
-    title = "Event"
-    type  = "EVENT"
-    field "name" {
-      type = "String"
-      pii  = "personal"
-    }
+func TestValidateSource_AcceptsPIIMetadata(t *testing.T) {
+	model := `bounded_context "example" {
+  title = "Example"
+  field_type "name" {
+    type = "String"
+    pii  = true
   }
-}
-`
+}`
 
-	// When the model is validated.
-	diagnostics := validateModel(t, model)
-
-	// Then its pii metadata is rejected.
-	requireDiagnostic(t, diagnostics, "pii must be a boolean.")
+	requireNoErrors(t, validateModel(t, model))
 }
 
-func TestValidateSource_FieldExampleAcceptsNativeLiterals(t *testing.T) {
-	// Given a field with list, boolean, number, null, and object literals.
-	model := `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  event "event" {
-    title = "Event"
-    type  = "EVENT"
-    field "examples" {
-      type    = "Custom"
-      example = [true, 12, null, { nested = "value" }]
-    }
+func TestValidateSource_RejectsNonBooleanPIIMetadata(t *testing.T) {
+	model := `bounded_context "example" {
+  title = "Example"
+  field_type "name" {
+    type = "String"
+    pii  = "personal"
   }
-}
-`
+}`
 
-	// When the model is validated.
-	diagnostics := validateModel(t, model)
-
-	// Then all literal forms are accepted.
-	requireValid(t, diagnostics)
+	requireDiagnostic(t, validateModel(t, model), "pii must be a boolean")
 }
 
-func TestValidateSource_ReturnsAllIndependentDiagnostics(t *testing.T) {
-	// Given a model with independent violations at multiple nesting levels.
-	model := `slice "example" {
-  title      = 1
-  slice_type = "INVALID"
-  event "event" {
-    type = "COMMAND"
+func TestValidateSource_AcceptsNativeExampleLiterals(t *testing.T) {
+	model := `bounded_context "example" {
+  title = "Example"
+  field_type "flag" {
+    type = "Boolean"
+    example = true
   }
+  field_type "weight" {
+    type = "Double"
+    example = 4.2
+  }
+  field_type "unset" {
+    type = "Int"
+    example = null
+  }
+  field_type "metadata" {
+    type = "Custom"
+    example = { nested = "value" }
+  }
+}`
+
+	requireNoErrors(t, validateModel(t, model))
 }
-`
 
-	// When the model is validated.
-	diagnostics := validateModel(t, model)
+func TestValidateSource_RejectsExampleThatDoesNotMatchFieldType(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string
+	}{
+		{"integer", "field_type \"value\" {\n    type = \"Int\"\n    example = \"five\"\n  }"},
+		{"boolean", "field_type \"value\" {\n    type = \"Boolean\"\n    example = 1\n  }"},
+		{"list shape", "field_type \"value\" {\n    type = \"Custom\"\n    cardinality = \"List\"\n    example = { id = 1 }\n  }"},
+		{"list member", "field_type \"value\" {\n    type = \"Int\"\n    cardinality = \"List\"\n    example = [1, \"two\"]\n  }"},
+	}
 
-	// Then each independent violation is reported.
-	for _, want := range []string{
-		"title must be a string.",
-		"slice_type must be one of: STATE_CHANGE, STATE_VIEW, AUTOMATION.",
-		"Missing required argument",
-		`type must be "EVENT" for an event block.`,
-	} {
-		requireDiagnostic(t, diagnostics, want)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := "bounded_context \"example\" {\n  title = \"Example\"\n  " + test.field + "\n}"
+			requireDiagnostic(t, validateModel(t, model), "Invalid example value")
+		})
 	}
 }
 
-func TestValidateSource_ReturnsDiagnosticsInSchemaOrder(t *testing.T) {
-	// Given a slice with invalid attributes declared out of schema order.
-	model := `slice "example" {
-  slice_type = "INVALID"
-  status     = "Pending"
-  title      = 1
-}
-`
+func TestValidateSource_RejectsUnknownSyntax(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+	}{
+		{"top-level block", `event "event" {}`},
+		{"workflow attribute", "state_change \"example\" {\n  title = \"Example\"\n  unknown = true\n}"},
+		{"workflow block", "state_change \"example\" {\n  title = \"Example\"\n  unknown \"value\" {}\n}"},
+		{"element attribute", "state_change \"example\" {\n  title = \"Example\"\n  command \"submit\" {\n    title = \"Submit\"\n    unknown = true\n  }\n}"},
+		{"field attribute", "bounded_context \"example\" {\n  title = \"Example\"\n  field_type \"name\" {\n    type = \"String\"\n    unknown = true\n  }\n}"},
+	}
 
-	// When the model is validated.
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			requireDiagnostic(t, validateModel(t, test.model), "Unsupported")
+		})
+	}
+}
+
+func TestValidateSource_RejectsLiteralVariableOutsideReferencePositions(t *testing.T) {
+	model := `state_change "example" { title = var.title }`
+
+	requireDiagnostic(t, validateModel(t, model), "Variables not allowed")
+}
+
+func TestValidateSource_RejectsNonSnakeCaseLabels(t *testing.T) {
+	model := `state_change "add-pet" { title = "Add Pet" }`
+
+	requireDiagnostic(t, validateModel(t, model), "lower_snake_case")
+}
+
+func TestValidateSource_RejectsDuplicateLocalElementID(t *testing.T) {
+	model := `state_change "add_pet" {
+  title = "Add Pet"
+  command "submit" { title = "Submit" }
+  command "submit" { title = "Submit again" }
+}`
+
+	requireDiagnostic(t, validateModel(t, model), "Duplicate command id")
+}
+
+func TestValidateSource_RejectsDuplicateCatalogAddress(t *testing.T) {
+	model := `bounded_context "pets" {
+  title = "Pets"
+  event "pet_added" { title = "Pet Added" }
+  event "pet_added" { title = "Pet Added Again" }
+}`
+
+	requireDiagnostic(t, validateModel(t, model), "Duplicate event id")
+}
+
+func TestValidateSource_RejectsDuplicateFieldNameInOneContract(t *testing.T) {
+	model := `bounded_context "catalog" {
+  title = "Catalog"
+  event "book_added" {
+    title = "Book Added"
+    field "book_id" { type = "UUID" }
+    field "book_id" { type = "UUID" }
+  }
+}`
+
 	diagnostics := validateModel(t, model)
 
-	// Then diagnostics follow the schema's stable attribute order.
+	requireDiagnostic(t, diagnostics, `field "book_id" is declared more than once`)
+}
+
+func TestValidateSource_RejectsDuplicateScenarioIDInOneWorkflow(t *testing.T) {
+	model := nativeCatalog() + `
+state_change "add_pet" {
+  title = "Add Pet"
+  command "add_pet" {
+    title            = "Add Pet"
+    external_trigger = true
+  }
+  scenario "success" {
+    title = "Success"
+    when { command = command.add_pet }
+    then { event = event.pet_management.pet_added }
+  }
+  scenario "success" {
+    title = "Also success"
+    when { command = command.add_pet }
+    then { event = event.pet_management.pet_added }
+  }
+}`
+
+	diagnostics := validateModel(t, model)
+
+	requireDiagnostic(t, diagnostics, `scenario "success" is declared more than once`)
+}
+
+func TestValidateSource_RejectsInvalidWorkflowChild(t *testing.T) {
+	tests := []struct {
+		name     string
+		workflow string
+		child    string
+	}{
+		{"state change readmodel", "state_change", "readmodel \"summary\" {\n    title = \"Summary\"\n    question = \"What happened?\"\n  }"},
+		{"state view command", "state_view", `command "refresh" { title = "Refresh" }`},
+		{"automation screen", "automation", `screen "form" { title = "Form" }`},
+		{"translation screen", "translation", `screen "form" { title = "Form" }`},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := test.workflow + ` "workflow" {
+  title = "Workflow"
+  ` + test.child + `
+}`
+			requireDiagnostic(t, validateModel(t, model), "Invalid workflow child")
+		})
+	}
+}
+
+func TestValidateSource_RejectsWrongKindFlowReference(t *testing.T) {
+	model := nativeCatalog() + `state_change "add_pet" {
+  title = "Add Pet"
+  command "add_pet" {
+    title = "Add Pet"
+    to    = [readmodel.missing]
+  }
+}`
+
+	requireDiagnostic(t, validateModel(t, model), "Invalid flow reference")
+}
+
+func TestValidateSource_ReturnsIndependentDiagnosticsInSchemaOrder(t *testing.T) {
+	model := `state_change "example" {
+  status = "pending"
+  title  = 1
+}`
+
+	diagnostics := validateModel(t, model)
 	want := []string{
 		"title must be a string.",
-		"status must be one of: Created, Done, InProgress.",
-		"slice_type must be one of: STATE_CHANGE, STATE_VIEW, AUTOMATION.",
+		"status must be one of: created, planned, assigned, in_progress, review, blocked, done, informational.",
 	}
 	if got := diagnosticMessages(diagnostics); !slices.Equal(got, want) {
 		t.Fatalf("diagnostic messages = %#v, want %#v", got, want)
 	}
 }
 
-func TestValidateSource_AcceptsCoreSliceChild(t *testing.T) {
-	tests := []struct {
-		name  string
-		child string
-	}{
-		{"command", `command "command" {
-  title = "Command"
-  type  = "COMMAND"
-}`},
-		{"event", `event "event" {
-  title = "Event"
-  type  = "EVENT"
-}`},
-		{"readmodel", `readmodel "readmodel" {
-  title = "Read model"
-  type  = "READMODEL"
-}`},
-		{"screen", `screen "screen" {
-  title = "Screen"
-  type  = "SCREEN"
-}`},
-		{"processor", `processor "processor" {
-  title = "Processor"
-  type  = "AUTOMATION"
-}`},
-		{"screen image", `screen_image "image" {
-  title = "Image"
-}`},
-		{"table", `table "table" {
-  title = "Table"
-}`},
-		{"specification", `specification "specification" {
-  title     = "Specification"
-  linked_id = "example"
-}`},
-		{"actor", `actor "User" {
-  auth_required = false
-}`},
-	}
+func TestValidateSourceWithProfile_AssignsStableCodes(t *testing.T) {
+	model := nativeCatalog() + `state_change "add_pet" {
+  command "add_pet" {
+    to = [readmodel.missing]
+  }
+}`
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Given one permitted direct child of a valid slice.
-			model := `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  ` + test.child + `
-}
-`
+	diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(model), Valid)
 
-			// When the model is validated.
-			diagnostics := validateModel(t, model)
-
-			// Then that child is accepted.
-			requireValid(t, diagnostics)
-		})
+	if got, want := diagnosticCodeOf(t, diagnostics), "EM201"; got != want {
+		t.Fatalf("diagnostic code = %q, want %q", got, want)
 	}
 }
 
-func TestValidateSource_RejectsStructuralViolation(t *testing.T) {
-	tests := []struct {
-		name  string
-		model string
-		want  string
-	}{
-		{"top level block", `event "event" {}`, "Unsupported block type"},
-		{"unknown slice attribute", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  unknown    = true
-}`, "Unsupported argument"},
-		{"unknown slice block", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  unknown "value" {}
-}`, "Unsupported block type"},
-		{"missing element title", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  command "command" {
-    type = "COMMAND"
+func TestValidateSourceWithProfile_ExplainsFlowReferenceKindMismatch(t *testing.T) {
+	model := nativeCatalog() + `state_change "add_pet" {
+  command "add_pet" {
+    to = [readmodel.missing]
   }
-}`, "Missing required argument"},
-		{"mismatched element type", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  event "event" {
-    title = "Event"
-    type  = "COMMAND"
-  }
-}`, `type must be "EVENT"`},
-	}
+}`
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Given a model with one structural violation.
+	diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(model), Valid)
 
-			// When the model is validated.
-			diagnostics := validateModel(t, test.model)
-
-			// Then that violation is reported.
-			requireDiagnostic(t, diagnostics, test.want)
-		})
+	if got, want := diagnosticDetailForCode(t, diagnostics, "EM201"), "command.to may reference: event.<context>.<id>. You referenced: readmodel.missing."; got != want {
+		t.Fatalf("flow diagnostic detail = %q, want %q", got, want)
 	}
 }
 
-func TestValidateSource_RejectsNonLiteralExpression(t *testing.T) {
-	// Given a model containing a variable expression.
-	model := `slice "example" {
-  title      = var.title
-  slice_type = "STATE_CHANGE"
-}
-`
+func TestValidateSourceWithProfile_ExplainsStateViewWhen(t *testing.T) {
+	model := nativeCatalog() + `state_view "list_pets" {
+  readmodel "pets" { question = "Which pets exist?" }
+  scenario "loaded" {
+    given { event = event.pet_management.pet_added }
+    when { readmodel = readmodel.pets }
+    then { readmodel = readmodel.pets }
+  }
+}`
 
-	// When the model is validated.
-	diagnostics := validateModel(t, model)
+	diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(model), Valid)
 
-	// Then the expression is rejected.
-	requireDiagnostic(t, diagnostics, "Variables not allowed")
-}
-
-func TestValidateSource_RejectsDeferredV1Construct(t *testing.T) {
-	tests := []struct {
-		name  string
-		model string
-		want  string
-	}{
-		{"event group block", `event_group "pets" {}`, "Unsupported block type"},
-		{"external event block", `external_event "evt-pet" {}`, "Unsupported block type"},
-		{"emits attribute", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  emits      = ["evt-pet"]
-}
-`, "Unsupported argument"},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Given one HCL construct deferred from v1.
-
-			// When the model is validated.
-			diagnostics := validateModel(t, test.model)
-
-			// Then the construct is rejected.
-			requireDiagnostic(t, diagnostics, test.want)
-		})
+	if got, want := diagnosticDetailForCode(t, diagnostics, "EM301"), "state_view scenarios may not contain when steps. Found: when."; got != want {
+		t.Fatalf("scenario diagnostic detail = %q, want %q", got, want)
 	}
 }
 
-func TestValidateSource_RejectsNestedSchemaViolation(t *testing.T) {
-	tests := []struct {
-		name  string
-		model string
-		want  string
-	}{
-		{"invalid slice status", `slice "example" {
-  title      = "Example"
-  status     = "Pending"
-  slice_type = "STATE_CHANGE"
-}`, "Invalid enum value"},
-		{"invalid element context", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  command "command" {
-    title   = "Command"
-    type    = "COMMAND"
-    context = "PUBLIC"
-  }
-}`, "Invalid enum value"},
-		{"unknown field attribute", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  command "command" {
-    title = "Command"
-    type  = "COMMAND"
-    field "name" {
-      type    = "String"
-      unknown = true
-    }
-  }
-}`, "Unsupported argument"},
-		{"invalid field type", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  command "command" {
-    title = "Command"
-    type  = "COMMAND"
-    field "name" {
-      type = "Text"
-    }
-  }
-}`, "Invalid enum value"},
-		{"missing dependency element type", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  command "command" {
-    title = "Command"
-    type  = "COMMAND"
-    dependency "event" {
-      type  = "OUTBOUND"
-      title = "Event"
-    }
-  }
-}`, "Missing required argument"},
-		{"invalid specification step type", `slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
-  specification "specification" {
-    title     = "Specification"
-    linked_id = "example"
-    then "result" {
-      title = "Result"
-      type  = "SPEC_SCREEN"
-    }
-  }
-}`, "Invalid enum value"},
+func TestValidateSourceWithProfile_AppliesProfileSeverity(t *testing.T) {
+	model := `state_change "add_pet" {
+  command "add_pet" {}
+}
+hotspot "missing_rule" {
+  question = "Which rule is missing?"
+}`
+
+	valid := ValidateSourceWithProfile("model.em.hcl", []byte(model), Valid)
+	requireSeverityForCode(t, valid, "EM404", hcl.DiagWarning)
+	requireSeverityForCode(t, valid, "EM406", hcl.DiagWarning)
+	if valid.HasErrors() {
+		t.Fatalf("valid profile diagnostics = %s, want no errors", valid.Error())
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Given a model with one nested-schema violation.
-
-			// When the model is validated.
-			diagnostics := validateModel(t, test.model)
-
-			// Then that violation is reported.
-			requireDiagnostic(t, diagnostics, test.want)
-		})
+	strict := ValidateSourceWithProfile("model.em.hcl", []byte(model), Strict)
+	requireSeverityForCode(t, strict, "EM404", hcl.DiagError)
+	requireSeverityForCode(t, strict, "EM406", hcl.DiagError)
+	if !strict.HasErrors() {
+		t.Fatal("strict profile must escalate command and hotspot diagnostics")
 	}
+
+	workshop := ValidateSourceWithProfile("model.em.hcl", []byte(model), Workshop)
+	requireSeverityForCode(t, workshop, "EM404", hcl.DiagInvalid)
+	requireSeverityForCode(t, workshop, "EM406", hcl.DiagInvalid)
 }
 
 func validateModel(t *testing.T, model string) hcl.Diagnostics {
 	t.Helper()
 	return ValidateSource("model.em.hcl", []byte(model))
-}
-
-func requireValid(t *testing.T, diagnostics hcl.Diagnostics) {
-	t.Helper()
-	if diagnostics.HasErrors() {
-		t.Fatalf("diagnostics = %s", diagnostics.Error())
-	}
 }
 
 func requireDiagnostic(t *testing.T, diagnostics hcl.Diagnostics, want string) {
@@ -404,4 +325,36 @@ func diagnosticMessages(diagnostics hcl.Diagnostics) []string {
 		messages = append(messages, diagnostic.Detail)
 	}
 	return messages
+}
+
+func diagnosticCodeOf(t *testing.T, diagnostics hcl.Diagnostics) string {
+	t.Helper()
+	if len(diagnostics) == 0 {
+		t.Fatal("diagnostics = empty, want at least one diagnostic")
+	}
+	return DiagnosticCode(diagnostics[0])
+}
+
+func requireSeverityForCode(t *testing.T, diagnostics hcl.Diagnostics, code string, want hcl.DiagnosticSeverity) {
+	t.Helper()
+	for _, diagnostic := range diagnostics {
+		if DiagnosticCode(diagnostic) == code {
+			if diagnostic.Severity != want {
+				t.Fatalf("diagnostic %s severity = %v, want %v", code, diagnostic.Severity, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("diagnostics = %#v, want code %s", diagnostics, code)
+}
+
+func diagnosticDetailForCode(t *testing.T, diagnostics hcl.Diagnostics, code string) string {
+	t.Helper()
+	for _, diagnostic := range diagnostics {
+		if DiagnosticCode(diagnostic) == code {
+			return diagnostic.Detail
+		}
+	}
+	t.Fatalf("diagnostics = %#v, want code %s", diagnostics, code)
+	return ""
 }

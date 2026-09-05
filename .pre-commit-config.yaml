@@ -1,0 +1,45 @@
+# Install with: pre-commit install
+# Run manually with: pre-commit run --all-files
+default_stages: [pre-commit]
+minimum_pre_commit_version: "4.0.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: Format Go source
+        entry: gofmt -w
+        language: system
+        types: [go]
+
+      - id: go-mod-tidy
+        name: Check Go module files
+        entry: sh -c 'go mod tidy && git diff --exit-code -- go.mod go.sum'
+        language: system
+        files: ^(go\.mod|go\.sum)$
+        pass_filenames: false
+
+      - id: go-vet
+        name: Vet Go packages
+        entry: go vet ./...
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: go-test
+        name: Test Go packages
+        entry: go test ./...
+        language: system
+        pass_filenames: false
+        always_run: true

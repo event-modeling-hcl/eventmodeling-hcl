@@ -1,35 +1,46 @@
-slice "example" {
-  title      = "Example"
-  status     = "Created"
-  index      = 1
-  slice_type = "STATE_CHANGE"
-  aggregates = ["Pet"]
+bounded_context "example" {
+  title = "Example"
+
+  aggregate "pet" {
+  }
+
+  field_type "pet_id" {
+    cardinality  = "Single"
+    type         = "Int"
+    id_attribute = true
+    example      = 5
+
+    subfield "display_name" {
+      type    = "String"
+      example = "Betty"
+    }
+  }
+
+  event "pet_created" {
+    title     = "Pet Created"
+    aggregate = aggregate.pet
+
+    field "pet_id" {
+      type = field_type.pet_id
+    }
+  }
+}
+
+state_change "example" {
+  title  = "Example"
+  status = "created"
 
   command "command" {
     title             = "Command"
-    type              = "COMMAND"
     tags              = ["write"]
-    context           = "INTERNAL"
-    aggregate         = "Pet"
+    aggregate         = aggregate.example.pet
     creates_aggregate = true
+    external_trigger  = true
     prototype         = { route = "/pets" }
+    to                = [event.example.pet_created]
 
     field "pet_id" {
-      type         = "Int"
-      example      = { value = 5 }
-      id_attribute = true
-      cardinality  = "Single"
-
-      subfield "display_name" {
-        type    = "String"
-        example = "Betty"
-      }
-    }
-
-    dependency "evt-pet-created" {
-      type         = "OUTBOUND"
-      title        = "Pet Created"
-      element_type = "EVENT"
+      type = field_type.example.pet_id
     }
   }
 
@@ -42,29 +53,22 @@ slice "example" {
     }
   }
 
-  specification "create-pet" {
-    title     = "Create pet"
-    linked_id = "command"
-    vertical  = true
+  scenario "create_pet" {
+    title = "Create pet"
 
-    when "submit" {
-      title     = "Command"
-      type      = "SPEC_COMMAND"
-      index     = 0
-      spec_row  = 0
-      linked_id = "command"
-      examples  = [{ case = "happy" }]
+    when {
+      title    = "Command"
+      examples = [{ case = "happy" }]
+      command  = command.command
 
       field "pet_id" {
-        type    = "Int"
-        example = 5
+        type = field_type.example.pet_id
       }
     }
 
-    then "created" {
-      title     = "Pet Created"
-      type      = "SPEC_EVENT"
-      linked_id = "evt-pet-created"
+    then {
+      title = "Pet Created"
+      event = event.example.pet_created
     }
 
     comment {

@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report suspected security vulnerabilities privately via [GitHub
-Security Advisories](https://github.com/dclimber/event-modeling-hcl/security/advisories/new)
+Security Advisories](https://github.com/event-modeling-hcl/eventmodeling-hcl/security/advisories/new)
 for this repository, rather than opening a public issue.
 
 Include a description of the vulnerability, steps to reproduce, and the

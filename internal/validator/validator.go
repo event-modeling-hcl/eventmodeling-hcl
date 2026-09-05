@@ -1,11 +1,11 @@
-// Package validator implements the strict validator for the native HCL v1
-// Event Modeling Specification defined in eventmodeling.hclspec.md.
+// Package validator implements the strict validator for the native HCL Event
+// Modeling Specification defined in eventmodeling.hclspec.md.
 package validator
 
 import (
 	"fmt"
-	"math/big"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -14,695 +14,691 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+var modelIdentifier = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
 // ValidateFile parses and validates one native HCL Event Modeling document.
 func ValidateFile(path string) hcl.Diagnostics {
-	source, err := os.ReadFile(path)
-	if err != nil {
-		return hcl.Diagnostics{&hcl.Diagnostic{
-			Severity: hcl.DiagError,
-			Summary:  "Failed to read file",
-			Detail:   fmt.Sprintf("The configuration file %q could not be read.", path),
-		}}
-	}
-	return ValidateSource(path, source)
+	return ValidateFileWithProfile(path, Valid)
 }
 
-// ValidateSource parses and validates HCL source. It is primarily useful for
-// callers that already have a model in memory.
+// ValidateFileWithProfile parses and validates one native HCL Event Modeling
+// document using the requested validation profile.
+func ValidateFileWithProfile(path string, profile Profile) hcl.Diagnostics {
+	source, err := os.ReadFile(path)
+	if err != nil {
+		return hcl.Diagnostics{&hcl.Diagnostic{Severity: hcl.DiagError, Summary: "Failed to read file", Detail: fmt.Sprintf("The configuration file %q could not be read.", path), Extra: codeReadFile}}
+	}
+	return ValidateSourceWithProfile(path, source, profile)
+}
+
+// ValidateSource parses and validates one in-memory Event Modeling document.
 func ValidateSource(filename string, source []byte) hcl.Diagnostics {
+	return ValidateSourceWithProfile(filename, source, Valid)
+}
+
+// ValidateSourceWithProfile parses and validates one in-memory Event Modeling
+// document using the requested validation profile.
+func ValidateSourceWithProfile(filename string, source []byte, profile Profile) hcl.Diagnostics {
 	parser := hclparse.NewParser()
 	file, diagnostics := parser.ParseHCL(source, filename)
 	if diagnostics.HasErrors() {
-		return diagnostics
+		return applyProfile(diagnostics, profile)
 	}
-	return validateBody(file.Body)
+	return applyProfile(validateBody(file.Body), profile)
 }
 
-// The functions below build the HCL schema for every block kind in the
-// grammar. Each schema lists exactly the attributes and child block types
-// that block is allowed to have; anything else in the source document is
-// rejected once it is checked with hcl.Body.Content (see validateBody and
-// its callees further down this file). The schemas mirror
-// eventmodeling.hclspec.md one for one, so that document is the place to
-// look when a block's allowed shape needs to change.
-
-// modelSchema describes the top-level document: a sequence of "slice"
-// blocks and nothing else.
-func modelSchema() hcl.BodySchema {
-	return hcl.BodySchema{
-		Blocks: []hcl.BlockHeaderSchema{{Type: "slice", LabelNames: []string{"id"}}},
-	}
+type fieldTypeRef struct {
+	fieldType   string
+	cardinality string
 }
 
-// sliceSchema describes a "slice" block: its own attributes, plus every
-// kind of block that is allowed to appear directly inside it.
-func sliceSchema() hcl.BodySchema {
-	return hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{
-			{Name: "title", Required: true},
-			{Name: "status"},
-			{Name: "index"},
-			{Name: "context"},
-			{Name: "slice_type", Required: true},
-			{Name: "aggregates"},
-		},
-		Blocks: []hcl.BlockHeaderSchema{
-			{Type: "command", LabelNames: []string{"id"}},
-			{Type: "event", LabelNames: []string{"id"}},
-			{Type: "readmodel", LabelNames: []string{"id"}},
-			{Type: "screen", LabelNames: []string{"id"}},
-			{Type: "screen_image", LabelNames: []string{"id"}},
-			{Type: "processor", LabelNames: []string{"id"}},
-			{Type: "table", LabelNames: []string{"id"}},
-			{Type: "specification", LabelNames: []string{"id"}},
-			{Type: "actor", LabelNames: []string{"name"}},
-		},
-	}
+type workflowIndex struct {
+	elements map[string]map[string]bool
 }
 
-// elementSchema describes the shared shape of every "element" block kind
-// (command, event, readmodel, screen, processor): the same attributes and
-// the same two child block types (field, dependency) apply to all five.
-func elementSchema() hcl.BodySchema {
-	return hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{
-			{Name: "group_id"},
-			{Name: "tags"},
-			{Name: "domain"},
-			{Name: "model_context"},
-			{Name: "context"},
-			{Name: "slice"},
-			{Name: "title", Required: true},
-			{Name: "type", Required: true},
-			{Name: "description"},
-			{Name: "aggregate"},
-			{Name: "aggregate_dependencies"},
-			{Name: "api_endpoint"},
-			{Name: "service"},
-			{Name: "creates_aggregate"},
-			{Name: "triggers"},
-			{Name: "sketched"},
-			{Name: "prototype"},
-			{Name: "list_element"},
-		},
-		Blocks: []hcl.BlockHeaderSchema{
-			{Type: "field", LabelNames: []string{"name"}},
-			{Type: "dependency", LabelNames: []string{"id"}},
-		},
-	}
+type modelIndex struct {
+	actors           map[string]bool
+	aggregates       map[string]bool
+	boundedContexts  map[string]bool
+	catalogEvents    map[string]bool
+	fieldTypes       map[string]fieldTypeRef
+	chapters         map[string]bool
+	hotspots         map[string]bool
+	systems          map[string]bool
+	teams            map[string]bool
+	workflows        map[string]workflowIndex
+	workflowOrder    []string
+	scenarioCounts   map[string]int
+	definitionRanges map[string]hcl.Range
+	externalContexts map[string]bool
 }
 
-// screenImageSchema describes a "screen_image" block: title and an
-// optional URL, with no child blocks.
-func screenImageSchema() hcl.BodySchema {
-	return hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{
-			{Name: "title", Required: true},
-			{Name: "url"},
-		},
-	}
+type modelValidator struct {
+	index modelIndex
 }
 
-// tableSchema describes a "table" block: a title plus any number of
-// "field" children.
-func tableSchema() hcl.BodySchema {
-	return hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{{Name: "title", Required: true}},
-		Blocks:     []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}},
-	}
+type contextValidator struct {
+	model     *modelValidator
+	contextID string
 }
 
-// specificationSchema describes a "specification" block: its own
-// attributes, plus the "given"/"when"/"then" steps and optional "comment"
-// block that make up the specification body.
-func specificationSchema() hcl.BodySchema {
-	return hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{
-			{Name: "vertical"},
-			{Name: "title", Required: true},
-			{Name: "slice_name"},
-			{Name: "linked_id", Required: true},
-		},
-		Blocks: []hcl.BlockHeaderSchema{
-			{Type: "given", LabelNames: []string{"id"}},
-			{Type: "when", LabelNames: []string{"id"}},
-			{Type: "then", LabelNames: []string{"id"}},
-			{Type: "comment"},
-		},
-	}
-}
-
-// actorSchema describes an "actor" block: just the auth_required flag,
-// with no child blocks.
-func actorSchema() hcl.BodySchema {
-	return hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{{Name: "auth_required", Required: true}},
-	}
-}
-
-// fieldSchema describes a "field" block (and, recursively, a "subfield"
-// block, which shares the same shape): its attributes, plus any number of
-// nested "subfield" children.
-func fieldSchema() hcl.BodySchema {
-	return hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{
-			{Name: "type", Required: true},
-			{Name: "example"},
-			{Name: "mapping"},
-			{Name: "optional"},
-			{Name: "technical_attribute"},
-			{Name: "generated"},
-			{Name: "id_attribute"},
-			{Name: "pii"},
-			{Name: "schema"},
-			{Name: "cardinality"},
-		},
-		Blocks: []hcl.BlockHeaderSchema{{Type: "subfield", LabelNames: []string{"name"}}},
-	}
-}
-
-// dependencySchema describes a "dependency" block: its three required
-// attributes, with no child blocks.
-func dependencySchema() hcl.BodySchema {
-	return hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{
-			{Name: "type", Required: true},
-			{Name: "title", Required: true},
-			{Name: "element_type", Required: true},
-		},
-	}
-}
-
-// specificationStepSchema describes a "given"/"when"/"then" step block:
-// its attributes, plus any number of "field" children.
-func specificationStepSchema() hcl.BodySchema {
-	return hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{
-			{Name: "title", Required: true},
-			{Name: "tags"},
-			{Name: "examples"},
-			{Name: "index"},
-			{Name: "spec_row"},
-			{Name: "type", Required: true},
-			{Name: "linked_id"},
-			{Name: "expect_empty_list"},
-		},
-		Blocks: []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}},
-	}
-}
-
-// commentSchema describes a "comment" block: a single required
-// description, with no child blocks.
-func commentSchema() hcl.BodySchema {
-	return hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{{Name: "description", Required: true}},
-	}
-}
-
-// attributeRule is the validation rule for one HCL attribute: the kind of
-// literal value it must hold, plus the closed set of allowed string values
-// when the attribute is an enum. An empty enum means any value of the
-// given kind is accepted.
-type attributeRule struct {
-	kind valueKind
-	enum []string
-}
-
-// attributeRuleLookup finds the attributeRule for one attribute name,
-// reporting false when the name is not a recognized attribute for the
-// block being validated. Each *AttributeRule function below implements
-// this signature.
-type attributeRuleLookup func(string) (attributeRule, bool)
-
-// valueKind names the shape an HCL attribute's literal value must have,
-// independent of any specific enum values it might also be restricted to.
-type valueKind uint8
-
-const (
-	anyValue valueKind = iota
-	stringValue
-	stringOrNullValue
-	boolValue
-	integerValue
-	stringListValue
-	objectValue
-	objectListValue
-)
-
-// The functions below are the attributeRuleLookup for each block kind:
-// given an attribute name that has already been confirmed to exist on the
-// block (see validateAttributes), they say what kind of value it must hold
-// and, for enum attributes, which string values are allowed.
-
-// sliceAttributeRule is the attributeRuleLookup for "slice" block attributes.
-func sliceAttributeRule(name string) (attributeRule, bool) {
-	switch name {
-	case "title", "context":
-		return attributeRule{kind: stringValue}, true
-	case "status":
-		return attributeRule{kind: stringValue, enum: []string{"Created", "Done", "InProgress"}}, true
-	case "index":
-		return attributeRule{kind: integerValue}, true
-	case "slice_type":
-		return attributeRule{kind: stringValue, enum: []string{"STATE_CHANGE", "STATE_VIEW", "AUTOMATION"}}, true
-	case "aggregates":
-		return attributeRule{kind: stringListValue}, true
-	default:
-		return attributeRule{}, false
-	}
-}
-
-// elementAttributeRule is the attributeRuleLookup shared by every element
-// block kind (command, event, readmodel, screen, processor).
-func elementAttributeRule(name string) (attributeRule, bool) {
-	switch name {
-	case "group_id", "domain", "model_context", "slice", "title", "description", "aggregate", "api_endpoint":
-		return attributeRule{kind: stringValue}, true
-	case "tags", "aggregate_dependencies", "triggers":
-		return attributeRule{kind: stringListValue}, true
-	case "context":
-		return attributeRule{kind: stringValue, enum: []string{"INTERNAL", "EXTERNAL"}}, true
-	case "type":
-		return attributeRule{kind: stringValue, enum: []string{"COMMAND", "EVENT", "READMODEL", "SCREEN", "AUTOMATION"}}, true
-	case "service":
-		return attributeRule{kind: stringOrNullValue}, true
-	case "creates_aggregate", "sketched", "list_element":
-		return attributeRule{kind: boolValue}, true
-	case "prototype":
-		return attributeRule{kind: objectValue}, true
-	default:
-		return attributeRule{}, false
-	}
-}
-
-// screenImageAttributeRule is the attributeRuleLookup for "screen_image"
-// block attributes.
-func screenImageAttributeRule(name string) (attributeRule, bool) {
-	if name == "title" || name == "url" {
-		return attributeRule{kind: stringValue}, true
-	}
-	return attributeRule{}, false
-}
-
-// tableAttributeRule is the attributeRuleLookup for "table" block attributes.
-func tableAttributeRule(name string) (attributeRule, bool) {
-	if name == "title" {
-		return attributeRule{kind: stringValue}, true
-	}
-	return attributeRule{}, false
-}
-
-// specificationAttributeRule is the attributeRuleLookup for
-// "specification" block attributes.
-func specificationAttributeRule(name string) (attributeRule, bool) {
-	switch name {
-	case "vertical":
-		return attributeRule{kind: boolValue}, true
-	case "title", "slice_name", "linked_id":
-		return attributeRule{kind: stringValue}, true
-	default:
-		return attributeRule{}, false
-	}
-}
-
-// actorAttributeRule is the attributeRuleLookup for "actor" block attributes.
-func actorAttributeRule(name string) (attributeRule, bool) {
-	if name == "auth_required" {
-		return attributeRule{kind: boolValue}, true
-	}
-	return attributeRule{}, false
-}
-
-// fieldAttributeRule is the attributeRuleLookup shared by "field" and
-// "subfield" blocks.
-func fieldAttributeRule(name string) (attributeRule, bool) {
-	switch name {
-	case "type":
-		return attributeRule{kind: stringValue, enum: []string{"String", "Boolean", "Double", "Decimal", "Long", "Custom", "Date", "DateTime", "UUID", "Int"}}, true
-	case "example":
-		return attributeRule{kind: anyValue}, true
-	case "mapping", "schema":
-		return attributeRule{kind: stringValue}, true
-	case "optional", "technical_attribute", "generated", "id_attribute", "pii":
-		return attributeRule{kind: boolValue}, true
-	case "cardinality":
-		return attributeRule{kind: stringValue, enum: []string{"List", "Single"}}, true
-	default:
-		return attributeRule{}, false
-	}
-}
-
-// dependencyAttributeRule is the attributeRuleLookup for "dependency"
-// block attributes.
-func dependencyAttributeRule(name string) (attributeRule, bool) {
-	switch name {
-	case "type":
-		return attributeRule{kind: stringValue, enum: []string{"INBOUND", "OUTBOUND"}}, true
-	case "title":
-		return attributeRule{kind: stringValue}, true
-	case "element_type":
-		return attributeRule{kind: stringValue, enum: []string{"EVENT", "COMMAND", "READMODEL", "SCREEN", "AUTOMATION"}}, true
-	default:
-		return attributeRule{}, false
-	}
-}
-
-// specificationStepAttributeRule is the attributeRuleLookup shared by
-// "given", "when", and "then" step blocks.
-func specificationStepAttributeRule(name string) (attributeRule, bool) {
-	switch name {
-	case "title", "linked_id":
-		return attributeRule{kind: stringValue}, true
-	case "tags":
-		return attributeRule{kind: stringListValue}, true
-	case "examples":
-		return attributeRule{kind: objectListValue}, true
-	case "index", "spec_row":
-		return attributeRule{kind: integerValue}, true
-	case "type":
-		return attributeRule{kind: stringValue, enum: []string{"SPEC_EVENT", "SPEC_COMMAND", "SPEC_READMODEL", "SPEC_ERROR"}}, true
-	case "expect_empty_list":
-		return attributeRule{kind: boolValue}, true
-	default:
-		return attributeRule{}, false
-	}
-}
-
-// commentAttributeRule is the attributeRuleLookup for "comment" block
-// attributes.
-func commentAttributeRule(name string) (attributeRule, bool) {
-	if name == "description" {
-		return attributeRule{kind: stringValue}, true
-	}
-	return attributeRule{}, false
-}
-
-// flatMapDiagnostics validates each item with validate and concatenates the
-// results, replacing the repeated "for range { append(diagnostics,
-// validate(x)...) }" accumulation pattern used throughout this file.
-func flatMapDiagnostics[T any](items []T, validate func(T) hcl.Diagnostics) hcl.Diagnostics {
-	var diagnostics hcl.Diagnostics
-	for _, item := range items {
-		diagnostics = append(diagnostics, validate(item)...)
-	}
-	return diagnostics
-}
-
-// The functions below walk a parsed HCL document top to bottom, one block
-// kind at a time, and collect every diagnostic found along the way. Each
-// function calls hcl.Body.Content (not the more lenient PartialContent)
-// with that block's schema from above; Content is what turns any attribute
-// or child block outside the schema into an "Unsupported argument" or
-// "Unsupported block type" diagnostic, so the structural rules from
-// eventmodeling.hclspec.md are enforced by this call, not by code written
-// here. Because of that, every dispatcher below (validateSliceChild,
-// validateElementChild, validateSpecificationChild) can safely fall
-// through to "default: return nil" for a child type it does not recognize:
-// by the time the dispatcher runs, Content has already rejected any block
-// whose type is not in the parent's schema, so the default case is a
-// defensive fallback that should never actually be reached, not a place
-// where a real violation could slip through unreported.
-
-// validateBody validates the top-level document: every "slice" block in
-// turn.
 func validateBody(body hcl.Body) hcl.Diagnostics {
+	index, diagnostics := buildIndex(body)
+	validator := &modelValidator{index: index}
 	schema := modelSchema()
-	content, diagnostics := body.Content(&schema)
-	return append(diagnostics, flatMapDiagnostics(content.Blocks, validateSlice)...)
-}
-
-// validateSlice validates one "slice" block: its own attributes, then
-// every direct child block.
-func validateSlice(block *hcl.Block) hcl.Diagnostics {
-	schema := sliceSchema()
-	content, diagnostics := block.Body.Content(&schema)
-	diagnostics = append(diagnostics, validateAttributes(content.Attributes, schema.Attributes, sliceAttributeRule)...)
-	return append(diagnostics, flatMapDiagnostics(content.Blocks, validateSliceChild)...)
-}
-
-// validateSliceChild routes one direct child of a "slice" block to the
-// validation logic for its specific block type.
-func validateSliceChild(child *hcl.Block) hcl.Diagnostics {
-	switch child.Type {
-	case "command":
-		return validateElement(child, "COMMAND")
-	case "event":
-		return validateElement(child, "EVENT")
-	case "readmodel":
-		return validateElement(child, "READMODEL")
-	case "screen":
-		return validateElement(child, "SCREEN")
-	case "processor":
-		return validateElement(child, "AUTOMATION")
-	case "screen_image":
-		return validateSimpleBlock(child.Body, screenImageSchema(), screenImageAttributeRule)
-	case "table":
-		return validateTable(child)
-	case "specification":
-		return validateSpecification(child)
-	case "actor":
-		return validateSimpleBlock(child.Body, actorSchema(), actorAttributeRule)
-	default:
-		return nil
-	}
-}
-
-// validateElement validates one element block (command, event, readmodel,
-// screen, or processor): its attributes, that its "type" attribute matches
-// expectedType for the kind of block it is, and every field/dependency
-// child.
-func validateElement(block *hcl.Block, expectedType string) hcl.Diagnostics {
-	schema := elementSchema()
-	content, diagnostics := block.Body.Content(&schema)
-	diagnostics = append(diagnostics, validateAttributes(content.Attributes, schema.Attributes, elementAttributeRule)...)
-	if attribute, ok := content.Attributes["type"]; ok {
-		typeValue, typeDiagnostics := attribute.Expr.Value(nil)
-		diagnostics = append(diagnostics, typeDiagnostics...)
-		if !typeDiagnostics.HasErrors() && matchesKind(typeValue, stringValue) && typeValue.AsString() != expectedType {
-			diagnostics = append(diagnostics, errorDiagnostic(
-				attribute.Expr.Range(),
-				"Invalid element type",
-				fmt.Sprintf("type must be %q for an %s block.", expectedType, block.Type),
-			))
+	content, contentDiagnostics := body.Content(&schema)
+	diagnostics = append(diagnostics, contentDiagnostics...)
+	for _, block := range content.Blocks {
+		switch block.Type {
+		case "bounded_context":
+			diagnostics = append(diagnostics, validator.validateBoundedContext(block)...)
+		case "actor":
+			diagnostics = append(diagnostics, validator.validateActor(block)...)
+		case "team", "system":
+			diagnostics = append(diagnostics, validator.validateOwner(block)...)
+		case "chapter":
+			diagnostics = append(diagnostics, validator.validateChapter(block)...)
+		case "hotspot":
+			diagnostics = append(diagnostics, validator.validateHotspot(block)...)
+		case "state_change", "state_view", "automation", "translation":
+			diagnostics = append(diagnostics, validator.validateWorkflow(block)...)
 		}
 	}
-	return append(diagnostics, flatMapDiagnostics(content.Blocks, validateElementChild)...)
+	diagnostics = append(diagnostics, validator.validateShelfSmell()...)
+	return diagnostics
 }
 
-// validateElementChild routes one direct child of an element block to the
-// validation logic for its specific block type.
-func validateElementChild(child *hcl.Block) hcl.Diagnostics {
-	switch child.Type {
-	case "field":
-		return validateField(child)
-	case "dependency":
-		return validateSimpleBlock(child.Body, dependencySchema(), dependencyAttributeRule)
-	default:
-		return nil
+func buildIndex(body hcl.Body) (modelIndex, hcl.Diagnostics) {
+	index := modelIndex{
+		actors:           map[string]bool{},
+		aggregates:       map[string]bool{},
+		boundedContexts:  map[string]bool{},
+		catalogEvents:    map[string]bool{},
+		fieldTypes:       map[string]fieldTypeRef{},
+		chapters:         map[string]bool{},
+		hotspots:         map[string]bool{},
+		systems:          map[string]bool{},
+		teams:            map[string]bool{},
+		workflows:        map[string]workflowIndex{},
+		scenarioCounts:   map[string]int{},
+		definitionRanges: map[string]hcl.Range{},
+		externalContexts: map[string]bool{},
 	}
-}
-
-// validateSimpleBlock validates a block that has attributes but no child
-// blocks of its own (screen_image, actor, comment): it checks the body
-// against schema and validates the resulting attributes with ruleFor.
-func validateSimpleBlock(body hcl.Body, schema hcl.BodySchema, ruleFor attributeRuleLookup) hcl.Diagnostics {
-	content, diagnostics := body.Content(&schema)
-	return append(diagnostics, validateAttributes(content.Attributes, schema.Attributes, ruleFor)...)
-}
-
-// validateTable validates one "table" block: its attributes, then every
-// "field" child.
-func validateTable(block *hcl.Block) hcl.Diagnostics {
-	schema := tableSchema()
-	content, diagnostics := block.Body.Content(&schema)
-	diagnostics = append(diagnostics, validateAttributes(content.Attributes, schema.Attributes, tableAttributeRule)...)
-	return append(diagnostics, flatMapDiagnostics(content.Blocks, validateField)...)
-}
-
-// validateSpecification validates one "specification" block: its
-// attributes, then every given/when/then step and comment child.
-func validateSpecification(block *hcl.Block) hcl.Diagnostics {
-	schema := specificationSchema()
-	content, diagnostics := block.Body.Content(&schema)
-	diagnostics = append(diagnostics, validateAttributes(content.Attributes, schema.Attributes, specificationAttributeRule)...)
-	return append(diagnostics, flatMapDiagnostics(content.Blocks, validateSpecificationChild)...)
-}
-
-// validateSpecificationChild routes one direct child of a "specification"
-// block to the validation logic for its specific block type.
-func validateSpecificationChild(child *hcl.Block) hcl.Diagnostics {
-	switch child.Type {
-	case "given", "when", "then":
-		return validateSpecificationStep(child)
-	case "comment":
-		return validateSimpleBlock(child.Body, commentSchema(), commentAttributeRule)
-	default:
-		return nil
-	}
-}
-
-// validateSpecificationStep validates one "given"/"when"/"then" block: its
-// attributes, then every "field" child.
-func validateSpecificationStep(block *hcl.Block) hcl.Diagnostics {
-	schema := specificationStepSchema()
-	content, diagnostics := block.Body.Content(&schema)
-	diagnostics = append(diagnostics, validateAttributes(content.Attributes, schema.Attributes, specificationStepAttributeRule)...)
-	return append(diagnostics, flatMapDiagnostics(content.Blocks, validateField)...)
-}
-
-// validateField validates one "field" block: its attributes, then every
-// nested "subfield" child, recursively, since a subfield has the same
-// shape as a field.
-func validateField(block *hcl.Block) hcl.Diagnostics {
-	schema := fieldSchema()
-	content, diagnostics := block.Body.Content(&schema)
-	diagnostics = append(diagnostics, validateAttributes(content.Attributes, schema.Attributes, fieldAttributeRule)...)
-	return append(diagnostics, flatMapDiagnostics(content.Blocks, validateField)...)
-}
-
-// validateAttributes checks every attribute in schema that is actually
-// present in attributes against the rule ruleFor returns for its name, and
-// reports a diagnostic for each one that fails.
-func validateAttributes(attributes hcl.Attributes, schema []hcl.AttributeSchema, ruleFor attributeRuleLookup) hcl.Diagnostics {
 	var diagnostics hcl.Diagnostics
-	for _, schemaAttribute := range schema {
-		name := schemaAttribute.Name
-		attribute, ok := attributes[name]
-		if !ok {
-			// The document simply omits this optional attribute; there is
-			// nothing to check.
+	schema := modelSchema()
+	content, _, _ := body.PartialContent(&schema)
+	for _, block := range content.Blocks {
+		if len(block.Labels) == 0 {
 			continue
 		}
-		value, attributeDiagnostics := attribute.Expr.Value(nil)
-		diagnostics = append(diagnostics, attributeDiagnostics...)
-		if attributeDiagnostics.HasErrors() {
-			// The expression itself is malformed or non-literal (for
-			// example a variable reference); Value already reported that,
-			// so there is no literal value left here to type- or
-			// enum-check.
-			continue
+		diagnostics = append(diagnostics, validateLabel(block, block.Labels[0])...)
+		switch block.Type {
+		case "bounded_context":
+			diagnostics = append(diagnostics, index.addBoundedContext(block)...)
+		case "actor":
+			diagnostics = append(diagnostics, addNamedSymbol(index.actors, block, "actor")...)
+		case "team":
+			diagnostics = append(diagnostics, addNamedSymbol(index.teams, block, "team")...)
+		case "system":
+			diagnostics = append(diagnostics, addNamedSymbol(index.systems, block, "system")...)
+		case "chapter":
+			diagnostics = append(diagnostics, addNamedSymbol(index.chapters, block, "chapter")...)
+		case "hotspot":
+			diagnostics = append(diagnostics, addNamedSymbol(index.hotspots, block, "hotspot")...)
+		case "state_change", "state_view", "automation", "translation":
+			diagnostics = append(diagnostics, index.addWorkflow(block)...)
 		}
+	}
+	return index, diagnostics
+}
 
-		rule, ok := ruleFor(name)
-		if !ok {
-			// This attribute has no rule defined for it. That only
-			// happens for attributes this validator intentionally leaves
-			// unchecked beyond the schema's presence/required rules, so
-			// accept the value as is.
+func (i *modelIndex) addBoundedContext(block *hcl.Block) hcl.Diagnostics {
+	contextID := block.Labels[0]
+	diagnostics := addNamedSymbol(i.boundedContexts, block, "bounded_context")
+	contextSchema := boundedContextSchema()
+	contextContent, _, _ := block.Body.PartialContent(&contextSchema)
+	if external, ok := literalBool(contextContent.Attributes["external"]); ok && external {
+		i.externalContexts[contextID] = true
+	}
+	schema := hcl.BodySchema{Blocks: []hcl.BlockHeaderSchema{
+		{Type: "aggregate", LabelNames: []string{"name"}},
+		{Type: "field_type", LabelNames: []string{"name"}},
+		{Type: "event", LabelNames: []string{"id"}},
+	}}
+	content, _, _ := block.Body.PartialContent(&schema)
+	for _, child := range content.Blocks {
+		if len(child.Labels) == 0 {
 			continue
 		}
-		if !matchesKind(value, rule.kind) {
-			diagnostics = append(diagnostics, errorDiagnostic(
-				attribute.Expr.Range(),
-				"Invalid attribute value",
-				fmt.Sprintf("%s must be %s.", name, rule.kind),
-			))
-			continue
-		}
-		if len(rule.enum) > 0 && !slices.Contains(rule.enum, value.AsString()) {
-			diagnostics = append(diagnostics, errorDiagnostic(
-				attribute.Expr.Range(),
-				"Invalid enum value",
-				fmt.Sprintf("%s must be one of: %s.", name, strings.Join(rule.enum, ", ")),
-			))
+		diagnostics = append(diagnostics, validateLabel(child, child.Labels[0])...)
+		address := contextID + "." + child.Labels[0]
+		switch child.Type {
+		case "aggregate":
+			diagnostics = append(diagnostics, addAddress(i.aggregates, child, "aggregate", address)...)
+		case "event":
+			diagnostics = append(diagnostics, addAddress(i.catalogEvents, child, "event", address)...)
+		case "field_type":
+			if _, exists := i.fieldTypes[address]; exists {
+				diagnostics = append(diagnostics, duplicateDiagnostic(child, "field_type", address))
+				continue
+			}
+			i.fieldTypes[address] = readFieldType(child.Body)
 		}
 	}
 	return diagnostics
 }
 
-// String describes kind in the article-plus-noun phrasing used inside
-// "<attribute> must be <kind>." diagnostic messages, for example "a
-// string" or "a list of objects".
-func (kind valueKind) String() string {
-	switch kind {
-	case anyValue:
-		return "a literal value"
-	case stringValue:
-		return "a string"
-	case stringOrNullValue:
-		return "a string or null"
-	case boolValue:
-		return "a boolean"
-	case integerValue:
-		return "an integer"
-	case stringListValue:
-		return "a list of strings"
-	case objectValue:
-		return "an object"
-	case objectListValue:
-		return "a list of objects"
-	default:
-		return "a valid value"
+func (i *modelIndex) addWorkflow(block *hcl.Block) hcl.Diagnostics {
+	id := block.Labels[0]
+	if _, exists := i.workflows[id]; exists {
+		return hcl.Diagnostics{duplicateDiagnostic(block, "workflow", id)}
 	}
+	workflow := workflowIndex{elements: map[string]map[string]bool{
+		"command": {}, "readmodel": {}, "screen": {}, "processor": {},
+		"screen_image": {}, "table": {}, "scenario": {},
+	}}
+	schema := workflowSchema()
+	content, _, _ := block.Body.PartialContent(&schema)
+	var diagnostics hcl.Diagnostics
+	for _, child := range content.Blocks {
+		if child.Type == "scenario" {
+			i.scenarioCounts[id]++
+		}
+		kind, ok := workflow.elements[child.Type]
+		if !ok || len(child.Labels) == 0 {
+			continue
+		}
+		diagnostics = append(diagnostics, validateLabel(child, child.Labels[0])...)
+		if kind[child.Labels[0]] {
+			diagnostics = append(diagnostics, duplicateDiagnostic(child, child.Type, child.Labels[0]))
+			continue
+		}
+		kind[child.Labels[0]] = true
+	}
+	i.workflows[id] = workflow
+	i.workflowOrder = append(i.workflowOrder, id)
+	i.definitionRanges[id] = block.DefRange
+	return diagnostics
 }
 
-// matchesKind reports whether value's runtime type matches kind. It is the
-// one place in this file that reaches into the cty type system directly,
-// because HCL's literal-only evaluation means a valid attribute value is
-// always a concrete cty.Value with a concrete type, never something that
-// needs further evaluation.
-func matchesKind(value cty.Value, kind valueKind) bool {
-	switch kind {
-	case anyValue:
+func addNamedSymbol(symbols map[string]bool, block *hcl.Block, kind string) hcl.Diagnostics {
+	id := block.Labels[0]
+	if symbols[id] {
+		return hcl.Diagnostics{duplicateDiagnostic(block, kind, id)}
+	}
+	symbols[id] = true
+	return nil
+}
+
+func addAddress(symbols map[string]bool, block *hcl.Block, kind, address string) hcl.Diagnostics {
+	if symbols[address] {
+		return hcl.Diagnostics{duplicateDiagnostic(block, kind, address)}
+	}
+	symbols[address] = true
+	return nil
+}
+
+func duplicateDiagnostic(block *hcl.Block, kind, id string) *hcl.Diagnostic {
+	return errorDiagnostic(codeDuplicateID, block.DefRange, "Duplicate "+kind+" id", fmt.Sprintf("%s %q is declared more than once in its namespace.", kind, id))
+}
+
+func validateLabel(block *hcl.Block, label string) hcl.Diagnostics {
+	if modelIdentifier.MatchString(label) {
+		return nil
+	}
+	return hcl.Diagnostics{errorDiagnostic(codeInvalidBlockLabel, block.DefRange, "Invalid block label", fmt.Sprintf("%s label %q must use lower_snake_case so it can be referenced as an HCL traversal.", block.Type, label))}
+}
+
+func readFieldType(body hcl.Body) fieldTypeRef {
+	schema := hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "type"}, {Name: "cardinality"}}}
+	content, _, _ := body.PartialContent(&schema)
+	fieldType, _ := literalString(content.Attributes["type"])
+	cardinality, _ := literalString(content.Attributes["cardinality"])
+	return fieldTypeRef{fieldType: fieldType, cardinality: cardinality}
+}
+
+func (v *modelValidator) validateBoundedContext(block *hcl.Block) hcl.Diagnostics {
+	schema := boundedContextSchema()
+	content, diagnostics := block.Body.Content(&schema)
+	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, boundedContextRule)...)
+	context := contextValidator{model: v, contextID: block.Labels[0]}
+	if owner := content.Attributes["owner"]; owner != nil {
+		diagnostics = append(diagnostics, v.validateOwnerReference(owner)...)
+	}
+	for _, child := range content.Blocks {
+		switch child.Type {
+		case "aggregate":
+			diagnostics = append(diagnostics, validateSimpleBlock(child.Body, aggregateSchema(), aggregateRule)...)
+		case "field_type":
+			diagnostics = append(diagnostics, context.validateField(child, true)...)
+		case "event":
+			diagnostics = append(diagnostics, context.validateEvent(child)...)
+		}
+	}
+	return diagnostics
+}
+
+func (v *modelValidator) validateActor(block *hcl.Block) hcl.Diagnostics {
+	return validateSimpleBlock(block.Body, actorSchema(), actorRule)
+}
+
+func (v *modelValidator) validateOwner(block *hcl.Block) hcl.Diagnostics {
+	schema := ownerSchema(block.Type)
+	return validateSimpleBlock(block.Body, schema, ownerRule)
+}
+
+func (v *modelValidator) validateChapter(block *hcl.Block) hcl.Diagnostics {
+	schema := chapterSchema()
+	content, diagnostics := block.Body.Content(&schema)
+	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, chapterRule)...)
+	if workflows := content.Attributes["workflows"]; workflows != nil {
+		diagnostics = append(diagnostics, v.validateReferenceList(workflows, "workflow", "")...)
+		diagnostics = append(diagnostics, v.validateChapterRange(workflows)...)
+		if references, referenceDiagnostics := hcl.ExprList(workflows.Expr); !referenceDiagnostics.HasErrors() && len(references) == 0 {
+			diagnostics = append(diagnostics, errorDiagnostic(codeInvalidChapter, workflows.Expr.Range(), "Invalid chapter", "chapter must contain at least one workflow."))
+		}
+	}
+	return diagnostics
+}
+
+func (v *modelValidator) validateHotspot(block *hcl.Block) hcl.Diagnostics {
+	schema := hotspotSchema()
+	content, diagnostics := block.Body.Content(&schema)
+	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, hotspotRule)...)
+	if on := content.Attributes["on"]; on != nil {
+		diagnostics = append(diagnostics, v.validateGlobalReference(on)...)
+	}
+	if status, ok := literalString(content.Attributes["status"]); !ok || status != "resolved" {
+		diagnostics = append(diagnostics, warningDiagnostic(codeOpenHotspot, block.DefRange, "Open hotspot", fmt.Sprintf("hotspot %q is unresolved.", block.Labels[0])))
+	}
+	return diagnostics
+}
+
+func (v *modelValidator) validateWorkflow(block *hcl.Block) hcl.Diagnostics {
+	schema := workflowSchema()
+	content, diagnostics := block.Body.Content(&schema)
+	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, workflowRule)...)
+	if owner := content.Attributes["owner"]; owner != nil {
+		diagnostics = append(diagnostics, v.validateOwnerReference(owner)...)
+	}
+	for _, child := range content.Blocks {
+		if !workflowAllows(block.Type, child.Type) {
+			diagnostics = append(diagnostics, errorDiagnostic(codeInvalidWorkflowChild, child.DefRange, "Invalid workflow child", fmt.Sprintf("%s blocks are not allowed in %s workflows.", child.Type, block.Type)))
+			continue
+		}
+		switch child.Type {
+		case "command", "readmodel", "screen", "processor":
+			diagnostics = append(diagnostics, v.validateElement(block.Type, block.Labels[0], child)...)
+		case "screen_image":
+			diagnostics = append(diagnostics, validateSimpleBlock(child.Body, screenImageSchema(), screenImageRule)...)
+		case "table":
+			diagnostics = append(diagnostics, v.validateTable(child)...)
+		case "scenario":
+			diagnostics = append(diagnostics, v.validateScenario(block.Type, block.Labels[0], child)...)
+		}
+	}
+	diagnostics = append(diagnostics, v.validateWorkflowExternality(block.Type, block.DefRange, content.Blocks)...)
+	diagnostics = append(diagnostics, v.workflowWarnings(content.Blocks)...)
+	return diagnostics
+}
+
+func workflowAllows(workflowType, childType string) bool {
+	if childType == "table" || childType == "scenario" {
 		return true
-	case stringValue:
-		return !value.IsNull() && value.Type().Equals(cty.String)
-	case stringOrNullValue:
-		return value.IsNull() || value.Type().Equals(cty.String)
-	case boolValue:
-		return !value.IsNull() && value.Type().Equals(cty.Bool)
-	case integerValue:
-		if value.IsNull() || !value.Type().Equals(cty.Number) {
-			return false
-		}
-		// cty numbers are arbitrary-precision decimals; big.Exact confirms
-		// this particular number has no fractional part, i.e. it is
-		// actually an integer and not just a whole-looking float.
-		_, accuracy := value.AsBigFloat().Int(nil)
-		return accuracy == big.Exact
-	case stringListValue:
-		if value.IsNull() || !(value.Type().IsTupleType() || value.Type().IsListType() || value.Type().IsSetType()) {
-			return false
-		}
-		// HCL list literals decode as tuples, so a "list of strings"
-		// attribute must accept a tuple, list, or set type and then check
-		// every element is itself a non-null string.
-		iterator := value.ElementIterator()
-		for iterator.Next() {
-			_, item := iterator.Element()
-			if item.IsNull() || !item.Type().Equals(cty.String) {
-				return false
-			}
-		}
-		return true
-	case objectValue:
-		return !value.IsNull() && value.Type().IsObjectType()
-	case objectListValue:
-		if value.IsNull() || !(value.Type().IsTupleType() || value.Type().IsListType() || value.Type().IsSetType()) {
-			return false
-		}
-		// Same reasoning as stringListValue above, but each element must
-		// be an object rather than a string.
-		iterator := value.ElementIterator()
-		for iterator.Next() {
-			_, item := iterator.Element()
-			if item.IsNull() || !item.Type().IsObjectType() {
-				return false
-			}
-		}
-		return true
+	}
+	if childType == "screen_image" {
+		return workflowType == "state_change" || workflowType == "state_view"
+	}
+	switch workflowType {
+	case "state_change":
+		return childType == "screen" || childType == "command"
+	case "state_view":
+		return childType == "readmodel" || childType == "screen"
+	case "automation", "translation":
+		return childType == "readmodel" || childType == "processor" || childType == "command"
 	default:
 		return false
 	}
 }
 
-// errorDiagnostic builds one hcl.Diagnostic at error severity, located at
-// subject, with the given summary and detail text.
-func errorDiagnostic(subject hcl.Range, summary, detail string) *hcl.Diagnostic {
-	return &hcl.Diagnostic{
-		Severity: hcl.DiagError,
-		Summary:  summary,
-		Detail:   detail,
-		Subject:  &subject,
+func (v *modelValidator) validateElement(workflowType, workflowID string, block *hcl.Block) hcl.Diagnostics {
+	schema := elementSchema(block.Type)
+	content, diagnostics := block.Body.Content(&schema)
+	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, elementRule)...)
+	context := contextValidator{model: v}
+	if aggregate := content.Attributes["aggregate"]; aggregate != nil {
+		diagnostics = append(diagnostics, context.validateAggregate(aggregate, false)...)
 	}
+	if dependencies := content.Attributes["aggregate_dependencies"]; dependencies != nil {
+		diagnostics = append(diagnostics, context.validateAggregateList(dependencies, false)...)
+	}
+	if actor := content.Attributes["actor"]; actor != nil {
+		diagnostics = append(diagnostics, v.validateReference(actor, "actor", workflowID)...)
+	}
+	for _, direction := range []string{"from", "to"} {
+		if attribute := content.Attributes[direction]; attribute != nil {
+			diagnostics = append(diagnostics, v.validateFlowReferences(attribute, workflowType, workflowID, block.Type, direction)...)
+		}
+	}
+	diagnostics = append(diagnostics, context.validateFields(content.Blocks)...)
+	return diagnostics
+}
+
+func (v *modelValidator) validateTable(block *hcl.Block) hcl.Diagnostics {
+	schema := tableSchema()
+	content, diagnostics := block.Body.Content(&schema)
+	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, tableRule)...)
+	context := contextValidator{model: v}
+	diagnostics = append(diagnostics, context.validateFields(content.Blocks)...)
+	return diagnostics
+}
+
+func (v *contextValidator) validateEvent(block *hcl.Block) hcl.Diagnostics {
+	schema := eventSchema()
+	content, diagnostics := block.Body.Content(&schema)
+	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, elementRule)...)
+	if aggregate := content.Attributes["aggregate"]; aggregate != nil {
+		diagnostics = append(diagnostics, v.validateAggregate(aggregate, true)...)
+	}
+	if dependencies := content.Attributes["aggregate_dependencies"]; dependencies != nil {
+		diagnostics = append(diagnostics, v.validateAggregateList(dependencies, true)...)
+	}
+	diagnostics = append(diagnostics, v.validateFields(content.Blocks)...)
+	return diagnostics
+}
+
+func (v *contextValidator) validateFields(fields hcl.Blocks) hcl.Diagnostics {
+	seen := make(map[string]bool, len(fields))
+	var diagnostics hcl.Diagnostics
+	for _, field := range fields {
+		if len(field.Labels) == 0 {
+			continue
+		}
+		name := field.Labels[0]
+		diagnostics = append(diagnostics, validateLabel(field, name)...)
+		if seen[name] {
+			diagnostics = append(diagnostics, duplicateDiagnostic(field, field.Type, name))
+			continue
+		}
+		seen[name] = true
+		diagnostics = append(diagnostics, v.validateField(field, false)...)
+	}
+	return diagnostics
+}
+
+func (v *contextValidator) validateField(block *hcl.Block, fieldTypeDeclaration bool) hcl.Diagnostics {
+	schema := fieldSchema(block.Type)
+	content, diagnostics := block.Body.Content(&schema)
+	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, fieldRule)...)
+	typeAttribute := content.Attributes["type"]
+	if typeAttribute == nil {
+		return diagnostics
+	}
+	if fieldTypeDeclaration {
+		fieldType, ok := literalString(typeAttribute)
+		if !ok {
+			diagnostics = append(diagnostics, errorDiagnostic(codeInvalidFieldType, typeAttribute.Expr.Range(), "Invalid field type", "field_type type must be a built-in type string."))
+		} else {
+			diagnostics = append(diagnostics, validateFieldTypeAndExample(content.Attributes, typeAttribute, fieldType)...)
+		}
+	} else if fieldType, ok := literalString(typeAttribute); ok {
+		diagnostics = append(diagnostics, validateFieldTypeAndExample(content.Attributes, typeAttribute, fieldType)...)
+	} else {
+		address, referenceDiagnostics := v.fieldTypeAddress(typeAttribute)
+		diagnostics = append(diagnostics, referenceDiagnostics...)
+		if reference, exists := v.model.index.fieldTypes[address]; exists {
+			diagnostics = append(diagnostics, validateReferencedExample(content.Attributes, reference)...)
+		}
+	}
+	diagnostics = append(diagnostics, v.validateFields(content.Blocks)...)
+	return diagnostics
+}
+
+func validateFieldTypeAndExample(attributes hcl.Attributes, attribute *hcl.Attribute, fieldType string) hcl.Diagnostics {
+	if !slices.Contains(fieldTypes, fieldType) {
+		return hcl.Diagnostics{invalidEnum(attribute, "type", fieldTypes)}
+	}
+	return validateExample(attributes, fieldType, "field")
+}
+
+func (v *modelValidator) validateScenario(workflowType, workflowID string, block *hcl.Block) hcl.Diagnostics {
+	schema := scenarioSchema()
+	content, diagnostics := block.Body.Content(&schema)
+	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, scenarioRule)...)
+	givenCount := 0
+	whenCount := 0
+	thenCount := 0
+	for _, step := range content.Blocks {
+		switch step.Type {
+		case "given":
+			givenCount++
+		case "when":
+			whenCount++
+		case "then":
+			thenCount++
+		case "comment":
+			diagnostics = append(diagnostics, validateSimpleBlock(step.Body, commentSchema(), commentRule)...)
+			continue
+		}
+		diagnostics = append(diagnostics, v.validateScenarioStep(workflowType, workflowID, step)...)
+	}
+	if workflowType == "state_view" {
+		if whenCount != 0 {
+			diagnostics = append(diagnostics, errorDiagnostic(codeInvalidScenario, block.DefRange, "Invalid scenario", "state_view scenarios may not contain when steps. Found: when."))
+		}
+		if givenCount == 0 {
+			diagnostics = append(diagnostics, errorDiagnostic(codeInvalidScenario, block.DefRange, "Invalid scenario", "state_view scenarios must contain at least one given step."))
+		}
+	} else if whenCount != 1 {
+		diagnostics = append(diagnostics, errorDiagnostic(codeInvalidScenario, block.DefRange, "Invalid scenario", "a scenario must contain exactly one when step."))
+	}
+	if thenCount == 0 {
+		diagnostics = append(diagnostics, errorDiagnostic(codeInvalidScenario, block.DefRange, "Invalid scenario", "a scenario must contain at least one then step."))
+	}
+	return diagnostics
+}
+
+func (v *modelValidator) validateScenarioStep(workflowType, workflowID string, block *hcl.Block) hcl.Diagnostics {
+	schema := scenarioStepSchema()
+	content, diagnostics := block.Body.Content(&schema)
+	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, scenarioStepRule)...)
+	targets := []string{"event", "command", "readmodel", "processor", "error"}
+	setTargets := make([]string, 0, 1)
+	for _, target := range targets {
+		if content.Attributes[target] != nil {
+			setTargets = append(setTargets, target)
+		}
+	}
+	if len(setTargets) != 1 {
+		return append(diagnostics, errorDiagnostic(codeInvalidScenarioStep, block.DefRange, "Invalid scenario step", "a scenario step must set exactly one target: event, command, readmodel, processor, or error."))
+	}
+	target := setTargets[0]
+	if !scenarioTargetAllowed(workflowType, block.Type, target) {
+		diagnostics = append(diagnostics, errorDiagnostic(codeInvalidScenarioTarget, content.Attributes[target].Expr.Range(), "Invalid scenario target", fmt.Sprintf("%s scenario %s steps may use: %s. You referenced: %s.", workflowType, block.Type, allowedScenarioTargets(workflowType, block.Type), target)))
+	}
+	if target != "error" {
+		diagnostics = append(diagnostics, v.validateReference(content.Attributes[target], target, workflowID)...)
+	}
+	context := contextValidator{model: v}
+	diagnostics = append(diagnostics, context.validateFields(content.Blocks)...)
+	return diagnostics
+}
+
+func scenarioTargetAllowed(workflowType, stepType, target string) bool {
+	switch workflowType {
+	case "state_change":
+		return stepType == "given" && target == "event" || stepType == "when" && target == "command" || stepType == "then" && (target == "event" || target == "error")
+	case "state_view":
+		return stepType == "given" && target == "event" || stepType == "then" && (target == "readmodel" || target == "error")
+	case "automation", "translation":
+		return stepType == "given" && (target == "event" || target == "readmodel") || stepType == "when" && (target == "processor" || target == "command") || stepType == "then" && (target == "event" || target == "error")
+	}
+	return false
+}
+
+func allowedScenarioTargets(workflowType, stepType string) string {
+	allowed := make([]string, 0, 2)
+	for _, target := range []string{"event", "command", "readmodel", "processor", "error"} {
+		if scenarioTargetAllowed(workflowType, stepType, target) {
+			allowed = append(allowed, target)
+		}
+	}
+	return strings.Join(allowed, " or ")
+}
+
+func (v *modelValidator) workflowWarnings(blocks hcl.Blocks) hcl.Diagnostics {
+	var diagnostics hcl.Diagnostics
+	incomingCommands := incomingReferences(blocks, "command")
+	for _, block := range blocks {
+		if !slices.Contains([]string{"screen", "command", "readmodel"}, block.Type) {
+			continue
+		}
+		schema := elementSchema(block.Type)
+		content, _, _ := block.Body.PartialContent(&schema)
+		var attribute *hcl.Attribute
+		var smell, expectedRoot string
+		switch block.Type {
+		case "screen":
+			attribute, smell, expectedRoot = content.Attributes["to"], "Bed anti-pattern", "command"
+		case "command":
+			attribute, smell, expectedRoot = content.Attributes["to"], "Left chair anti-pattern", "event"
+		case "readmodel":
+			attribute, smell, expectedRoot = content.Attributes["from"], "Right chair anti-pattern", "event"
+		}
+		if attribute != nil && countReferencesWithRoot(attribute, expectedRoot) > 1 {
+			diagnostics = append(diagnostics, warningDiagnostic(smellCode(smell), attribute.Expr.Range(), smell, fmt.Sprintf("%s %q connects to several %ss; review whether the workflow contains more than one business capability.", block.Type, block.Labels[0], expectedRoot)))
+		}
+		if block.Type == "command" {
+			schema := elementSchema(block.Type)
+			content, _, _ := block.Body.PartialContent(&schema)
+			_, hasAPI := content.Attributes["api_endpoint"]
+			externalTrigger, _ := literalBool(content.Attributes["external_trigger"])
+			if !hasAPI && !externalTrigger && !incomingCommands[block.Labels[0]] {
+				diagnostics = append(diagnostics, warningDiagnostic(codeCommandWithoutReason, block.DefRange, "Every command has a reason", fmt.Sprintf("command %q has no incoming flow, api_endpoint, or external_trigger.", block.Labels[0])))
+			}
+		}
+	}
+	return diagnostics
+}
+
+func smellCode(summary string) diagnosticCode {
+	switch summary {
+	case "Bed anti-pattern":
+		return codeBedAntiPattern
+	case "Left chair anti-pattern":
+		return codeLeftChairAntiPattern
+	case "Right chair anti-pattern":
+		return codeRightChairAntiPattern
+	default:
+		return codeUnclassified
+	}
+}
+
+func incomingReferences(blocks hcl.Blocks, root string) map[string]bool {
+	result := map[string]bool{}
+	for _, block := range blocks {
+		schema := elementSchema(block.Type)
+		content, _, _ := block.Body.PartialContent(&schema)
+		attribute := content.Attributes["to"]
+		if attribute == nil {
+			continue
+		}
+		expressions, diagnostics := hcl.ExprList(attribute.Expr)
+		if diagnostics.HasErrors() {
+			continue
+		}
+		for _, expression := range expressions {
+			traversal, traversalDiagnostics := hcl.AbsTraversalForExpr(expression)
+			parts, ok := traversalParts(traversal)
+			if !traversalDiagnostics.HasErrors() && ok && len(parts) == 2 && parts[0] == root {
+				result[parts[1]] = true
+			}
+		}
+	}
+	return result
+}
+
+func (v *modelValidator) validateWorkflowExternality(workflowType string, subject hcl.Range, blocks hcl.Blocks) hcl.Diagnostics {
+	hasExternalInput := false
+	for _, block := range blocks {
+		schema := elementSchema(block.Type)
+		content, _, _ := block.Body.PartialContent(&schema)
+		attribute := content.Attributes["from"]
+		if attribute == nil {
+			continue
+		}
+		expressions, diagnostics := hcl.ExprList(attribute.Expr)
+		if diagnostics.HasErrors() {
+			continue
+		}
+		for _, expression := range expressions {
+			traversal, traversalDiagnostics := hcl.AbsTraversalForExpr(expression)
+			parts, ok := traversalParts(traversal)
+			if !traversalDiagnostics.HasErrors() && ok && len(parts) == 3 && parts[0] == "event" && v.index.externalContexts[parts[1]] {
+				hasExternalInput = true
+			}
+		}
+	}
+	if workflowType == "translation" && !hasExternalInput {
+		return hcl.Diagnostics{errorDiagnostic(codeInvalidTranslation, subject, "Invalid translation", "a translation must consume at least one event from an external bounded_context.")}
+	}
+	if workflowType == "automation" && hasExternalInput {
+		return hcl.Diagnostics{errorDiagnostic(codeInvalidAutomation, subject, "Invalid automation", "an automation consumes an external event; use a translation workflow for this pattern.")}
+	}
+	return nil
+}
+
+func (v *modelValidator) validateShelfSmell() hcl.Diagnostics {
+	if len(v.index.workflows) < 2 {
+		return nil
+	}
+	total, owner, owners := 0, "", 0
+	for workflow, count := range v.index.scenarioCounts {
+		total += count
+		if count > 0 {
+			owner = workflow
+			owners++
+		}
+	}
+	if total < 2 || owners != 1 {
+		return nil
+	}
+	return hcl.Diagnostics{warningDiagnostic(codeShelfAntiPattern, v.index.definitionRanges[owner], "Shelf anti-pattern", fmt.Sprintf("workflow %q contains every scenario while the other workflows contain none; consider keeping scenarios with the workflow they specify.", owner))}
+}
+
+func countReferencesWithRoot(attribute *hcl.Attribute, root string) int {
+	expressions, diagnostics := hcl.ExprList(attribute.Expr)
+	if diagnostics.HasErrors() {
+		return 0
+	}
+	count := 0
+	for _, expression := range expressions {
+		traversal, traversalDiagnostics := hcl.AbsTraversalForExpr(expression)
+		if !traversalDiagnostics.HasErrors() && len(traversal) > 0 && traversal.RootName() == root {
+			count++
+		}
+	}
+	return count
+}
+
+func literalString(attribute *hcl.Attribute) (string, bool) {
+	if attribute == nil {
+		return "", false
+	}
+	value, diagnostics := attribute.Expr.Value(nil)
+	if diagnostics.HasErrors() || value.IsNull() || !value.Type().Equals(cty.String) {
+		return "", false
+	}
+	return value.AsString(), true
+}
+
+func literalBool(attribute *hcl.Attribute) (bool, bool) {
+	if attribute == nil {
+		return false, false
+	}
+	value, diagnostics := attribute.Expr.Value(nil)
+	if diagnostics.HasErrors() || value.IsNull() || !value.Type().Equals(cty.Bool) {
+		return false, false
+	}
+	return value.True(), true
 }

@@ -1,13 +1,7 @@
-slice "example" {
-  title      = "Example"
-  slice_type = "STATE_CHANGE"
+bounded_context "example" {
+  title = "Example"
 
-  command "command" {
-    title = "Command"
-    type  = "COMMAND"
-
-    field "name" {
-      type = "Text"
-    }
+  field_type "name" {
+    type = "Text"
   }
 }

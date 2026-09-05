@@ -1,237 +1,307 @@
-# Complete executable reference for Event Modeling HCL v1.
-# It is intentionally compact while covering every mapped property and enum.
+# Complete executable reference for Event Modeling HCL with bounded contexts.
 
-slice "pet-lifecycle" {
-  title      = "Pet lifecycle"
-  status     = "Created"
-  index      = 1
-  context    = "Clinic"
-  slice_type = "STATE_CHANGE"
-  aggregates = ["Pet", "Owner"]
+team "clinic_team" {
+  title = "Clinic team"
+}
 
-  command "register-pet" {
-    group_id               = "registration"
-    tags                   = ["write", "pet"]
-    domain                 = "Pet management"
-    model_context          = "Clinic operations"
-    context                = "INTERNAL"
-    slice                  = "pet-lifecycle"
-    title                  = "Register pet"
-    type                   = "COMMAND"
-    description            = "Records a pet."
-    aggregate              = "Pet"
-    aggregate_dependencies = ["Owner"]
-    api_endpoint           = "POST /pets"
-    service                = null
-    creates_aggregate      = true
-    triggers               = ["submit"]
-    sketched               = false
-    prototype              = { route = "/pets", method = "POST" }
-    list_element           = false
+system "partner_system" {
+  title    = "Partner system"
+  external = true
+}
 
-    field "name" {
-      type                = "String"
-      example             = "Mochi"
-      mapping             = "pet.name"
-      optional            = false
-      technical_attribute = false
-      generated           = false
-      id_attribute        = false
-      pii                 = true
-      schema              = "PetName"
-      cardinality         = "Single"
-    }
+actor "clinic_staff" {
+  title         = "Clinic staff"
+  auth_required = true
+}
 
-    field "vaccinated" {
-      type    = "Boolean"
-      example = true
-    }
-    field "weight" {
-      type    = "Double"
-      example = 4.2
-    }
-    field "fee" {
-      type    = "Decimal"
-      example = 12.50
-    }
-    field "microchip" {
-      type    = "Long"
-      example = 1234567890
-    }
-    field "birth_date" {
-      type    = "Date"
-      example = "2020-01-12"
-    }
-    field "registered_at" {
-      type    = "DateTime"
-      example = "2025-01-12T10:30:00Z"
-    }
-    field "external_id" {
-      type    = "UUID"
-      example = "07917485-4a6b-4e4e-8920-92ce6062a129"
-    }
-    field "pet_id" {
-      type         = "Int"
-      example      = 5
+bounded_context "clinic" {
+  title       = "Clinic"
+  description = "Pet clinic operations and records."
+  owner       = team.clinic_team
+
+  aggregate "pet" {
+    title       = "Pet"
+    description = "A registered animal patient."
+  }
+
+  aggregate "owner" {
+    title = "Owner"
+  }
+
+  field_type "pet_id" {
+    cardinality  = "Single"
+    type         = "UUID"
+    id_attribute = true
+    example      = "07917485-4a6b-4e4e-8920-92ce6062a129"
+  }
+
+  field_type "pet_name" {
+    mapping             = "pet.name"
+    schema              = "PetName"
+    type                = "String"
+    generated           = false
+    id_attribute        = false
+    optional            = false
+    pii                 = true
+    technical_attribute = false
+    example             = "Mochi"
+  }
+
+  field_type "vaccinated" {
+    type    = "Boolean"
+    example = true
+  }
+
+  field_type "weight" {
+    type    = "Double"
+    example = 4.2
+  }
+
+  field_type "fee" {
+    type    = "Decimal"
+    example = 12.50
+  }
+
+  field_type "microchip" {
+    type    = "Long"
+    example = 1234567890
+  }
+
+  field_type "birth_date" {
+    type    = "Date"
+    example = "2020-01-12"
+  }
+
+  field_type "registered_at" {
+    type    = "DateTime"
+    example = "2025-01-12T10:30:00Z"
+  }
+
+  field_type "pet_profile" {
+    cardinality = "List"
+    type        = "Custom"
+    example = [{
+      id   = "07917485-4a6b-4e4e-8920-92ce6062a129"
+      name = "Mochi"
+    }]
+
+    subfield "id" {
+      type         = "UUID"
       id_attribute = true
     }
-    field "unset_value" {
-      type    = "Custom"
-      example = null
-    }
 
-    field "pets" {
-      type        = "Custom"
-      cardinality = "List"
-      example = [{
-        id   = 5
-        name = "Mochi"
-      }]
-
-      subfield "id" {
-        type         = "Int"
-        example      = 5
-        id_attribute = true
-      }
-
-      subfield "owner" {
-        type = "Custom"
-        example = {
-          name = "Sam"
-        }
-        subfield "name" {
-          type    = "String"
-          example = "Sam"
-        }
-      }
-    }
-
-    dependency "evt-pet-registered" {
-      type         = "OUTBOUND"
-      title        = "Pet registered"
-      element_type = "EVENT"
+    subfield "name" {
+      type = "String"
     }
   }
 
-  event "evt-pet-registered" {
-    title        = "Pet registered"
-    type         = "EVENT"
-    context      = "EXTERNAL"
-    service      = "registration-service"
-    list_element = true
+  event "pet_registered" {
+    title                  = "Pet Registered"
+    description            = "Records that a pet was registered."
+    group_id               = "registration"
+    tags                   = ["event", "pet"]
+    aggregate              = aggregate.pet
+    aggregate_dependencies = [aggregate.owner]
+    service                = null
+    list_element           = false
+    prototype              = { topic = "clinic.pet_registered" }
+    sketched               = false
 
     field "pet_id" {
-      type    = "Int"
-      example = 5
+      type = field_type.pet_id
     }
 
-    dependency "register-pet" {
-      type         = "INBOUND"
-      title        = "Register pet"
-      element_type = "COMMAND"
+    field "pet_name" {
+      type = field_type.pet_name
     }
-  }
 
-  readmodel "pet-summary" {
-    title = "Pet summary"
-    type  = "READMODEL"
-
-    dependency "pet-screen" {
-      type         = "OUTBOUND"
-      title        = "Pet screen"
-      element_type = "SCREEN"
+    field "registered_at" {
+      type = field_type.registered_at
     }
   }
 
-  screen "pet-screen" {
+  event "external_pet_imported" {
+    field "pet_id" {
+      type = field_type.pet_id
+    }
+  }
+
+  event "owner_registered" {
+  }
+}
+
+bounded_context "partner" {
+  title    = "Partner"
+  owner    = system.partner_system
+  external = true
+
+  event "pet_received" {
+    title = "Pet Received"
+
+    field "pet_id" {
+      type = field_type.clinic.pet_id
+    }
+  }
+}
+
+state_change "register_pet" {
+  description = "Register a new pet for an owner."
+  owner       = bounded_context.clinic
+  status      = "created"
+
+  screen "pet_screen" {
     title = "Pet screen"
-    type  = "SCREEN"
-
-    dependency "pet-notification" {
-      type         = "OUTBOUND"
-      title        = "Pet notification"
-      element_type = "AUTOMATION"
-    }
+    actor = actor.clinic_staff
+    to    = [command.register_pet_command]
   }
 
-  processor "pet-notification" {
-    title = "Pet notification"
-    type  = "AUTOMATION"
-  }
-
-  screen_image "pet-form" {
+  screen_image "pet_form" {
     title = "Pet form"
     url   = "https://example.test/pet-form.png"
   }
 
-  table "pets" {
-    title = "Pets"
+  command "register_pet_command" {
+    title                  = "Register pet"
+    description            = "Records a pet."
+    group_id               = "registration"
+    tags                   = ["write", "pet"]
+    aggregate              = aggregate.clinic.pet
+    aggregate_dependencies = [aggregate.clinic.owner]
+    api_endpoint           = "POST /pets"
+    service                = null
+    creates_aggregate      = true
+    triggers               = ["submit"]
+    list_element           = false
+    prototype              = { route = "/pets", method = "POST" }
+    sketched               = false
+    to                     = [event.clinic.pet_registered]
+
     field "pet_id" {
-      type    = "Int"
-      example = 5
+      type = field_type.clinic.pet_id
+    }
+
+    field "pet_name" {
+      type = field_type.clinic.pet_name
+    }
+
+    field "request_id" {
+      type                = "UUID"
+      technical_attribute = true
     }
   }
 
-  specification "register-pet-specification" {
-    vertical   = true
-    title      = "Register a pet"
-    slice_name = "Pet lifecycle"
-    linked_id  = "register-pet"
+  table "pets" {
+    title = "Pets"
 
-    given "existing-owner" {
+    field "pet_id" {
+      type = field_type.clinic.pet_id
+    }
+  }
+
+  scenario "register_pet_specification" {
+    title = "Register a pet"
+
+    given {
       title             = "Owner exists"
       tags              = ["setup"]
       examples          = [{ owner_id = 9 }]
-      index             = 0
-      spec_row          = 0
-      type              = "SPEC_EVENT"
-      linked_id         = "evt-owner-registered"
       expect_empty_list = false
+      event             = event.clinic.owner_registered
     }
 
-    when "register-pet" {
-      title     = "Register pet"
-      type      = "SPEC_COMMAND"
-      linked_id = "register-pet"
-      field "name" {
-        type    = "String"
-        example = "Mochi"
+    when {
+      title   = "Register pet"
+      command = command.register_pet_command
+
+      field "pet_name" {
+        type = field_type.clinic.pet_name
       }
     }
 
-    then "pet-summary" {
-      title     = "Pet summary updated"
-      type      = "SPEC_READMODEL"
-      linked_id = "pet-summary"
+    then {
+      title = "Pet registered"
+      event = event.clinic.pet_registered
     }
 
-    then "validation-error" {
+    then {
       title             = "Validation error"
-      type              = "SPEC_ERROR"
-      linked_id         = "register-pet-error"
       expect_empty_list = true
+      error             = "Pet registration is invalid"
     }
 
     comment {
       description = "The owner relationship is assumed to exist."
     }
   }
+}
 
-  actor "Clinic staff" {
-    auth_required = true
+state_view "pet_directory" {
+  title  = "Pet directory"
+  status = "done"
+
+  readmodel "pet_summary" {
+    title    = "Pet summary"
+    question = "Which pets are registered?"
+    from     = [event.clinic.pet_registered]
+    to       = [screen.pet_summary_screen]
+
+    field "pet_profile" {
+      type = field_type.clinic.pet_profile
+    }
+  }
+
+  screen "pet_summary_screen" {
+    title = "Pet summary screen"
+    actor = actor.clinic_staff
   }
 }
 
-slice "pet-directory" {
-  title      = "Pet directory"
-  status     = "Done"
-  index      = 2
-  slice_type = "STATE_VIEW"
+automation "notify_owner" {
+  title  = "Notify owner"
+  status = "in_progress"
+
+  readmodel "pets_needing_notification" {
+    title    = "Pets needing notification"
+    question = "Which pets require an owner notification?"
+    from     = [event.clinic.pet_registered]
+    to       = [processor.pet_notification]
+  }
+
+  processor "pet_notification" {
+    title = "Pet notification"
+    to    = [command.send_owner_notification]
+  }
+
+  command "send_owner_notification" {
+    title     = "Send owner notification"
+    aggregate = aggregate.clinic.owner
+    to        = [event.clinic.external_pet_imported]
+  }
 }
 
-slice "notify-owner" {
-  title      = "Notify owner"
-  status     = "InProgress"
-  index      = 3
-  slice_type = "AUTOMATION"
+translation "import_partner_pet" {
+  title       = "Import partner pet"
+  description = "Translate the partner contract into the clinic language."
+
+  processor "translate_pet" {
+    title = "Translate partner pet"
+    from  = [event.partner.pet_received]
+    to    = [command.import_pet]
+  }
+
+  command "import_pet" {
+    title = "Import pet"
+    to    = [event.clinic.external_pet_imported]
+  }
+}
+
+chapter "registration" {
+  title     = "Registration"
+  workflows = [workflow.register_pet, workflow.pet_directory, workflow.notify_owner, workflow.import_partner_pet]
+}
+
+hotspot "notification_channel" {
+  status   = "open"
+  question = "Which notification channel should be used?"
+  on       = processor.notify_owner.pet_notification
 }

@@ -1,20 +1,42 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
+This repository records implementation releases of the validator, formatter,
+and typed IR. The authoritative Event Modeling HCL language history is in the
+[specification changelog](https://github.com/event-modeling-hcl/spec/blob/main/CHANGELOG.md).
+
+## [Unreleased]
+
+## [v0.2.0] - 2026-09-05
+
+Implements the v0.2.0 native HCL language surface. See the
+[specification changelog](https://github.com/event-modeling-hcl/spec/blob/main/CHANGELOG.md)
+for the normative language history.
+
+### Added
+
+- `fmt` command that canonicalizes whitespace and attribute order idempotently
+  while preserving semantic block and scenario order.
+- Validation profiles `--profile workshop|valid|strict`, with `valid` as the
+  default and `strict` escalating unreasoned commands and open hotspots to errors.
+- Stable `EMxxx` diagnostic codes, reported as
+  `file:line:column: Severity EMxxx: message`.
+- Typed IR via `internal/model.Load`: a validation-gated model with effective
+  titles, normalized source-to-target edges, and semantic/presentation separation.
+- Invalid fixtures for reverse-flow and State-View `when` scenarios.
+
+### Changed
+
+- Moves the public Go module to
+  `github.com/event-modeling-hcl/eventmodeling-hcl`.
+- Enforces one canonical flow spelling per edge; reverse forms now fail validation.
+- State View scenarios take one or more event `given` steps and `then` read-model
+  steps, with no `when`.
+- Titles are optional and derived from labels when absent.
+
+### Removed
+
+- The `query` scenario target and reverse flow spellings.
 
 ## [v0.1.0] - 2026-09-02
 
-- Initial native HCL v1 Event Modeling Specification release.
-- Strict `eventmodeling-hcl validate <model.em.hcl>` validator with literal-only
-  HCL evaluation and source-located diagnostics.
-- Native `.em.hcl` examples, including the complete reference model and the
-  pet-management golden model.
-- Go 1.25+ is required to include the fixed `golang.org/x/text` dependency for
-  `GO-2026-5970`.
-- Optional field `pii` metadata is represented as `pii = <bool>` in HCL.
-
-### Scope
-
-V1 keeps events slice-local and does not provide bounded contexts, event
-groups, external-event blocks, cross-reference resolution, multi-file models,
-formatting, conversion, generators, or editor integration.
+- Initial native HCL validator release.

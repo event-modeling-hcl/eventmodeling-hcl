@@ -1,30 +1,34 @@
 # Event Modeling HCL Specification
 
-[![CI](https://github.com/dclimber/event-modeling-hcl/actions/workflows/ci.yml/badge.svg)](https://github.com/dclimber/event-modeling-hcl/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/dclimber/event-modeling-hcl.svg)](https://pkg.go.dev/github.com/dclimber/event-modeling-hcl)
+[![CI](https://github.com/event-modeling-hcl/eventmodeling-hcl/actions/workflows/ci.yml/badge.svg)](https://github.com/event-modeling-hcl/eventmodeling-hcl/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Native HCL v1 for the Event Modeling Specification. This repository provides a
-strict validator, normative language documentation, and executable examples.
-The domain reference is the upstream [Event Modeling
+Native HCL v0.2.0 for the Event Modeling Specification. This repository
+provides a strict validator, canonical formatter, typed semantic model,
+normative language documentation, and executable examples. The domain reference is the upstream [Event Modeling
 Specification](https://github.com/dilgerma/event-modeling-spec); the HCL
-specification and validator in this repository define its native v1 port. The
+specification and validator in this repository define its native port. The
 format is not a JSON embedding or conversion format.
+
+The language is designed for hand authoring: bounded contexts own canonical
+events, reusable field types, and aggregates; workflow kind is the top-level
+block keyword; typed HCL traversals express canonical relationships; and
+derivable bookkeeping is not written. Native scenarios and workshop blocks
+preserve the rules and durable artifacts of an Event Modeling session.
 
 ## Requirements and Installation
 
-Install Go 1.25 or newer, download a release
-archive, or build the validator from source:
+Install Go 1.25 or newer and build the validator from this checkout:
 
 ```bash
-go install github.com/dclimber/event-modeling-hcl/cmd/eventmodeling-hcl@v0.1.0
-# or, from a checkout:
 go build -o bin/eventmodeling-hcl ./cmd/eventmodeling-hcl
 ```
 
-Release archives for Linux, macOS, and Windows are available from the
-[GitHub Releases page](https://github.com/dclimber/event-modeling-hcl/releases).
-Verify the downloaded archive with the release's `checksums.txt` before use:
+Published release archives for Linux, macOS, and Windows are available from
+the [GitHub Releases page](https://github.com/event-modeling-hcl/eventmodeling-hcl/releases).
+Verify a downloaded release archive with that release's `checksums.txt` before
+use:
 
 ```bash
 sha256sum -c checksums.txt
@@ -36,8 +40,8 @@ With GitHub CLI 2.49.0 or newer, verify the downloaded archive was produced by
 this repository's release workflow:
 
 ```bash
-gh attestation verify eventmodeling-hcl_0.1.0_linux_amd64.tar.gz \
-  --repo dclimber/event-modeling-hcl
+gh attestation verify eventmodeling-hcl_0.2.0_linux_amd64.tar.gz \
+  --repo event-modeling-hcl/eventmodeling-hcl
 ```
 
 Validate one complete model per invocation:
@@ -46,10 +50,14 @@ Validate one complete model per invocation:
 ./bin/eventmodeling-hcl validate examples/minimal.em.hcl
 ./bin/eventmodeling-hcl validate examples/complete.em.hcl
 ./bin/eventmodeling-hcl validate examples/pet-management-detailed.em.hcl
+./bin/eventmodeling-hcl validate --profile strict examples/complete.em.hcl
+./bin/eventmodeling-hcl fmt -w examples/complete.em.hcl
 ```
 
-A valid document prints `<path> valid`. Validation errors use the form
-`file:line:column: Error: message` and return a nonzero exit status.
+A valid document prints `<path> valid`. Diagnostics use the form
+`file:line:column: Severity EMxxx: message`. The default `valid` profile keeps
+modeling judgment as warnings; `workshop` reports it as information and `strict`
+escalates unreasoned commands and open hotspots to errors.
 
 Model files must use the `.em.hcl` extension. HCL is the language; the suffix
 identifies a complete Event Modeling document to this validator. Check the
@@ -57,37 +65,76 @@ installed binary version with `eventmodeling-hcl version`.
 
 ## Authoring
 
-Only `slice` blocks are allowed at top level. A block label carries the JSON
-identity property, while remaining properties use snake_case attributes.
-Events remain direct children of their owning slice.
+Top-level `bounded_context` blocks define domain contracts. Top-level
+`state_change`, `state_view`, `automation`, and `translation` blocks define the
+four workflow patterns. Labels carry identity and use lower snake_case. Events
+are declared only inside bounded contexts and participate in workflows through
+typed flow or scenario references.
 
 ```hcl
-slice "add-pet" {
-  title      = "Add Pet"
-  slice_type = "STATE_CHANGE"
+bounded_context "pet_management" {
+  title = "Pet Management"
 
-  command "add-pet" {
-    title = "Add Pet"
-    type  = "COMMAND"
+  aggregate "pet" {}
 
-    dependency "evt-pet-001" {
-      type         = "OUTBOUND"
-      title        = "Pet Added"
-      element_type = "EVENT"
-    }
+  field_type "pet_id" {
+    type         = "Int"
+    id_attribute = true
   }
 
-  event "evt-pet-001" {
-    title = "Pet Added"
-    type  = "EVENT"
+  event "pet_added" {
+    title     = "Pet Added"
+    aggregate = aggregate.pet
+
+    field "pet_id" { type = field_type.pet_id }
+  }
+}
+
+actor "clinic_staff" {
+  title         = "Clinic staff"
+  auth_required = true
+}
+
+state_change "add_pet" {
+  title = "Add Pet"
+
+  screen "add_pet_form" {
+    title = "Add pet form"
+    actor = actor.clinic_staff
+    to    = [command.add_pet]
+  }
+
+  command "add_pet" {
+    title     = "Add Pet"
+    aggregate = aggregate.pet_management.pet
+    to        = [event.pet_management.pet_added]
+
+    field "pet_id" { type = field_type.pet_management.pet_id }
   }
 }
 ```
 
-Repeated blocks represent source arrays; omitting a collection means an empty
-array. Dependency IDs and `linked_id` values are opaque strings, so v1 does
-not resolve references or add graph-validation rules. HCL values must be
-literals: variables, functions, and interpolation are rejected.
+Source position is model order. A flow edge has one canonical spelling: the
+source element uses `to`, except catalog events flow through the receiver's
+`from`. References are unquoted traversals and are checked for scope, kind, and
+existence. Ordinary values are native HCL literals; variables, functions, and
+interpolation are rejected.
+
+Read models state the question they answer, and scenarios use typed targets:
+
+```hcl
+state_view "pet_directory" {
+  readmodel "pets" {
+    question = "Which pets are registered?"
+    from     = [event.pet_management.pet_added]
+  }
+
+  scenario "pets_are_listed" {
+    given { event = event.pet_management.pet_added }
+    then  { readmodel = readmodel.pets }
+  }
+}
+```
 
 Use native values for field examples:
 
@@ -104,16 +151,18 @@ field "pets" {
 
 ## Documentation and Examples
 
-- [Language specification](eventmodeling.hclspec.md): grammar, nesting,
-  required attributes, enums, literals, and validation boundary.
-- [Source-model mapping](schema/eventmodeling.hcl.schema.md): one-to-one
-  mapping from every source property to HCL.
+- [Authoritative language specification](https://github.com/event-modeling-hcl/spec):
+  normative grammar, references, canonical flow, scenarios, and compatibility.
+- [Specification examples](https://github.com/event-modeling-hcl/spec/tree/main/examples):
+  complete, independently valid examples for each Event Modeling pattern.
+- [Learning guide](https://github.com/event-modeling-hcl/spec/blob/main/guides/learning-event-modeling-hcl.md):
+  practice-first Event Modeling and `.em.hcl` instruction.
 - [Minimal example](examples/minimal.em.hcl): smallest useful model.
 - [Complete reference](examples/complete.em.hcl): every supported HCL construct.
 - [Pet-management port](examples/pet-management-detailed.em.hcl): the supplied
-  five-slice golden model in native HCL.
-- [Mapping ADR](docs/adr/0001-slice-local-events.md): direct slice-local event
-  design decision.
+  five-workflow golden model in native HCL.
+- [Language decisions and migration guidance](https://github.com/event-modeling-hcl/spec):
+  authoritative ADRs, migration material, examples, and RFCs.
 - [Release runbook](RELEASING.md): stable-tag publication, verification, and
   GitHub repository controls.
 
@@ -131,14 +180,33 @@ make verify
 The test suite validates every `.em.hcl` file in `examples/` and asserts every
 fixture in `testdata/invalid/` fails validation.
 
-The original pet-management JSON fixture is retained under `testdata/golden/`
-as reference data for the native HCL example.
+### Pre-commit Hooks
 
-## v1 Boundaries
+Install [pre-commit](https://pre-commit.com/), then install the repository hook
+after cloning:
 
-v1 does not support event groups, external-event blocks, qualified event IDs,
-`emits`, multi-file loading, formatting, JSON conversion, editor integration,
-or cross-reference resolution.
+```bash
+make pre-commit-install
+```
+
+The hook checks common repository hygiene, formats changed Go files, checks
+module consistency when `go.mod` or `go.sum` changes, and runs `go vet ./...`
+and `go test ./...`. Run the same hooks against the whole checkout with:
+
+```bash
+make pre-commit-run
+```
+
+`make verify` remains the full local quality gate; it also runs race, static,
+exhaustiveness, vulnerability, example-validation, and release checks.
+
+## Boundaries
+
+v0.2.0 resolves references within a single document and enforces scoped
+identity, canonical typed flows, scenario shape, field examples, and workflow
+patterns. `internal/model.Load` exposes a validated typed IR with normalized
+edges; it does not support event groups, context maps, multi-file loading,
+cross-file reference resolution, JSON conversion, or editor integration.
 
 ## License
 
