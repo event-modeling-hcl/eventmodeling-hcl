@@ -134,6 +134,36 @@ state_change "schedule_appointment" {
       type = field_type.appointments.starts_at
     }
   }
+
+  scenario "appointment_is_scheduled" {
+    title = "Schedule an appointment"
+
+    when {
+      title   = "Add Appointment"
+      command = command.add_appointment
+
+      field "appointment_id" {
+        type = field_type.appointments.appointment_id
+      }
+
+      field "starts_at" {
+        type = field_type.appointments.starts_at
+      }
+    }
+
+    then {
+      title = "Appointment Added"
+      event = event.appointments.appointment_added
+
+      field "appointment_id" {
+        type = field_type.appointments.appointment_id
+      }
+
+      field "starts_at" {
+        type = field_type.appointments.starts_at
+      }
+    }
+  }
 }
 
 state_view "view_calendar" {
@@ -162,15 +192,42 @@ state_view "view_calendar" {
   screen "get_calendar" {
     title = "GET /calendar"
   }
+
+  scenario "calendar_shows_scheduled_appointment" {
+    title = "Show a scheduled appointment on the calendar"
+
+    given {
+      title = "Appointment Added"
+      event = event.appointments.appointment_added
+
+      field "appointment_id" {
+        type = field_type.appointments.appointment_id
+      }
+    }
+
+    then {
+      title     = "Calendar"
+      readmodel = readmodel.calendar
+
+      field "appointment_id" {
+        type = field_type.appointments.appointment_id
+      }
+
+      field "starts_at" {
+        type = field_type.appointments.starts_at
+      }
+    }
+  }
 }
 
-state_view "find_appointments_without_weather" {
-  title = "Appointments without weather forecast"
+automation "add_weather_forecast" {
+  title = "Add Weather Forecast"
 
   readmodel "appointments_without_weather_forecast" {
     title    = "Appointments without weather forecast"
     question = "Which appointments do not have a weather forecast?"
     from     = [event.appointments.appointment_added]
+    to       = [processor.weather_processor]
 
     field "appointment_id" {
       type = field_type.appointments.appointment_id
@@ -179,17 +236,6 @@ state_view "find_appointments_without_weather" {
     field "starts_at" {
       type = field_type.appointments.starts_at
     }
-  }
-}
-
-automation "add_weather_forecast" {
-  title = "Add Weather Forecast"
-
-  readmodel "appointments_without_weather_forecast_feed" {
-    title    = "Appointments without weather forecast feed"
-    question = "Which appointments still need a weather forecast?"
-    from     = [event.appointments.appointment_added]
-    to       = [processor.weather_processor]
   }
 
   processor "weather_processor" {
@@ -208,6 +254,46 @@ automation "add_weather_forecast" {
 
     field "forecast" {
       type = field_type.weather.forecast
+    }
+  }
+
+  scenario "forecast_is_added_for_new_appointment" {
+    title = "Add a weather forecast for a scheduled appointment"
+
+    given {
+      title = "Appointment Added"
+      event = event.appointments.appointment_added
+
+      field "appointment_id" {
+        type = field_type.appointments.appointment_id
+      }
+
+      field "starts_at" {
+        type = field_type.appointments.starts_at
+      }
+    }
+
+    given {
+      title     = "Appointments without weather forecast"
+      readmodel = readmodel.appointments_without_weather_forecast
+    }
+
+    when {
+      title     = "Weather Processor"
+      processor = processor.weather_processor
+    }
+
+    then {
+      title = "Weather predicted for appointment"
+      event = event.weather.weather_predicted_for_appointment
+
+      field "appointment_id" {
+        type = field_type.appointments.appointment_id
+      }
+
+      field "forecast" {
+        type = field_type.weather.forecast
+      }
     }
   }
 }
@@ -246,6 +332,46 @@ translation "translate_weather_change" {
 
     field "forecast" {
       type = field_type.weather.forecast
+    }
+  }
+
+  scenario "external_weather_change_is_translated" {
+    title = "Translate a changed external weather forecast"
+
+    given {
+      title = "Weather Forecast Changed"
+      event = event.weather_provider.weather_forecast_changed
+
+      field "appointment_id" {
+        type = field_type.appointments.appointment_id
+      }
+
+      field "forecast" {
+        type = field_type.weather.forecast
+      }
+    }
+
+    given {
+      title     = "Changed Predictions"
+      readmodel = readmodel.changed_predictions
+    }
+
+    when {
+      title     = "Translator"
+      processor = processor.translator
+    }
+
+    then {
+      title = "Updated Weather Prediction"
+      event = event.weather.updated_weather_prediction
+
+      field "appointment_id" {
+        type = field_type.appointments.appointment_id
+      }
+
+      field "forecast" {
+        type = field_type.weather.forecast
+      }
     }
   }
 }

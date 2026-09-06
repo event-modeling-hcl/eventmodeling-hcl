@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -94,6 +95,108 @@ state_change "explicit_title" {
 	}
 }
 
+func TestLoad_PreservesFieldTypeBadgesAndScenarioExamples(t *testing.T) {
+	source := []byte(`bounded_context "clinic" {
+  field_type "pet_id" {
+    type         = "UUID"
+    id_attribute = true
+    pii          = true
+  }
+
+  event "owner_registered" {}
+  event "pet_registered" {}
+}
+
+state_change "register_pet" {
+  command "register_pet" {
+    external_trigger = true
+    to               = [event.clinic.pet_registered]
+  }
+
+  scenario "register_pet" {
+    given {
+      event    = event.clinic.owner_registered
+      examples = [{ owner_id = 9 }]
+    }
+    when { command = command.register_pet }
+    then { event = event.clinic.pet_registered }
+  }
+}`)
+
+	loaded, diagnostics := Load("model.em.hcl", source, Valid)
+	if diagnostics.HasErrors() {
+		t.Fatalf("diagnostics = %s", diagnostics.Error())
+	}
+
+	fieldType := loaded.Contexts[0].FieldTypes[0]
+	if !fieldType.IDAttribute || !fieldType.PII {
+		t.Fatalf("field type badges = id:%t pii:%t, want both true", fieldType.IDAttribute, fieldType.PII)
+	}
+
+	examples := loaded.Workflows[0].Scenarios[0].Steps[0].Examples
+	var decoded []map[string]int
+	if err := json.Unmarshal(examples, &decoded); err != nil {
+		t.Fatalf("unmarshal examples: %v", err)
+	}
+	if len(decoded) != 1 || decoded[0]["owner_id"] != 9 {
+		t.Fatalf("examples = %#v, want owner_id 9", decoded)
+	}
+}
+
+func TestPetManagementDetailedModel_UsesCausalProjectionInputs(t *testing.T) {
+	path := filepath.Join("..", "..", "examples", "pet-management-detailed.em.hcl")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	loaded, diagnostics := Load(path, source, Valid)
+	if diagnostics.HasErrors() {
+		t.Fatalf("diagnostics = %s", diagnostics.Error())
+	}
+
+	ownerRegistered := eventByID(t, contextByID(t, loaded, "owner_management"), "owner_registered")
+	requireFieldNames(t, ownerRegistered.Fields, "owner_id", "owner_name", "owner_email")
+	petUpdated := eventByID(t, contextByID(t, loaded, "pet_management"), "pet_details_updated")
+	requireFieldNames(t, petUpdated.Fields, "pet_id", "owner_id", "pet_name", "birth_date", "pet_type")
+	petTypeAdded := eventByID(t, contextByID(t, loaded, "pet_type_catalog"), "pet_type_added")
+	requireFieldNames(t, petTypeAdded.Fields, "pet_type_id", "pet_type_name")
+
+	requireEdge(t, loaded, "list_pet_types", "event.pet_type_catalog.pet_type_added", "readmodel.pet_type_list")
+	requireEdge(t, loaded, "load_pet_details", "event.pet_management.pet_added", "readmodel.pet_details")
+	requireEdge(t, loaded, "show_owner_details", "event.owner_management.owner_registered", "readmodel.owner_details")
+	requireEdge(t, loaded, "show_owner_details", "event.pet_management.pet_added", "readmodel.owner_details")
+	requireEdge(t, loaded, "show_owner_details", "event.pet_management.pet_details_updated", "readmodel.owner_details")
+
+	if workflowIndex(t, loaded, "list_pet_types") >= workflowIndex(t, loaded, "add_pet") {
+		t.Fatal("pet types must be available before adding a pet")
+	}
+	if workflowIndex(t, loaded, "load_pet_details") >= workflowIndex(t, loaded, "edit_pet") {
+		t.Fatal("pet details must be loaded before editing a pet")
+	}
+	if workflowIndex(t, loaded, "show_owner_details") <= workflowIndex(t, loaded, "edit_pet") {
+		t.Fatal("owner details projection must follow the events it consumes")
+	}
+}
+
+func TestAppointmentWeatherPatternsModel_SpecifiesEveryWorkflowPattern(t *testing.T) {
+	path := filepath.Join("..", "..", "examples", "appointment-weather-patterns.em.hcl")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	loaded, diagnostics := Load(path, source, Valid)
+	if diagnostics.HasErrors() {
+		t.Fatalf("diagnostics = %s", diagnostics.Error())
+	}
+
+	assertScenarioSteps(t, workflowByID(t, loaded, "schedule_appointment"), []StepKind{When, Then})
+	assertScenarioSteps(t, workflowByID(t, loaded, "view_calendar"), []StepKind{Given, Then})
+	assertScenarioSteps(t, workflowByID(t, loaded, "add_weather_forecast"), []StepKind{Given, Given, When, Then})
+	assertScenarioSteps(t, workflowByID(t, loaded, "translate_weather_change"), []StepKind{Given, Given, When, Then})
+}
+
 func workflowByID(t *testing.T, loaded *Model, id string) Workflow {
 	t.Helper()
 	for _, workflow := range loaded.Workflows {
@@ -105,6 +208,20 @@ func workflowByID(t *testing.T, loaded *Model, id string) Workflow {
 	return Workflow{}
 }
 
+func assertScenarioSteps(t *testing.T, workflow Workflow, want []StepKind) {
+	t.Helper()
+	if len(workflow.Scenarios) != 1 {
+		t.Fatalf("workflow %q scenarios = %d, want 1", workflow.ID, len(workflow.Scenarios))
+	}
+	got := make([]StepKind, len(workflow.Scenarios[0].Steps))
+	for i, step := range workflow.Scenarios[0].Steps {
+		got[i] = step.Kind
+	}
+	if !sameSteps(got, want) {
+		t.Fatalf("workflow %q scenario steps = %#v, want %#v", workflow.ID, got, want)
+	}
+}
+
 func elementByID(t *testing.T, workflow Workflow, id string) Element {
 	t.Helper()
 	for _, element := range workflow.Elements {
@@ -114,6 +231,55 @@ func elementByID(t *testing.T, workflow Workflow, id string) Element {
 	}
 	t.Fatalf("element %q not found", id)
 	return Element{}
+}
+
+func contextByID(t *testing.T, loaded *Model, id string) Context {
+	t.Helper()
+	for _, context := range loaded.Contexts {
+		if context.ID == id {
+			return context
+		}
+	}
+	t.Fatalf("context %q not found", id)
+	return Context{}
+}
+
+func eventByID(t *testing.T, context Context, id string) Event {
+	t.Helper()
+	for _, event := range context.Events {
+		if event.ID == id {
+			return event
+		}
+	}
+	t.Fatalf("event %q not found in context %q", id, context.ID)
+	return Event{}
+}
+
+func requireFieldNames(t *testing.T, fields []Field, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		found := false
+		for _, field := range fields {
+			if field.Name == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("field %q not found", name)
+		}
+	}
+}
+
+func workflowIndex(t *testing.T, loaded *Model, id string) int {
+	t.Helper()
+	for index, workflow := range loaded.Workflows {
+		if workflow.ID == id {
+			return index
+		}
+	}
+	t.Fatalf("workflow %q not found", id)
+	return -1
 }
 
 func requireEdge(t *testing.T, loaded *Model, workflow, from, to string) {

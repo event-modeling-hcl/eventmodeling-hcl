@@ -2,12 +2,14 @@
 package model
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclparse"
 	"github.com/zclconf/go-cty/cty"
+	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
 // Profile is the validator profile used by Load.
@@ -99,6 +101,8 @@ type FieldType struct {
 	ID          string  `json:"id"`
 	Type        string  `json:"type"`
 	Cardinality string  `json:"cardinality,omitempty"`
+	IDAttribute bool    `json:"id_attribute,omitempty"`
+	PII         bool    `json:"pii,omitempty"`
 	Fields      []Field `json:"fields,omitempty"`
 }
 
@@ -181,13 +185,14 @@ type Scenario struct {
 }
 
 type Step struct {
-	Kind            StepKind `json:"kind"`
-	Title           string   `json:"title,omitempty"`
-	Target          string   `json:"target"`
-	Ref             string   `json:"ref,omitempty"`
-	Error           string   `json:"error,omitempty"`
-	ExpectEmptyList bool     `json:"expect_empty_list,omitempty"`
-	Fields          []Field  `json:"fields,omitempty"`
+	Kind            StepKind        `json:"kind"`
+	Title           string          `json:"title,omitempty"`
+	Target          string          `json:"target"`
+	Ref             string          `json:"ref,omitempty"`
+	Error           string          `json:"error,omitempty"`
+	Examples        json.RawMessage `json:"examples,omitempty"`
+	ExpectEmptyList bool            `json:"expect_empty_list,omitempty"`
+	Fields          []Field         `json:"fields,omitempty"`
 }
 
 type Chapter struct {
@@ -302,7 +307,9 @@ func decodeAggregate(block *hcl.Block) Aggregate {
 
 func decodeFieldType(block *hcl.Block) FieldType {
 	content, _ := contentOf(block.Body, fieldSchema())
-	return FieldType{ID: block.Labels[0], Type: stringValue(content.Attributes["type"]), Cardinality: stringValue(content.Attributes["cardinality"]), Fields: decodeFields(content.Blocks)}
+	idAttribute, _ := boolValue(content.Attributes["id_attribute"])
+	pii, _ := boolValue(content.Attributes["pii"])
+	return FieldType{ID: block.Labels[0], Type: stringValue(content.Attributes["type"]), Cardinality: stringValue(content.Attributes["cardinality"]), IDAttribute: idAttribute, PII: pii, Fields: decodeFields(content.Blocks)}
 }
 
 func decodeEvent(block *hcl.Block) Event {
@@ -364,7 +371,7 @@ func decodeScenario(block *hcl.Block) Scenario {
 
 func decodeStep(block *hcl.Block) Step {
 	content, _ := contentOf(block.Body, stepSchema())
-	step := Step{Kind: mustStepKind(block.Type), Title: stringValue(content.Attributes["title"]), ExpectEmptyList: boolValueOrFalse(content.Attributes["expect_empty_list"]), Fields: decodeFields(content.Blocks)}
+	step := Step{Kind: mustStepKind(block.Type), Title: stringValue(content.Attributes["title"]), Examples: jsonValue(content.Attributes["examples"]), ExpectEmptyList: boolValueOrFalse(content.Attributes["expect_empty_list"]), Fields: decodeFields(content.Blocks)}
 	for _, target := range []string{"event", "command", "readmodel", "processor", "error"} {
 		attribute := content.Attributes[target]
 		if attribute == nil {
@@ -379,6 +386,21 @@ func decodeStep(block *hcl.Block) Step {
 		break
 	}
 	return step
+}
+
+func jsonValue(attribute *hcl.Attribute) json.RawMessage {
+	if attribute == nil {
+		return nil
+	}
+	value, diagnostics := attribute.Expr.Value(nil)
+	if diagnostics.HasErrors() || value.IsNull() {
+		return nil
+	}
+	encoded, err := ctyjson.Marshal(value, value.Type())
+	if err != nil {
+		return nil
+	}
+	return encoded
 }
 
 func decodeChapter(block *hcl.Block) Chapter {

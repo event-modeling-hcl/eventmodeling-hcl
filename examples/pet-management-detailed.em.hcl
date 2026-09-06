@@ -36,6 +36,14 @@ bounded_context "owner_management" {
     field "owner_id" {
       type = field_type.owner_id
     }
+
+    field "owner_name" {
+      type = field_type.owner_name
+    }
+
+    field "owner_email" {
+      type = field_type.owner_email
+    }
   }
 }
 
@@ -130,6 +138,10 @@ bounded_context "pet_management" {
       type = field_type.pet_id
     }
 
+    field "owner_id" {
+      type = field_type.owner_management.owner_id
+    }
+
     field "pet_name" {
       type = field_type.pet_name
     }
@@ -160,59 +172,66 @@ bounded_context "pet_type_catalog" {
     type    = "String"
     example = "Cat"
   }
+
+  event "pet_type_added" {
+    title     = "Pet Type Added"
+    aggregate = aggregate.pet_type
+
+    field "pet_type_id" {
+      type = field_type.pet_type_id
+    }
+
+    field "pet_type_name" {
+      type = field_type.pet_type_name
+    }
+  }
 }
 
-state_view "show_owner_details" {
-  title       = "Show Owner Details"
-  description = "Display owner information including their pets list before adding or editing pets."
+state_view "list_pet_types" {
+  title       = "List Pet Types"
+  description = "Display catalogued pet types before a clinician adds a pet."
 
-  readmodel "owner_details" {
-    title    = "Owner Details"
-    question = "What are the owner's details and registered pets?"
-    from     = [event.pet_management.pet_added, event.pet_management.pet_details_updated]
-    to       = [screen.owner_details_screen]
+  readmodel "pet_type_list" {
+    title    = "Pet Type List"
+    question = "Which pet types can be selected?"
+    from     = [event.pet_type_catalog.pet_type_added]
+    to       = [screen.pet_type_picker]
 
-    field "owner_id" {
-      type = field_type.owner_management.owner_id
-    }
+    field "types" {
+      cardinality = "List"
+      type        = "Custom"
+      example = [{
+        id   = 1
+        name = "Cat"
+      }]
 
-    field "owner_name" {
-      type = field_type.owner_management.owner_name
-    }
+      subfield "id" {
+        type         = "Int"
+        id_attribute = true
+      }
 
-    field "owner_email" {
-      type = field_type.owner_management.owner_email
-    }
-
-    field "owner_pets" {
-      type = field_type.pet_management.owner_pets
+      subfield "name" {
+        type = "String"
+      }
     }
   }
 
-  screen "owner_details_screen" {
-    title = "Owner Details Screen"
+  screen "pet_type_picker" {
+    title = "Pet Type Picker"
     actor = actor.clinic_staff
   }
 
-  scenario "owner_details_loaded" {
-    title = "Owner details are displayed"
+  scenario "pet_types_available" {
+    title = "Pet types are available"
 
     given {
-      title = "Pet Added"
-      event = event.pet_management.pet_added
+      title = "Pet Type Added"
+      event = event.pet_type_catalog.pet_type_added
     }
 
     then {
-      title     = "Owner Details"
-      readmodel = readmodel.owner_details
-
-      field "owner_id" {
-        type = field_type.owner_management.owner_id
-      }
-
-      field "owner_pets" {
-        type = field_type.pet_management.owner_pets
-      }
+      title     = "Pet Type List"
+      readmodel = readmodel.pet_type_list
     }
   }
 }
@@ -315,42 +334,40 @@ state_change "add_pet" {
   }
 }
 
-state_view "list_pet_types" {
-  title       = "List Pet Types"
-  description = "Display list of all available pet types for selection in forms."
+state_view "load_pet_details" {
+  title       = "Load Pet Details"
+  description = "Load the current pet details before a clinician edits the pet."
 
-  readmodel "pet_type_list" {
-    title    = "Pet Type List"
-    question = "Which pet types can be selected?"
+  readmodel "pet_details" {
+    title    = "Pet Details"
+    question = "What are the current details of this pet?"
     from     = [event.pet_management.pet_added]
-    to       = [screen.pet_type_picker]
+    to       = [screen.pet_details_screen]
 
-    field "types" {
-      cardinality = "List"
-      type        = "Custom"
-      example = [{
-        id   = 1
-        name = "Cat"
-      }]
+    field "pet_id" {
+      type = field_type.pet_management.pet_id
+    }
 
-      subfield "id" {
-        type         = "Int"
-        id_attribute = true
-      }
+    field "pet_name" {
+      type = field_type.pet_management.pet_name
+    }
 
-      subfield "name" {
-        type = "String"
-      }
+    field "birth_date" {
+      type = field_type.pet_management.birth_date
+    }
+
+    field "pet_type" {
+      type = field_type.pet_management.pet_type
     }
   }
 
-  screen "pet_type_picker" {
-    title = "Pet Type Picker"
+  screen "pet_details_screen" {
+    title = "Pet Details Screen"
     actor = actor.clinic_staff
   }
 
-  scenario "pet_types_available" {
-    title = "Pet types are available"
+  scenario "pet_details_loaded" {
+    title = "Pet details are loaded"
 
     given {
       title = "Pet Added"
@@ -358,8 +375,12 @@ state_view "list_pet_types" {
     }
 
     then {
-      title     = "Pet Type List"
-      readmodel = readmodel.pet_type_list
+      title     = "Pet Details"
+      readmodel = readmodel.pet_details
+
+      field "pet_id" {
+        type = field_type.pet_management.pet_id
+      }
     }
   }
 }
@@ -428,52 +449,60 @@ state_change "edit_pet" {
   }
 }
 
-state_view "load_pet_details" {
-  title       = "Load Pet Details"
-  description = "Load existing pet information to populate edit form."
+state_view "show_owner_details" {
+  title       = "Show Owner Details"
+  description = "Display owner information and the current registered pet list after owner and pet changes."
 
-  readmodel "pet_details" {
-    title    = "Pet Details"
-    question = "What are the current details of this pet?"
-    from     = [event.pet_management.pet_added, event.pet_management.pet_details_updated]
-    to       = [screen.pet_details_screen]
+  readmodel "owner_details" {
+    title    = "Owner Details"
+    question = "What are the owner's details and registered pets?"
+    from = [
+      event.owner_management.owner_registered,
+      event.pet_management.pet_added,
+      event.pet_management.pet_details_updated,
+    ]
+    to = [screen.owner_details_screen]
 
-    field "pet_id" {
-      type = field_type.pet_management.pet_id
+    field "owner_id" {
+      type = field_type.owner_management.owner_id
     }
 
-    field "pet_name" {
-      type = field_type.pet_management.pet_name
+    field "owner_name" {
+      type = field_type.owner_management.owner_name
     }
 
-    field "birth_date" {
-      type = field_type.pet_management.birth_date
+    field "owner_email" {
+      type = field_type.owner_management.owner_email
     }
 
-    field "pet_type" {
-      type = field_type.pet_management.pet_type
+    field "owner_pets" {
+      type = field_type.pet_management.owner_pets
     }
   }
 
-  screen "pet_details_screen" {
-    title = "Pet Details Screen"
+  screen "owner_details_screen" {
+    title = "Owner Details Screen"
     actor = actor.clinic_staff
   }
 
-  scenario "pet_details_loaded" {
-    title = "Pet details are loaded"
+  scenario "owner_details_updated" {
+    title = "Owner details reflect a pet update"
 
     given {
-      title = "Pet Added"
-      event = event.pet_management.pet_added
+      title = "Pet Details Updated"
+      event = event.pet_management.pet_details_updated
     }
 
     then {
-      title     = "Pet Details"
-      readmodel = readmodel.pet_details
+      title     = "Owner Details"
+      readmodel = readmodel.owner_details
 
-      field "pet_id" {
-        type = field_type.pet_management.pet_id
+      field "owner_id" {
+        type = field_type.owner_management.owner_id
+      }
+
+      field "owner_pets" {
+        type = field_type.pet_management.owner_pets
       }
     }
   }

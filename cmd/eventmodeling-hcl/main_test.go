@@ -57,6 +57,26 @@ func TestParseCommand_RecognizesFormatterInvocations(t *testing.T) {
 	}
 }
 
+func TestParseCommand_RecognizesDiagramInvocations(t *testing.T) {
+	tests := []struct {
+		args   []string
+		output string
+	}{
+		{args: []string{"diagram", "model.em.hcl"}},
+		{args: []string{"diagram", "model.em.hcl", "-o", "model.html"}, output: "model.html"},
+		{args: []string{"diagram", "--output", "model.html", "model.em.hcl"}, output: "model.html"},
+	}
+	for _, test := range tests {
+		command, err := parseCommand(test.args)
+		if err != nil {
+			t.Fatalf("parseCommand(%q): %v", test.args, err)
+		}
+		if command.kind != diagramCommand || command.path != "model.em.hcl" || command.output != test.output {
+			t.Fatalf("command = %#v", command)
+		}
+	}
+}
+
 func TestParseCommand_RejectsUnsupportedExtension(t *testing.T) {
 	// Given a validate invocation with a non-Event-Modeling extension.
 	args := []string{"validate", "model.hcl"}
@@ -251,6 +271,68 @@ func TestRun_FormatWritesToStdoutOrInPlace(t *testing.T) {
 	}
 }
 
+func TestRun_DiagramWritesHTMLToStdoutOrFile(t *testing.T) {
+	modelPath := writeModel(t, "valid.em.hcl", `state_change "example" {}`)
+
+	stdoutResult := runCLI(t, "diagram", modelPath)
+	if stdoutResult.exitCode != 0 || stdoutResult.stderr != "" {
+		t.Fatalf("stdout diagram result = %#v", stdoutResult)
+	}
+	if !strings.Contains(stdoutResult.stdout, "<!doctype html>") || !strings.Contains(stdoutResult.stdout, "const MODEL =") {
+		t.Fatalf("stdout does not contain rendered HTML")
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "model.html")
+	fileResult := runCLI(t, "diagram", "--output", outputPath, modelPath)
+	if fileResult.exitCode != 0 || fileResult.stdout != "" {
+		t.Fatalf("file diagram result = %#v", fileResult)
+	}
+	written, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read diagram: %v", err)
+	}
+	if !strings.Contains(string(written), "<!doctype html>") {
+		t.Fatal("output file does not contain rendered HTML")
+	}
+}
+
+func TestRun_DiagramRejectsInvalidModelWithoutOverwritingOutput(t *testing.T) {
+	modelPath := writeModel(t, "invalid.em.hcl", `state_change "example" {
+  command "submit" { to = [event.example.missing] }
+}`)
+	outputPath := filepath.Join(t.TempDir(), "existing.html")
+	const existing = "keep this"
+	if err := os.WriteFile(outputPath, []byte(existing), 0o600); err != nil {
+		t.Fatalf("write existing output: %v", err)
+	}
+
+	result := runCLI(t, "diagram", modelPath, "-o", outputPath)
+	if result.exitCode != 1 || result.stdout != "" || !strings.Contains(result.stderr, "EM102") {
+		t.Fatalf("diagram result = %#v", result)
+	}
+	written, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read existing output: %v", err)
+	}
+	if got := string(written); got != existing {
+		t.Fatalf("output = %q, want existing content", got)
+	}
+}
+
+func TestRun_DiagramReportsWarningsAndStillRenders(t *testing.T) {
+	modelPath := writeModel(t, "warning.em.hcl", `state_change "example" {
+  command "submit" {}
+}`)
+
+	result := runCLI(t, "diagram", modelPath)
+	if result.exitCode != 0 || !strings.Contains(result.stdout, "<!doctype html>") {
+		t.Fatalf("diagram result = %#v", result)
+	}
+	if !strings.Contains(result.stderr, "Warning EM404") {
+		t.Fatalf("stderr = %q, want warning", result.stderr)
+	}
+}
+
 func TestRun_ValidateRejectsNonEventModelExtension(t *testing.T) {
 	// Given a valid model whose file name does not end in .em.hcl.
 	modelPath := writeModel(t, "valid.hcl", `bounded_context "example" {
@@ -283,6 +365,9 @@ func TestRun_RejectsInvalidArguments(t *testing.T) {
 		{"missing model path", []string{"validate"}},
 		{"multiple model paths", []string{"validate", "first.em.hcl", "second.em.hcl"}},
 		{"unknown subcommand", []string{"format", "model.em.hcl"}},
+		{"diagram missing model path", []string{"diagram"}},
+		{"diagram missing output value", []string{"diagram", "model.em.hcl", "-o"}},
+		{"diagram multiple models", []string{"diagram", "first.em.hcl", "second.em.hcl"}},
 	}
 
 	for _, test := range tests {
@@ -296,7 +381,7 @@ func TestRun_RejectsInvalidArguments(t *testing.T) {
 			if result.exitCode != 2 {
 				t.Fatalf("exit code = %d, want 2; stderr = %q", result.exitCode, result.stderr)
 			}
-			if got, want := result.stderr, "usage: eventmodeling-hcl <validate [--profile workshop|valid|strict] | fmt [-w]> <model.em.hcl>\n"; got != want {
+			if got, want := result.stderr, "usage: eventmodeling-hcl <validate [--profile workshop|valid|strict] | fmt [-w] | diagram> <model.em.hcl> [diagram: -o <file>]\n"; got != want {
 				t.Fatalf("stderr = %q, want %q", got, want)
 			}
 		})

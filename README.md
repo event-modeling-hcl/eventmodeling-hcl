@@ -4,8 +4,8 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Native HCL v0.2.0 for the Event Modeling Specification. This repository
-provides a strict validator, canonical formatter, typed semantic model,
+`eventmodeling-hcl` v0.3.0 implements Event Modeling HCL Specification v0.2.0.
+This repository provides a strict validator, canonical formatter, typed semantic model,
 normative language documentation, and executable examples. The domain reference is the upstream [Event Modeling
 Specification](https://github.com/dilgerma/event-modeling-spec); the HCL
 specification and validator in this repository define its native port. The
@@ -40,7 +40,7 @@ With GitHub CLI 2.49.0 or newer, verify the downloaded archive was produced by
 this repository's release workflow:
 
 ```bash
-gh attestation verify eventmodeling-hcl_0.2.0_linux_amd64.tar.gz \
+gh attestation verify eventmodeling-hcl_0.3.0_linux_amd64.tar.gz \
   --repo event-modeling-hcl/eventmodeling-hcl
 ```
 
@@ -62,6 +62,25 @@ escalates unreasoned commands and open hotspots to errors.
 Model files must use the `.em.hcl` extension. HCL is the language; the suffix
 identifies a complete Event Modeling document to this validator. Check the
 installed binary version with `eventmodeling-hcl version`.
+
+Render a valid model as a self-contained, interactive HTML canvas with
+content-adaptive slices, left-to-right flow stages, dedicated actor, screen,
+processor, model, and event swimlanes, typed flow arrows, and scenarios
+available from each slice:
+
+```bash
+./bin/eventmodeling-hcl diagram examples/complete.em.hcl -o complete.html
+./bin/eventmodeling-hcl diagram examples/complete.em.hcl > complete.html
+```
+
+The `diagram` command validates with the default `valid` profile before
+rendering. Errors prevent output; modeling warnings are reported without
+blocking the diagram. The generated file embeds its CSS, JavaScript, and model
+data. Domain events use Event Storming orange; events owned by external bounded
+contexts use pink. Events in the same slice are arranged horizontally, and an
+actor card highlights its associated screens. A `screen_image` retains its
+user-supplied URL, so that preview may load external media when the HTML is
+opened.
 
 ## Authoring
 
@@ -202,7 +221,7 @@ exhaustiveness, vulnerability, example-validation, and release checks.
 
 ## Boundaries
 
-v0.2.0 resolves references within a single document and enforces scoped
+The supported HCL Specification v0.2.0 resolves references within a single document and enforces scoped
 identity, canonical typed flows, scenario shape, field examples, and workflow
 patterns. `internal/model.Load` exposes a validated typed IR with normalized
 edges; it does not support event groups, context maps, multi-file loading,

@@ -10,13 +10,15 @@ import (
 	"strings"
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/formatter"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/model"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/renderer"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
 	"github.com/hashicorp/hcl/v2"
 )
 
 var version = "dev"
 
-const usageMessage = "usage: eventmodeling-hcl <validate [--profile workshop|valid|strict] | fmt [-w]> <model.em.hcl>"
+const usageMessage = "usage: eventmodeling-hcl <validate [--profile workshop|valid|strict] | fmt [-w] | diagram> <model.em.hcl> [diagram: -o <file>]"
 
 // commandKind names which subcommand a parsed command line requested.
 type commandKind uint8
@@ -24,6 +26,7 @@ type commandKind uint8
 const (
 	validateCommand commandKind = iota
 	formatCommand
+	diagramCommand
 	versionCommand
 )
 
@@ -34,6 +37,7 @@ type cliCommand struct {
 	path    string
 	profile validator.Profile
 	write   bool
+	output  string
 }
 
 // main runs the CLI against the process's real arguments and standard
@@ -58,6 +62,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if command.kind == formatCommand {
 		return formatFile(command, stdout, stderr)
+	}
+	if command.kind == diagramCommand {
+		return diagramFile(command, stdout, stderr)
 	}
 	diagnostics := validator.ValidateFileWithProfile(command.path, command.profile)
 	if len(diagnostics) > 0 {
@@ -94,6 +101,9 @@ func parseCommand(args []string) (cliCommand, error) {
 	if len(args) == 3 && args[0] == "fmt" && args[1] == "-w" {
 		return formatCLICommand(args[2], true)
 	}
+	if len(args) >= 1 && args[0] == "diagram" {
+		return diagramCLICommand(args[1:])
+	}
 	return cliCommand{}, errors.New(usageMessage)
 }
 
@@ -109,6 +119,33 @@ func formatCLICommand(path string, write bool) (cliCommand, error) {
 		return cliCommand{}, errors.New("model file must use the .em.hcl extension")
 	}
 	return cliCommand{kind: formatCommand, path: path, write: write}, nil
+}
+
+func diagramCLICommand(args []string) (cliCommand, error) {
+	var path string
+	var output string
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "-o", "--output":
+			if output != "" || index+1 >= len(args) {
+				return cliCommand{}, errors.New(usageMessage)
+			}
+			output = args[index+1]
+			index++
+		default:
+			if path != "" {
+				return cliCommand{}, errors.New(usageMessage)
+			}
+			path = args[index]
+		}
+	}
+	if path == "" {
+		return cliCommand{}, errors.New(usageMessage)
+	}
+	if !strings.HasSuffix(path, ".em.hcl") {
+		return cliCommand{}, errors.New("model file must use the .em.hcl extension")
+	}
+	return cliCommand{kind: diagramCommand, path: path, output: output}, nil
 }
 
 func formatFile(command cliCommand, stdout, stderr io.Writer) int {
@@ -137,6 +174,42 @@ func formatFile(command cliCommand, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "failed to write %s: %v\n", command.path, err)
 		return 1
 	}
+	return 0
+}
+
+func diagramFile(command cliCommand, stdout, stderr io.Writer) int {
+	source, err := os.ReadFile(command.path)
+	if err != nil {
+		diagnostics := hcl.Diagnostics{&hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Extra:    validator.DiagnosticCodeExtra("EM001"),
+			Summary:  "Failed to read file",
+			Detail:   fmt.Sprintf("The configuration file %q could not be read.", command.path),
+		}}
+		writeDiagnostics(stderr, diagnostics)
+		return 1
+	}
+	loaded, diagnostics := model.Load(command.path, source, model.Valid)
+	if len(diagnostics) > 0 {
+		writeDiagnostics(stderr, diagnostics)
+	}
+	if diagnostics.HasErrors() {
+		return 1
+	}
+	html, err := renderer.Render(command.path, loaded)
+	if err != nil {
+		fmt.Fprintf(stderr, "failed to render %s: %v\n", command.path, err)
+		return 1
+	}
+	if command.output == "" {
+		_, _ = io.WriteString(stdout, html)
+		return 0
+	}
+	if err := os.WriteFile(command.output, []byte(html), 0o644); err != nil {
+		fmt.Fprintf(stderr, "failed to write %s: %v\n", command.output, err)
+		return 1
+	}
+	fmt.Fprintf(stderr, "wrote %s\n", command.output)
 	return 0
 }
 

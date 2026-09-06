@@ -6,6 +6,27 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-09-06
+
+This release adds rendering tooling while retaining full compatibility with the
+v0.2.0 Event Modeling HCL language specification.
+
+### Added
+
+- `diagram <model.em.hcl> [-o <file>]` command for generating a self-contained,
+  interactive HTML Event Model canvas from the validated typed IR.
+- Workflow-level `screen_image` previews, canonical flow arrows, slice filters,
+  scenario details, field metadata, chapters, and hotspots in rendered diagrams.
+- Content-adaptive left-to-right slice layouts with dedicated actor and processor
+  swimlanes, horizontally grouped events, and actor-to-screen highlighting.
+- Event Storming pink styling for events owned by external bounded contexts,
+  while domain events retain their orange styling.
+
+### Changed
+
+- The typed IR retains field-type ID/PII metadata and scenario examples needed
+  by downstream renderers.
+
 ## [v0.2.0] - 2026-09-05
 
 Implements the v0.2.0 native HCL language surface. See the

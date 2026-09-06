@@ -24,6 +24,9 @@ profile.cov
 bin/
 dist/
 
+# Local Event Model diagram previews
+/site*.html
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
