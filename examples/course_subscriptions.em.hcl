@@ -87,15 +87,12 @@ bounded_context "course_subscriptions" {
     aggregate = aggregate.enrollment
 
     field "student_id" {
-      type = field_type.student_id
     }
 
     field "name" {
-      type = field_type.name
     }
 
     field "course_limit" {
-      type = field_type.course_limit
     }
   }
 
@@ -104,15 +101,12 @@ bounded_context "course_subscriptions" {
     aggregate = aggregate.course
 
     field "course_id" {
-      type = field_type.course_id
     }
 
     field "title" {
-      type = field_type.title
     }
 
     field "capacity" {
-      type = field_type.capacity
     }
   }
 
@@ -121,11 +115,9 @@ bounded_context "course_subscriptions" {
     aggregate = aggregate.course
 
     field "course_id" {
-      type = field_type.course_id
     }
 
     field "capacity" {
-      type = field_type.capacity
     }
   }
 
@@ -134,11 +126,9 @@ bounded_context "course_subscriptions" {
     aggregate = aggregate.enrollment
 
     field "course_id" {
-      type = field_type.course_id
     }
 
     field "student_id" {
-      type = field_type.student_id
     }
   }
 
@@ -147,11 +137,9 @@ bounded_context "course_subscriptions" {
     aggregate = aggregate.enrollment
 
     field "course_id" {
-      type = field_type.course_id
     }
 
     field "student_id" {
-      type = field_type.student_id
     }
   }
 }
@@ -166,15 +154,12 @@ translation "register_student" {
     to       = [processor.register_student]
 
     field "student_id" {
-      type = field_type.course_subscriptions.student_id
     }
 
     field "name" {
-      type = field_type.course_subscriptions.name
     }
 
     field "course_limit" {
-      type = field_type.course_subscriptions.course_limit
     }
   }
 
@@ -188,15 +173,12 @@ translation "register_student" {
     to    = [event.course_subscriptions.student_registered]
 
     field "student_id" {
-      type = field_type.course_subscriptions.student_id
     }
 
     field "name" {
-      type = field_type.course_subscriptions.name
     }
 
     field "course_limit" {
-      type = field_type.course_subscriptions.course_limit
     }
   }
 
@@ -250,15 +232,12 @@ state_change "register_course" {
     to                = [event.course_subscriptions.course_registered]
 
     field "course_id" {
-      type = field_type.course_subscriptions.course_id
     }
 
     field "title" {
-      type = field_type.course_subscriptions.title
     }
 
     field "capacity" {
-      type = field_type.course_subscriptions.capacity
     }
   }
 
@@ -311,19 +290,15 @@ state_view "course_catalog" {
     to = [screen.available_courses, screen.course_catalog]
 
     field "course_id" {
-      type = field_type.course_subscriptions.course_id
     }
 
     field "title" {
-      type = field_type.course_subscriptions.title
     }
 
     field "capacity" {
-      type = field_type.course_subscriptions.capacity
     }
 
     field "number_of_subscriptions" {
-      type = field_type.course_subscriptions.number_of_subscriptions
     }
   }
 
@@ -413,11 +388,9 @@ state_change "change_course_capacity" {
     to        = [event.course_subscriptions.course_capacity_changed]
 
     field "course_id" {
-      type = field_type.course_subscriptions.course_id
     }
 
     field "capacity" {
-      type = field_type.course_subscriptions.capacity
     }
   }
 
@@ -501,11 +474,9 @@ state_change "confirm_subscription" {
     to        = [event.course_subscriptions.student_subscribed]
 
     field "course_id" {
-      type = field_type.course_subscriptions.course_id
     }
 
     field "student_id" {
-      type = field_type.course_subscriptions.student_id
     }
   }
 
@@ -612,15 +583,12 @@ state_view "my_subscribed_courses" {
     to = [screen.my_subscribed_courses]
 
     field "student_id" {
-      type = field_type.course_subscriptions.student_id
     }
 
     field "subscription_count" {
-      type = field_type.course_subscriptions.subscription_count
     }
 
     field "course_limit" {
-      type = field_type.course_subscriptions.course_limit
     }
 
     field "courses" {
@@ -717,11 +685,9 @@ state_change "unsubscribe_student" {
     to        = [event.course_subscriptions.student_unsubscribed]
 
     field "course_id" {
-      type = field_type.course_subscriptions.course_id
     }
 
     field "student_id" {
-      type = field_type.course_subscriptions.student_id
     }
   }
 

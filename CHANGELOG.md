@@ -6,6 +6,23 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+### Added
+
+- Field shorthand: a `field` block may omit `type` and infer the same-named
+  `field_type` — resolved in the owning `bounded_context` for event and subfield
+  fields, and by unique document-wide name for workflow-element fields.
+- `fields = [field_type.<...>]` list attribute on events, workflow elements,
+  tables, and scenario steps, synthesizing one field per entry.
+- Screen `field` blocks and `fields` lists are now exercised by the shipped
+  examples and covered by tests.
+
+### Changed
+
+- A `field_type` declaration must still set an explicit built-in `type`; only
+  plain `field` blocks may use the shorthand.
+- The formatter ranks the `fields` attribute with the semantic group, before
+  `from` and `to`.
+
 ## [v0.3.1] - 2026-09-07
 
 This release polishes the diagram canvas introduced in v0.3.0.

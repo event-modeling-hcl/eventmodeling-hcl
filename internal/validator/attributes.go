@@ -72,7 +72,7 @@ func elementRule(name string) (attributeRule, bool) {
 		return attributeRule{kind: boolValue}, true
 	case "prototype":
 		return attributeRule{kind: objectValue}, true
-	case "aggregate", "aggregate_dependencies", "from", "to", "actor":
+	case "aggregate", "aggregate_dependencies", "from", "to", "actor", "fields":
 		return attributeRule{reference: true}, true
 	}
 	return attributeRule{}, false
@@ -94,7 +94,12 @@ func fieldRule(name string) (attributeRule, bool) {
 	return attributeRule{}, false
 }
 
-func tableRule(name string) (attributeRule, bool)       { return stringRule(name, "title") }
+func tableRule(name string) (attributeRule, bool) {
+	if name == "fields" {
+		return attributeRule{reference: true}, true
+	}
+	return stringRule(name, "title")
+}
 func screenImageRule(name string) (attributeRule, bool) { return stringRule(name, "title", "url") }
 func commentRule(name string) (attributeRule, bool)     { return stringRule(name, "description") }
 
@@ -112,7 +117,7 @@ func scenarioStepRule(name string) (attributeRule, bool) {
 		return attributeRule{kind: objectListValue}, true
 	case "expect_empty_list":
 		return attributeRule{kind: boolValue}, true
-	case "event", "command", "readmodel", "processor":
+	case "event", "command", "readmodel", "processor", "fields":
 		return attributeRule{reference: true}, true
 	}
 	return attributeRule{}, false

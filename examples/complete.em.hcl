@@ -150,9 +150,13 @@ state_change "register_pet" {
   status      = "created"
 
   screen "pet_screen" {
-    title = "Pet screen"
-    actor = actor.clinic_staff
-    to    = [command.register_pet_command]
+    title  = "Pet screen"
+    actor  = actor.clinic_staff
+    fields = [field_type.clinic.pet_name]
+    to     = [command.register_pet_command]
+
+    field "pet_id" {
+    }
   }
 
   screen_image "pet_form" {

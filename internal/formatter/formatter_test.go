@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -34,6 +35,48 @@ func TestFormat_OrdersAttributesAndPreservesTraversals(t *testing.T) {
 `
 	if got := string(formatted); got != want {
 		t.Fatalf("formatted = %q, want %q", got, want)
+	}
+}
+
+func TestFormat_PreservesFieldShorthandsAndRanksFieldsAttribute(t *testing.T) {
+	source := []byte(`bounded_context "clinic" {
+  field_type "pet_id" { type = "UUID" }
+  field_type "pet_name" { type = "String" }
+
+  event "pet_added" {
+    from   = [event.clinic.pet_added]
+    fields = [field_type.pet_name]
+    title  = "Pet Added"
+
+    field "pet_id" {}
+  }
+}
+`)
+
+	once, diagnostics := Format("model.em.hcl", source)
+	if diagnostics.HasErrors() {
+		t.Fatalf("first diagnostics = %s", diagnostics.Error())
+	}
+	twice, diagnostics := Format("model.em.hcl", once)
+	if diagnostics.HasErrors() {
+		t.Fatalf("second diagnostics = %s", diagnostics.Error())
+	}
+	if !bytes.Equal(once, twice) {
+		t.Fatalf("format is not idempotent:\n%s", once)
+	}
+
+	got := string(once)
+	if !strings.Contains(got, "fields = [field_type.pet_name]") {
+		t.Fatalf("list shorthand not preserved:\n%s", got)
+	}
+	if strings.Count(got, "type = ") != 2 {
+		t.Fatalf("empty-body field was expanded:\n%s", got)
+	}
+	title := strings.Index(got, "title")
+	fields := strings.Index(got, "fields")
+	from := strings.Index(got, "from")
+	if !(title < fields && fields < from) {
+		t.Fatalf("attribute order = title:%d fields:%d from:%d, want title < fields < from:\n%s", title, fields, from, got)
 	}
 }
 

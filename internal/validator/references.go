@@ -277,6 +277,29 @@ func (v *contextValidator) fieldTypeAddress(attribute *hcl.Attribute) (string, h
 	return address, nil
 }
 
+// inferredFieldTypeAddress resolves the field_type a typeless field block infers
+// from its own name. A field owned by a bounded_context (event or subfield)
+// resolves against that context; a workflow-element field resolves the unique
+// document-wide field_type of the same name and errors on absence or ambiguity.
+func (v *contextValidator) inferredFieldTypeAddress(name string, subject hcl.Range) (string, hcl.Diagnostics) {
+	if v.contextID != "" {
+		address := v.contextID + "." + name
+		if _, exists := v.model.index.fieldTypes[address]; !exists {
+			return "", hcl.Diagnostics{errorDiagnostic(codeInvalidFieldType, subject, "Unresolved field type", fmt.Sprintf("field %q has no type and bounded_context %q declares no field_type %q.", name, v.contextID, name))}
+		}
+		return address, nil
+	}
+	contexts := v.model.index.fieldTypeNames[name]
+	switch len(contexts) {
+	case 1:
+		return contexts[0] + "." + name, nil
+	case 0:
+		return "", hcl.Diagnostics{errorDiagnostic(codeInvalidFieldType, subject, "Unresolved field type", fmt.Sprintf("field %q has no type and no field_type %q is declared in any bounded_context.", name, name))}
+	default:
+		return "", hcl.Diagnostics{errorDiagnostic(codeInvalidFieldType, subject, "Ambiguous field type", fmt.Sprintf("field %q has no type and field_type %q is declared in multiple bounded_contexts (%s); add an explicit type.", name, name, strings.Join(contexts, ", ")))}
+	}
+}
+
 func absoluteTraversal(attribute *hcl.Attribute) (hcl.Traversal, hcl.Diagnostics) {
 	return hcl.AbsTraversalForExpr(attribute.Expr)
 }

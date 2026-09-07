@@ -62,6 +62,7 @@ type modelIndex struct {
 	boundedContexts  map[string]bool
 	catalogEvents    map[string]bool
 	fieldTypes       map[string]fieldTypeRef
+	fieldTypeNames   map[string][]string
 	chapters         map[string]bool
 	hotspots         map[string]bool
 	systems          map[string]bool
@@ -115,6 +116,7 @@ func buildIndex(body hcl.Body) (modelIndex, hcl.Diagnostics) {
 		boundedContexts:  map[string]bool{},
 		catalogEvents:    map[string]bool{},
 		fieldTypes:       map[string]fieldTypeRef{},
+		fieldTypeNames:   map[string][]string{},
 		chapters:         map[string]bool{},
 		hotspots:         map[string]bool{},
 		systems:          map[string]bool{},
@@ -183,6 +185,7 @@ func (i *modelIndex) addBoundedContext(block *hcl.Block) hcl.Diagnostics {
 				continue
 			}
 			i.fieldTypes[address] = readFieldType(child.Body)
+			i.fieldTypeNames[child.Labels[0]] = append(i.fieldTypeNames[child.Labels[0]], contextID)
 		}
 	}
 	return diagnostics
@@ -380,7 +383,7 @@ func (v *modelValidator) validateElement(workflowType, workflowID string, block 
 			diagnostics = append(diagnostics, v.validateFlowReferences(attribute, workflowType, workflowID, block.Type, direction)...)
 		}
 	}
-	diagnostics = append(diagnostics, context.validateFields(content.Blocks)...)
+	diagnostics = append(diagnostics, context.validateElementFields(content)...)
 	return diagnostics
 }
 
@@ -389,7 +392,7 @@ func (v *modelValidator) validateTable(block *hcl.Block) hcl.Diagnostics {
 	content, diagnostics := block.Body.Content(&schema)
 	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, tableRule)...)
 	context := contextValidator{model: v}
-	diagnostics = append(diagnostics, context.validateFields(content.Blocks)...)
+	diagnostics = append(diagnostics, context.validateElementFields(content)...)
 	return diagnostics
 }
 
@@ -403,12 +406,22 @@ func (v *contextValidator) validateEvent(block *hcl.Block) hcl.Diagnostics {
 	if dependencies := content.Attributes["aggregate_dependencies"]; dependencies != nil {
 		diagnostics = append(diagnostics, v.validateAggregateList(dependencies, true)...)
 	}
-	diagnostics = append(diagnostics, v.validateFields(content.Blocks)...)
+	diagnostics = append(diagnostics, v.validateElementFields(content)...)
 	return diagnostics
 }
 
-func (v *contextValidator) validateFields(fields hcl.Blocks) hcl.Diagnostics {
-	seen := make(map[string]bool, len(fields))
+// validateElementFields validates the optional shorthand fields = [...] list
+// attribute together with the field blocks that share its namespace.
+func (v *contextValidator) validateElementFields(content *hcl.BodyContent) hcl.Diagnostics {
+	seen := map[string]bool{}
+	var diagnostics hcl.Diagnostics
+	if attribute := content.Attributes["fields"]; attribute != nil {
+		diagnostics = append(diagnostics, v.validateFieldList(attribute, seen)...)
+	}
+	return append(diagnostics, v.validateFields(content.Blocks, seen)...)
+}
+
+func (v *contextValidator) validateFields(fields hcl.Blocks, seen map[string]bool) hcl.Diagnostics {
 	var diagnostics hcl.Diagnostics
 	for _, field := range fields {
 		if len(field.Labels) == 0 {
@@ -426,13 +439,47 @@ func (v *contextValidator) validateFields(fields hcl.Blocks) hcl.Diagnostics {
 	return diagnostics
 }
 
+// validateFieldList resolves each entry of a fields = [...] attribute as a
+// field_type reference and records its synthesized field name in seen.
+func (v *contextValidator) validateFieldList(attribute *hcl.Attribute, seen map[string]bool) hcl.Diagnostics {
+	expressions, diagnostics := hcl.ExprList(attribute.Expr)
+	if diagnostics.HasErrors() {
+		return diagnostics
+	}
+	for _, expression := range expressions {
+		entry := &hcl.Attribute{Name: "fields", Expr: expression, Range: attribute.Range, NameRange: attribute.NameRange}
+		address, referenceDiagnostics := v.fieldTypeAddress(entry)
+		diagnostics = append(diagnostics, referenceDiagnostics...)
+		if referenceDiagnostics.HasErrors() {
+			continue
+		}
+		name := address[strings.LastIndex(address, ".")+1:]
+		if seen[name] {
+			diagnostics = append(diagnostics, errorDiagnostic(codeDuplicateID, expression.Range(), "Duplicate field name", fmt.Sprintf("field %q is declared more than once in its namespace.", name)))
+			continue
+		}
+		seen[name] = true
+	}
+	return diagnostics
+}
+
 func (v *contextValidator) validateField(block *hcl.Block, fieldTypeDeclaration bool) hcl.Diagnostics {
 	schema := fieldSchema(block.Type)
 	content, diagnostics := block.Body.Content(&schema)
 	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, fieldRule)...)
 	typeAttribute := content.Attributes["type"]
 	if typeAttribute == nil {
-		return diagnostics
+		if fieldTypeDeclaration {
+			return append(diagnostics, errorDiagnostic(codeInvalidFieldType, block.DefRange, "Invalid field type", "a field_type declaration must set an explicit built-in type."))
+		}
+		address, inferenceDiagnostics := v.inferredFieldTypeAddress(block.Labels[0], block.DefRange)
+		diagnostics = append(diagnostics, inferenceDiagnostics...)
+		if !inferenceDiagnostics.HasErrors() {
+			if reference, exists := v.model.index.fieldTypes[address]; exists {
+				diagnostics = append(diagnostics, validateReferencedExample(content.Attributes, reference)...)
+			}
+		}
+		return append(diagnostics, v.validateFields(content.Blocks, map[string]bool{})...)
 	}
 	if fieldTypeDeclaration {
 		fieldType, ok := literalString(typeAttribute)
@@ -450,7 +497,7 @@ func (v *contextValidator) validateField(block *hcl.Block, fieldTypeDeclaration 
 			diagnostics = append(diagnostics, validateReferencedExample(content.Attributes, reference)...)
 		}
 	}
-	diagnostics = append(diagnostics, v.validateFields(content.Blocks)...)
+	diagnostics = append(diagnostics, v.validateFields(content.Blocks, map[string]bool{})...)
 	return diagnostics
 }
 
@@ -520,7 +567,7 @@ func (v *modelValidator) validateScenarioStep(workflowType, workflowID string, b
 		diagnostics = append(diagnostics, v.validateReference(content.Attributes[target], target, workflowID)...)
 	}
 	context := contextValidator{model: v}
-	diagnostics = append(diagnostics, context.validateFields(content.Blocks)...)
+	diagnostics = append(diagnostics, context.validateElementFields(content)...)
 	return diagnostics
 }
 

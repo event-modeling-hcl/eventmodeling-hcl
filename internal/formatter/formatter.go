@@ -117,6 +117,8 @@ func attributeRank(name string) int {
 		return 180
 	case "workflows", "on":
 		return 190
+	case "fields":
+		return 195
 	case "from":
 		return 900
 	case "to":

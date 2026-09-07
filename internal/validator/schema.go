@@ -37,7 +37,7 @@ func eventSchema() hcl.BodySchema {
 		Attributes: []hcl.AttributeSchema{
 			{Name: "group_id"}, {Name: "tags"}, {Name: "title"}, {Name: "description"},
 			{Name: "aggregate"}, {Name: "aggregate_dependencies"}, {Name: "service"}, {Name: "sketched"},
-			{Name: "prototype"}, {Name: "list_element"},
+			{Name: "prototype"}, {Name: "list_element"}, {Name: "fields"},
 		},
 		Blocks: []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}},
 	}
@@ -60,7 +60,7 @@ func elementSchema(kind string) hcl.BodySchema {
 		{Name: "group_id"}, {Name: "tags"}, {Name: "title"}, {Name: "description"},
 		{Name: "aggregate"}, {Name: "aggregate_dependencies"}, {Name: "api_endpoint"}, {Name: "service"},
 		{Name: "creates_aggregate"}, {Name: "external_trigger"}, {Name: "triggers"}, {Name: "sketched"}, {Name: "prototype"},
-		{Name: "list_element"}, {Name: "from"}, {Name: "to"},
+		{Name: "list_element"}, {Name: "from"}, {Name: "to"}, {Name: "fields"},
 	}
 	if kind == "readmodel" {
 		attributes = append(attributes, hcl.AttributeSchema{Name: "question", Required: true})
@@ -74,7 +74,7 @@ func elementSchema(kind string) hcl.BodySchema {
 func fieldSchema(_ string) hcl.BodySchema {
 	return hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{
-			{Name: "type", Required: true}, {Name: "example"}, {Name: "mapping"}, {Name: "optional"},
+			{Name: "type"}, {Name: "example"}, {Name: "mapping"}, {Name: "optional"},
 			{Name: "technical_attribute"}, {Name: "generated"}, {Name: "id_attribute"}, {Name: "pii"},
 			{Name: "schema"}, {Name: "cardinality"},
 		},
@@ -83,7 +83,7 @@ func fieldSchema(_ string) hcl.BodySchema {
 }
 
 func tableSchema() hcl.BodySchema {
-	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}}, Blocks: []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}}}
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "fields"}}, Blocks: []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}}}
 }
 
 func scenarioSchema() hcl.BodySchema {
@@ -97,7 +97,7 @@ func scenarioStepSchema() hcl.BodySchema {
 	return hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{
 			{Name: "title"}, {Name: "tags"}, {Name: "examples"}, {Name: "event"}, {Name: "command"},
-			{Name: "readmodel"}, {Name: "processor"}, {Name: "error"}, {Name: "expect_empty_list"},
+			{Name: "readmodel"}, {Name: "processor"}, {Name: "error"}, {Name: "expect_empty_list"}, {Name: "fields"},
 		},
 		Blocks: []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}},
 	}

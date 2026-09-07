@@ -301,6 +301,133 @@ hotspot "missing_rule" {
 	requireSeverityForCode(t, workshop, "EM406", hcl.DiagInvalid)
 }
 
+func TestValidateSource_InfersFieldTypeForTypelessEventField(t *testing.T) {
+	model := `bounded_context "clinic" {
+  title = "Clinic"
+  field_type "pet_id" { type = "UUID" }
+  event "pet_added" {
+    field "pet_id" {}
+  }
+}`
+
+	requireNoErrors(t, validateModel(t, model))
+}
+
+func TestValidateSource_InfersFieldTypeForTypelessWorkflowElementField(t *testing.T) {
+	model := `bounded_context "clinic" {
+  title = "Clinic"
+  aggregate "pet" {}
+  field_type "pet_id" { type = "UUID" }
+  event "pet_added" { aggregate = aggregate.pet }
+}
+
+state_change "add_pet" {
+  title = "Add Pet"
+  command "add_pet" {
+    title            = "Add Pet"
+    external_trigger = true
+    to               = [event.clinic.pet_added]
+    field "pet_id" {}
+  }
+}`
+
+	requireNoErrors(t, validateModel(t, model))
+}
+
+func TestValidateSource_AcceptsScreenFieldsWithShorthand(t *testing.T) {
+	model := `bounded_context "clinic" {
+  title = "Clinic"
+  field_type "pet_id" { type = "UUID" }
+  field_type "pet_name" { type = "String" }
+}
+
+state_change "add_pet" {
+  title = "Add Pet"
+  screen "add_pet_form" {
+    title  = "Add pet form"
+    fields = [field_type.clinic.pet_name]
+
+    field "pet_id" {}
+  }
+  command "add_pet" {
+    title            = "Add Pet"
+    external_trigger = true
+  }
+}`
+
+	requireNoErrors(t, validateModel(t, model))
+}
+
+func TestValidateSource_RejectsAmbiguousInferredFieldType(t *testing.T) {
+	model := `bounded_context "a" {
+  title = "A"
+  field_type "shared_id" { type = "UUID" }
+}
+bounded_context "b" {
+  title = "B"
+  field_type "shared_id" { type = "UUID" }
+}
+state_change "do_it" {
+  title = "Do It"
+  command "do_it" {
+    title            = "Do It"
+    external_trigger = true
+    field "shared_id" {}
+  }
+}`
+
+	requireDiagnostic(t, validateModel(t, model), "declared in multiple bounded_contexts")
+}
+
+func TestValidateSource_RejectsUnresolvedInferredFieldType(t *testing.T) {
+	model := `state_change "do_it" {
+  title = "Do It"
+  command "do_it" {
+    title            = "Do It"
+    external_trigger = true
+    field "mystery_id" {}
+  }
+}`
+
+	requireDiagnostic(t, validateModel(t, model), "no field_type")
+}
+
+func TestValidateSource_RejectsFieldTypeDeclarationWithoutType(t *testing.T) {
+	model := `bounded_context "clinic" {
+  title = "Clinic"
+  field_type "pet_id" {}
+}`
+
+	requireDiagnostic(t, validateModel(t, model), "must set an explicit built-in type")
+}
+
+func TestValidateSource_SynthesizesFieldsFromListShorthand(t *testing.T) {
+	model := `bounded_context "clinic" {
+  title = "Clinic"
+  field_type "pet_id" { type = "UUID" }
+  field_type "pet_name" { type = "String" }
+  event "pet_added" {
+    fields = [field_type.pet_id, field_type.pet_name]
+  }
+}`
+
+	requireNoErrors(t, validateModel(t, model))
+}
+
+func TestValidateSource_RejectsDuplicateNameBetweenListAndBlockFields(t *testing.T) {
+	model := `bounded_context "clinic" {
+  title = "Clinic"
+  field_type "pet_id" { type = "UUID" }
+  event "pet_added" {
+    fields = [field_type.pet_id]
+
+    field "pet_id" {}
+  }
+}`
+
+	requireDiagnostic(t, validateModel(t, model), `field "pet_id" is declared more than once`)
+}
+
 func validateModel(t *testing.T, model string) hcl.Diagnostics {
 	t.Helper()
 	return ValidateSource("model.em.hcl", []byte(model))

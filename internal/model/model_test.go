@@ -197,6 +197,63 @@ func TestAppointmentWeatherPatternsModel_SpecifiesEveryWorkflowPattern(t *testin
 	assertScenarioSteps(t, workflowByID(t, loaded, "translate_weather_change"), []StepKind{Given, Given, When, Then})
 }
 
+func TestLoad_ResolvesFieldShorthands(t *testing.T) {
+	source := []byte(`bounded_context "clinic" {
+  field_type "pet_id" { type = "UUID" }
+  field_type "pet_name" { type = "String" }
+
+  event "pet_added" {
+    fields = [field_type.pet_name]
+
+    field "pet_id" {}
+  }
+}
+
+state_change "add_pet" {
+  screen "add_pet_form" {
+    fields = [field_type.clinic.pet_name]
+
+    field "pet_id" {}
+  }
+  command "add_pet" {
+    external_trigger = true
+    to               = [event.clinic.pet_added]
+  }
+}`)
+
+	loaded, diagnostics := Load("model.em.hcl", source, Valid)
+	if diagnostics.HasErrors() {
+		t.Fatalf("diagnostics = %s", diagnostics.Error())
+	}
+
+	event := loaded.Contexts[0].Events[0]
+	if got := fieldNames(event.Fields); !sameStrings(got, []string{"pet_name", "pet_id"}) {
+		t.Fatalf("event field order = %#v, want [pet_name pet_id]", got)
+	}
+	if got, want := event.Fields[0].Type, "field_type.clinic.pet_name"; got != want {
+		t.Fatalf("list field type = %q, want %q", got, want)
+	}
+	if got, want := event.Fields[1].Type, "field_type.clinic.pet_id"; got != want {
+		t.Fatalf("inferred event field type = %q, want %q", got, want)
+	}
+
+	screen := elementByID(t, workflowByID(t, loaded, "add_pet"), "add_pet_form")
+	if got := fieldNames(screen.Fields); !sameStrings(got, []string{"pet_name", "pet_id"}) {
+		t.Fatalf("screen field order = %#v, want [pet_name pet_id]", got)
+	}
+	if got, want := screen.Fields[1].Type, "field_type.clinic.pet_id"; got != want {
+		t.Fatalf("inferred screen field type = %q, want %q", got, want)
+	}
+}
+
+func fieldNames(fields []Field) []string {
+	names := make([]string, len(fields))
+	for index, field := range fields {
+		names[index] = field.Name
+	}
+	return names
+}
+
 func workflowByID(t *testing.T, loaded *Model, id string) Workflow {
 	t.Helper()
 	for _, workflow := range loaded.Workflows {
