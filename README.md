@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`eventmodeling-hcl` v0.3.0 implements Event Modeling HCL Specification v0.2.0.
+`eventmodeling-hcl` v0.3.1 implements Event Modeling HCL Specification v0.2.0.
 This repository provides a strict validator, canonical formatter, typed semantic model,
 normative language documentation, and executable examples. The domain reference is the upstream [Event Modeling
 Specification](https://github.com/dilgerma/event-modeling-spec); the HCL
@@ -40,7 +40,7 @@ With GitHub CLI 2.49.0 or newer, verify the downloaded archive was produced by
 this repository's release workflow:
 
 ```bash
-gh attestation verify eventmodeling-hcl_0.3.0_linux_amd64.tar.gz \
+gh attestation verify eventmodeling-hcl_0.3.1_linux_amd64.tar.gz \
   --repo event-modeling-hcl/eventmodeling-hcl
 ```
 
@@ -64,7 +64,7 @@ identifies a complete Event Modeling document to this validator. Check the
 installed binary version with `eventmodeling-hcl version`.
 
 Render a valid model as a self-contained, interactive HTML canvas with
-content-adaptive slices, left-to-right flow stages, dedicated actor, screen,
+content-adaptive slices, left-to-right flow stages, dedicated screen,
 processor, model, and event swimlanes, typed flow arrows, and scenarios
 available from each slice:
 
@@ -77,10 +77,12 @@ The `diagram` command validates with the default `valid` profile before
 rendering. Errors prevent output; modeling warnings are reported without
 blocking the diagram. The generated file embeds its CSS, JavaScript, and model
 data. Domain events use Event Storming orange; events owned by external bounded
-contexts use pink. Events in the same slice are arranged horizontally, and an
-actor card highlights its associated screens. A `screen_image` retains its
-user-supplied URL, so that preview may load external media when the HTML is
-opened.
+contexts use pink. Events in the same slice are arranged horizontally. Each
+actor card renders directly beside its associated screen card, and flow arrows
+that point backward in the left-to-right layout (their target sits left of
+their source) use a dashed stroke, turning solid only while hovered. A
+`screen_image` retains its user-supplied URL, so that preview may load external
+media when the HTML is opened.
 
 ## Authoring
 

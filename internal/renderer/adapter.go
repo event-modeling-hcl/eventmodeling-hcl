@@ -101,7 +101,7 @@ func (a *adapter) adaptWorkflow(workflow model.Workflow) Slice {
 	slice := Slice{
 		ID: workflow.ID, Type: string(workflow.Kind), Title: workflow.Title,
 		Status: workflow.Status, Owner: a.ownerTitle(workflow.Owner), Description: workflow.Description,
-		Actors: []SliceActor{}, Elements: []Element{}, Scenarios: []Scenario{},
+		Elements: []Element{}, Scenarios: []Scenario{},
 	}
 	for _, source := range workflow.Elements {
 		slice.Elements = append(slice.Elements, a.adaptElement(workflow.ID, source))
@@ -113,10 +113,6 @@ func (a *adapter) adaptWorkflow(workflow model.Workflow) Slice {
 }
 
 func (a *adapter) assignLayout(view *ViewModel) {
-	actorByID := map[string]Actor{}
-	for id, actor := range view.Actors {
-		actorByID[id] = actor
-	}
 	for sliceIndex := range view.Slices {
 		slice := &view.Slices[sliceIndex]
 		stages := make(map[string]int, len(slice.Elements))
@@ -147,7 +143,6 @@ func (a *adapter) assignLayout(view *ViewModel) {
 			maxStage = max(maxStage, element.Stage)
 		}
 		slice.StageCount = maxStage + 1
-		slice.Actors = placeSliceActors(slice.Elements, actorByID)
 	}
 }
 
@@ -233,29 +228,6 @@ func compactStages(stages map[string]int) map[string]int {
 		result[id] = compact[stage]
 	}
 	return result
-}
-
-func placeSliceActors(elements []Element, actors map[string]Actor) []SliceActor {
-	placements := []SliceActor{}
-	actorIndex := map[string]int{}
-	for _, element := range elements {
-		if element.Kind != "screen" || element.Actor == "" {
-			continue
-		}
-		index, exists := actorIndex[element.Actor]
-		if !exists {
-			actor := actors[element.Actor]
-			index = len(placements)
-			actorIndex[element.Actor] = index
-			placements = append(placements, SliceActor{
-				ID: element.Actor, Title: actor.Title, AuthRequired: actor.AuthRequired,
-				Stage: element.Stage, ScreenIDs: []string{},
-			})
-		}
-		placements[index].ScreenIDs = append(placements[index].ScreenIDs, element.ID)
-		placements[index].Stage = min(placements[index].Stage, element.Stage)
-	}
-	return placements
 }
 
 func (a *adapter) adaptElement(workflowID string, source model.Element) Element {

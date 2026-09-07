@@ -73,7 +73,6 @@ func TestRenderHTML_IncludesAdaptiveTimelineLayout(t *testing.T) {
 		Contexts: map[string]Context{"partner": {Title: "Partner", External: true}},
 		Slices: []Slice{{
 			ID: "translate", Type: "translation", Title: "Translate", StageCount: 4,
-			Actors:   []SliceActor{{ID: "operator", Title: "Operator", Stage: 0, ScreenIDs: []string{"screen"}}},
 			Elements: []Element{{ID: "event", Kind: "event", Title: "Received", External: true}},
 		}},
 	}
@@ -85,7 +84,6 @@ func TestRenderHTML_IncludesAdaptiveTimelineLayout(t *testing.T) {
 	for _, expected := range []string{
 		"--external-event-fill",
 		`<span class="sub">model <b id="m-title">—</b> · HCL Spec <span class="mono" id="m-version">—</span></span>`,
-		`{key:"actors"`,
 		`{key:"processors"`,
 		"function sliceWidth",
 		"event-strip",
@@ -93,6 +91,52 @@ func TestRenderHTML_IncludesAdaptiveTimelineLayout(t *testing.T) {
 	} {
 		if !strings.Contains(html, expected) {
 			t.Errorf("HTML missing adaptive layout hook %q", expected)
+		}
+	}
+}
+
+func TestRenderHTML_InlinesActorsWithScreens(t *testing.T) {
+	view := &ViewModel{
+		Title:    "Actors",
+		Version:  specVersion,
+		Actors:   map[string]Actor{"student": {Title: "Student"}},
+		Contexts: map[string]Context{},
+		Slices: []Slice{{
+			ID: "subscribe", Type: "state_change", Title: "Subscribe", StageCount: 3,
+			Elements: []Element{{
+				ID: "subscribe__screen__confirm", Kind: "screen", Title: "Confirm subscription", Actor: "student",
+			}},
+		}},
+	}
+
+	html, err := RenderHTML(view)
+	if err != nil {
+		t.Fatalf("render HTML: %v", err)
+	}
+	for _, expected := range []string{"actor-screen-link", "screen-pair", "function drawActorLinks"} {
+		if !strings.Contains(html, expected) {
+			t.Errorf("HTML missing inline actor layout hook %q", expected)
+		}
+	}
+	if strings.Contains(html, `{key:"actors"`) {
+		t.Error("HTML still includes the separate Actors swimlane")
+	}
+}
+
+func TestRenderHTML_UsesDottedIdleBackwardArrows(t *testing.T) {
+	html, err := RenderHTML(&ViewModel{
+		Title: "Backward", Version: specVersion, Actors: map[string]Actor{}, Contexts: map[string]Context{},
+	})
+	if err != nil {
+		t.Fatalf("render HTML: %v", err)
+	}
+	for _, expected := range []string{
+		`p.classList.add("backward")`,
+		`.wires path.backward{stroke-dasharray:`,
+		`.board.hovering .wires path.backward.hot{stroke-dasharray:none`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Errorf("HTML missing backward-arrow treatment %q", expected)
 		}
 	}
 }

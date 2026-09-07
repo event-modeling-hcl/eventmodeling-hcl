@@ -235,9 +235,12 @@ button{font-family:inherit}
 /* wire layer sits above band backgrounds, below cards */
 .wires{position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; overflow:visible}
 .wires path{fill:none; stroke:var(--wire); stroke-width:2; opacity:.9; transition:opacity .14s, stroke .14s}
+.wires path.backward{stroke-dasharray:3 5}
+.wires path.actor-screen-link{stroke:color-mix(in srgb, #0D3F39 58%, var(--wire)); stroke-width:1.8; opacity:.78}
 .wires path.dim{opacity:.12}
 .board.hovering .wires path{opacity:.08}
 .board.hovering .wires path.hot{opacity:1; stroke:var(--wire-hot); stroke-width:2.6}
+.board.hovering .wires path.backward.hot{stroke-dasharray:none}
 
 /* corner + header + rail stacking */
 .cell{position:relative}
@@ -293,12 +296,14 @@ button{font-family:inherit}
 .band{border-left:1px solid var(--line-soft); border-bottom:1px dashed var(--line-soft);
   padding:16px 14px; display:grid; grid-template-columns:repeat(var(--stages),minmax(0,1fr));
   column-gap:20px; align-items:start; min-height:118px}
-.band.actors{min-height:72px; background:color-mix(in srgb, var(--accent) 2%, transparent)}
 .band.screens{min-height:146px; background:color-mix(in srgb, var(--accent) 3.5%, transparent)}
 .band.processors{min-height:96px; background:color-mix(in srgb, var(--proc-fill) 12%, transparent)}
 .band.domain{min-height:118px}
 .band.events{background:color-mix(in srgb, var(--event-fill) 7%, transparent)}
 .stage-stack{display:flex; flex-direction:column; gap:14px; min-width:0}
+.screen-pair{display:flex; align-items:center; gap:12px; min-width:0}
+.screen-pair>.actor-card{flex:0 0 152px}
+.screen-pair>.card{flex:1 1 176px; min-width:0}
 .event-strip{grid-column:1/-1; display:flex; align-items:flex-start; gap:12px; min-width:0; flex-wrap:nowrap}
 .event-strip .card{flex:0 0 176px}
 .event-group{display:flex; align-items:flex-start; gap:12px; flex:none}
@@ -604,16 +609,32 @@ const cols = MODEL.slices.length;
 board.style.setProperty("--cols", cols);
 
 const CARD_WIDTH = 176;
+const ACTOR_WIDTH = 152;
 const STAGE_GAP = 20;
 const CELL_PADDING = 28;
-function sliceWidth(slice){
+function screenActors(slice){
+  const firstScreenByActor = new Map();
+  slice.elements.filter(e=>e.kind==="screen"&&e.actor).forEach(screen=>{
+    const current = firstScreenByActor.get(screen.actor);
+    if(!current || screen.stage<current.stage) firstScreenByActor.set(screen.actor,screen);
+  });
+  return firstScreenByActor;
+}
+function stageTemplate(slice){
   const stages = Math.max(2, slice.stageCount||1);
-  const stageDemand = CELL_PADDING + stages*CARD_WIDTH + (stages-1)*STAGE_GAP;
+  const widths = Array(stages).fill(CARD_WIDTH);
+  screenActors(slice).forEach(screen=>{
+    const stage = Math.min(screen.stage||0,stages-1);
+    widths[stage] = Math.max(widths[stage],ACTOR_WIDTH+12+CARD_WIDTH);
+  });
+  return widths.map(width=>width+"px").join(" ");
+}
+function sliceWidth(slice){
+  const widths = stageTemplate(slice).split(" ").map(width=>Number.parseInt(width,10));
+  const stageDemand = CELL_PADDING + widths.reduce((total,width)=>total+width,0) + (widths.length-1)*STAGE_GAP;
   const events = slice.elements.filter(e=>e.kind==="event").length;
   const eventDemand = events ? CELL_PADDING + events*CARD_WIDTH + Math.max(0,events-1)*12 : 0;
-  const actors = (slice.actors||[]).length;
-  const actorDemand = actors ? CELL_PADDING + actors*CARD_WIDTH + Math.max(0,actors-1)*12 : 0;
-  return Math.max(480, stageDemand, eventDemand, actorDemand);
+  return Math.max(480, stageDemand, eventDemand);
 }
 const sliceWidths = MODEL.slices.map(sliceWidth);
 board.style.gridTemplateColumns = `var(--rail-w) ${sliceWidths.map(w=>w+"px").join(" ")}`;
@@ -655,20 +676,20 @@ function cardHTML(e){
   const c = el("div", "card "+e.kind+(e.external?" external":""), parts.join(""));
   c.dataset.id = e.id;
   c.dataset.slice = SLICE_OF[e.id];
+  if(e.actor) c.dataset.actor = e.actor;
   if(e.ctx) c.dataset.ctx = e.ctx;
   const image = c.querySelector(".image-preview img");
   if(image) image.addEventListener("error", ()=>image.parentElement.classList.add("failed"));
   return c;
 }
 
-function actorCard(actor, sliceIndex){
+function actorCard(actorID, actor, sliceIndex){
   const button = el("button", "actor-card",
     `<span class="person">${ACTOR_SVG}</span><span class="actor-copy"><span class="an">${esc(actor.title)}</span>`+
     `<span class="am">Actor</span></span>${actor.authRequired?LOCK_SVG:""}`);
   button.type = "button";
-  button.dataset.actor = actor.id;
+  button.dataset.actor = actorID;
   button.dataset.slice = sliceIndex;
-  button._screenIds = actor.screenIds||[];
   button.setAttribute("aria-label", actor.title+(actor.authRequired?", authentication required":""));
   return button;
 }
@@ -709,9 +730,8 @@ MODEL.slices.forEach((s,i)=>{
   frag.appendChild(h);
 });
 
-// Rows 3-7: actors and element swimlanes
+// Rows 3-6: element swimlanes
 const BANDS = [
-  {key:"actors",     name:"Actors",     sub:"people"},
   {key:"screens",    name:"Screens",    sub:"interfaces"},
   {key:"processors", name:"Processors", sub:"automation"},
   {key:"domain",     name:"Model",      sub:"commands & views"},
@@ -725,21 +745,8 @@ BANDS.forEach(b => {
   MODEL.slices.forEach((s,i)=>{
     const cell = el("div","cell band "+b.key);
     const stages = Math.max(2,s.stageCount||1);
-    cell.style.setProperty("--stages", stages);
-    if(b.key==="actors"){
-      const byStage = new Map();
-      (s.actors||[]).forEach(actor=>{
-        const stage = Math.min(actor.stage||0,stages-1);
-        if(!byStage.has(stage)) byStage.set(stage,[]);
-        byStage.get(stage).push(actor);
-      });
-      [...byStage.entries()].sort((a,b)=>a[0]-b[0]).forEach(([stage,actors])=>{
-        const stack = el("div","stage-stack");
-        stack.style.gridColumn = (stage+1);
-        actors.forEach(actor=>stack.appendChild(actorCard(actor,i)));
-        cell.appendChild(stack);
-      });
-    } else if(b.key==="events"){
+    cell.style.gridTemplateColumns = stageTemplate(s);
+    if(b.key==="events"){
       const items = s.elements.filter(e=>BAND[e.kind]===b.key);
       if(items.length){
         const strip = el("div","event-strip");
@@ -752,6 +759,7 @@ BANDS.forEach(b => {
       }
     } else {
       const byStage = new Map();
+      const firstScreenByActor = b.key==="screens" ? screenActors(s) : new Map();
       s.elements.filter(e=>BAND[e.kind]===b.key).forEach(e=>{
         const stage = Math.min(e.stage||0,stages-1);
         if(!byStage.has(stage)) byStage.set(stage,[]);
@@ -760,7 +768,18 @@ BANDS.forEach(b => {
       [...byStage.entries()].sort((a,b)=>a[0]-b[0]).forEach(([stage,items])=>{
         const stack = el("div","stage-stack");
         stack.style.gridColumn = (stage+1);
-        items.forEach(e=>stack.appendChild(cardHTML(e)));
+        items.forEach(e=>{
+          const card = cardHTML(e);
+          if(b.key!=="screens" || !e.actor || firstScreenByActor.get(e.actor)!==e){
+            stack.appendChild(card);
+            return;
+          }
+          const pair = el("div","screen-pair");
+          const actor = MODEL.actors[e.actor];
+          if(actor) pair.appendChild(actorCard(e.actor,actor,i));
+          pair.appendChild(card);
+          stack.appendChild(pair);
+        });
         cell.appendChild(stack);
       });
     }
@@ -782,16 +801,42 @@ MODEL.hotspots.forEach(h => {
 });
 
 /* --------------------------- wires --------------------------- */
-function cardCenterEdges(id){
-  const c = board.querySelector('.card[data-id="'+id+'"]');
-  if(!c) return null;
+function nodeCenterEdges(c){
   const br = board.getBoundingClientRect(), r = c.getBoundingClientRect();
   return { x:r.left-br.left, y:r.top-br.top, w:r.width, h:r.height,
            cx:r.left-br.left+r.width/2, cy:r.top-br.top+r.height/2, node:c };
 }
+function cardCenterEdges(id){
+  const c = board.querySelector('.card[data-id="'+id+'"]');
+  return c ? nodeCenterEdges(c) : null;
+}
 let pathEls = [];
+let actorLinkEls = [];
+function drawActorLinks(){
+  actorLinkEls.forEach(p=>p.remove()); actorLinkEls=[];
+  board.querySelectorAll(".actor-card").forEach(actor=>{
+    const A = nodeCenterEdges(actor);
+    const screens = [...board.querySelectorAll(".card.screen")].filter(screen=>
+      screen.dataset.slice===actor.dataset.slice && screen.dataset.actor===actor.dataset.actor);
+    screens.forEach(screen=>{
+      const B = cardCenterEdges(screen.dataset.id);
+      if(!B) return;
+      const leftToRight = B.cx>=A.cx;
+      const sx = leftToRight ? A.x+A.w : A.x;
+      const ex = leftToRight ? B.x : B.x+B.w;
+      const dx = Math.max(28,Math.abs(ex-sx)*.42);
+      const p = document.createElementNS("http://www.w3.org/2000/svg","path");
+      p.classList.add("actor-screen-link");
+      p.setAttribute("d",`M ${sx} ${A.cy} C ${sx+(leftToRight?dx:-dx)} ${A.cy} ${ex-(leftToRight?dx:-dx)} ${B.cy} ${ex} ${B.cy}`);
+      p.dataset.actor = actor.dataset.actor;
+      p.dataset.slice = actor.dataset.slice;
+      wires.appendChild(p); actorLinkEls.push(p);
+    });
+  });
+}
 function drawWires(){
   pathEls.forEach(p=>p.remove()); pathEls=[];
+  actorLinkEls.forEach(p=>p.remove()); actorLinkEls=[];
   const bw = board.scrollWidth, bh = board.scrollHeight;
   wires.setAttribute("viewBox", `0 0 ${bw} ${bh}`);
   wires.setAttribute("width", bw); wires.setAttribute("height", bh);
@@ -817,10 +862,12 @@ function drawWires(){
     p.setAttribute("d", `M ${sx} ${sy} C ${c1x} ${c1y} ${c2x} ${c2y} ${ex} ${ey}`);
     p.setAttribute("marker-end","url(#ah)");
     p.dataset.a=a; p.dataset.b=b;
+    if(B.cx<A.cx) p.classList.add("backward");
     const dimmed = A.node.classList.contains("filtered") || B.node.classList.contains("filtered");
     if(dimmed) p.classList.add("dim");
     wires.appendChild(p); pathEls.push(p);
   });
+  drawActorLinks();
 }
 
 /* --------------------------- hover highlight --------------------------- */
@@ -830,7 +877,11 @@ board.addEventListener("mouseover", e=>{
   const hot = new Set([id, ...(NEIGHBORS[id]||[])]);
   board.classList.add("hovering");
   board.querySelectorAll(".card").forEach(c=>c.classList.toggle("is-hot", hot.has(c.dataset.id)));
+  const actor = card.dataset.actor;
+  const slice = card.dataset.slice;
+  board.querySelectorAll(".actor-card").forEach(button=>button.classList.toggle("is-hot", !!actor && button.dataset.actor===actor && button.dataset.slice===slice));
   pathEls.forEach(p=>p.classList.toggle("hot", p.dataset.a===id||p.dataset.b===id));
+  actorLinkEls.forEach(p=>p.classList.toggle("hot", !!actor && p.dataset.actor===actor && p.dataset.slice===slice));
   pathEls.forEach(p=>{ if(p.classList.contains("hot")) p.setAttribute("marker-end","url(#ah-hot)"); });
 });
 board.addEventListener("mouseout", e=>{
@@ -838,11 +889,15 @@ board.addEventListener("mouseout", e=>{
   if(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(".actor-card")) return;
   board.classList.remove("hovering");
   board.querySelectorAll(".card.is-hot").forEach(c=>c.classList.remove("is-hot"));
+  board.querySelectorAll(".actor-card.is-hot").forEach(actor=>actor.classList.remove("is-hot"));
   pathEls.forEach(p=>{ p.classList.remove("hot"); p.setAttribute("marker-end","url(#ah)"); });
+  actorLinkEls.forEach(p=>p.classList.remove("hot"));
 });
 
 function highlightActor(button, active){
-  const screenIds = new Set(button._screenIds||[]);
+  const screenIds = new Set([...board.querySelectorAll(".card.screen")]
+    .filter(screen=>screen.dataset.slice===button.dataset.slice && screen.dataset.actor===button.dataset.actor)
+    .map(screen=>screen.dataset.id));
   board.classList.toggle("hovering", active);
   board.querySelectorAll(".actor-card").forEach(actor=>actor.classList.toggle("is-hot", active && actor===button));
   board.querySelectorAll(".card").forEach(card=>card.classList.toggle("is-hot", active && screenIds.has(card.dataset.id)));
@@ -851,6 +906,7 @@ function highlightActor(button, active){
     path.classList.toggle("hot", hot);
     path.setAttribute("marker-end", hot?"url(#ah-hot)":"url(#ah)");
   });
+  actorLinkEls.forEach(path=>path.classList.toggle("hot", active && path.dataset.actor===button.dataset.actor && path.dataset.slice===button.dataset.slice));
 }
 board.querySelectorAll(".actor-card").forEach(actor=>{
   actor.addEventListener("mouseenter",()=>highlightActor(actor,true));
@@ -1037,7 +1093,7 @@ const patLeg = Object.entries(PATTERN_LABEL).map(([k,l])=>`<div class="row"><spa
 const stLeg = Object.entries(STATUS_LABEL).map(([k,l])=>`<div class="row"><span class="sd" style="background:${statusVar(k)}"></span>${l}</div>`).join("");
 const hotspotLeg = UNPINNED_HOTSPOTS.map(h=>`<div class="row"><span class="sw" style="--fl:var(--hot-fill);--cl:var(--hot-line)"></span>`+
   `<span>${esc(h.question)}${h.target?` · <span class="mono">${esc(h.target)}</span>`:""}</span></div>`).join("");
-const placedActors = new Set(MODEL.slices.flatMap(slice=>(slice.actors||[]).map(actor=>actor.id)));
+const placedActors = new Set(MODEL.slices.flatMap(slice=>slice.elements.map(element=>element.actor).filter(Boolean)));
 const actorLeg = Object.entries(MODEL.actors).map(([id,actor])=>`<div class="row"><span class="sw" style="--fl:#8FE3D8;--cl:#5DBFB3"></span>`+
   `<span>${esc(actor.title)}${placedActors.has(id)?"":` · <span class="mono">unassigned</span>`}</span></div>`).join("");
 LP.innerHTML =

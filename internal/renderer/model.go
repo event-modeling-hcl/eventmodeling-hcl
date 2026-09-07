@@ -42,24 +42,15 @@ type Hotspot struct {
 }
 
 type Slice struct {
-	ID          string       `json:"id"`
-	Type        string       `json:"type"`
-	Title       string       `json:"title"`
-	Status      string       `json:"status,omitempty"`
-	Owner       string       `json:"owner,omitempty"`
-	Description string       `json:"description,omitempty"`
-	StageCount  int          `json:"stageCount"`
-	Actors      []SliceActor `json:"actors"`
-	Elements    []Element    `json:"elements"`
-	Scenarios   []Scenario   `json:"scenarios"`
-}
-
-type SliceActor struct {
-	ID           string   `json:"id"`
-	Title        string   `json:"title"`
-	AuthRequired bool     `json:"authRequired"`
-	Stage        int      `json:"stage"`
-	ScreenIDs    []string `json:"screenIds"`
+	ID          string     `json:"id"`
+	Type        string     `json:"type"`
+	Title       string     `json:"title"`
+	Status      string     `json:"status,omitempty"`
+	Owner       string     `json:"owner,omitempty"`
+	Description string     `json:"description,omitempty"`
+	StageCount  int        `json:"stageCount"`
+	Elements    []Element  `json:"elements"`
+	Scenarios   []Scenario `json:"scenarios"`
 }
 
 type Element struct {

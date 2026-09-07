@@ -6,6 +6,18 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+## [v0.3.1] - 2026-09-07
+
+This release polishes the diagram canvas introduced in v0.3.0.
+
+### Changed
+
+- Actor cards render directly beside their associated screen card instead of
+  in a dedicated actor swimlane.
+- Backward-pointing flow arrows (whose target sits left of their source in
+  the left-to-right layout) render with a dashed stroke, reverting to solid
+  only while hovered.
+
 ## [v0.3.0] - 2026-09-06
 
 This release adds rendering tooling while retaining full compatibility with the

@@ -159,7 +159,7 @@ func TestBuildViewModel_AssignsIncreasingStagesToLocalFlow(t *testing.T) {
 	}
 }
 
-func TestBuildViewModel_PlacesActorsWithTheirScreens(t *testing.T) {
+func TestBuildViewModel_AssignsActorsToScreens(t *testing.T) {
 	path := filepath.Join("..", "..", "examples", "complete.em.hcl")
 	source, err := os.ReadFile(path)
 	if err != nil {
@@ -172,24 +172,15 @@ func TestBuildViewModel_PlacesActorsWithTheirScreens(t *testing.T) {
 
 	view := BuildViewModel(path, loaded)
 	registration := findSlice(t, view, "register_pet")
-	if got, want := len(registration.Actors), 1; got != want {
-		t.Fatalf("actor placements = %d, want %d", got, want)
+	screen := findElement(t, registration, "register_pet__screen__pet_screen")
+	if got, want := screen.Actor, "clinic_staff"; got != want {
+		t.Fatalf("screen actor = %q, want %q", got, want)
 	}
-	actor := registration.Actors[0]
-	if got, want := actor.ID, "clinic_staff"; got != want {
-		t.Fatalf("actor ID = %q, want %q", got, want)
-	}
-	if got, want := actor.Title, "Clinic staff"; got != want {
+	if got, want := view.Actors[screen.Actor].Title, "Clinic staff"; got != want {
 		t.Fatalf("actor title = %q, want %q", got, want)
 	}
-	if !actor.AuthRequired {
+	if !view.Actors[screen.Actor].AuthRequired {
 		t.Fatal("actor authRequired = false, want true")
-	}
-	if got, want := actor.ScreenIDs, []string{"register_pet__screen__pet_screen"}; !slicesEqual(got, want) {
-		t.Fatalf("actor screen IDs = %#v, want %#v", got, want)
-	}
-	if got, want := actor.Stage, findElement(t, registration, actor.ScreenIDs[0]).Stage; got != want {
-		t.Fatalf("actor stage = %d, screen stage = %d", got, want)
 	}
 }
 
@@ -233,16 +224,4 @@ func hasEdge(view *ViewModel, from, to string) bool {
 		}
 	}
 	return false
-}
-
-func slicesEqual(got, want []string) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for index := range got {
-		if got[index] != want[index] {
-			return false
-		}
-	}
-	return true
 }
