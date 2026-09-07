@@ -6,6 +6,12 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-09-07
+
+This release implements Event Modeling HCL Specification v0.3.0: a `field` block
+may omit a redundant `type`, and a `fields` list declares several typed fields
+at once.
+
 ### Added
 
 - Field shorthand: a `field` block may omit `type` and infer the same-named
@@ -22,6 +28,7 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
   plain `field` blocks may use the shorthand.
 - The formatter ranks the `fields` attribute with the semantic group, before
   `from` and `to`.
+- The rendered HTML diagram reports Event Modeling HCL Specification v0.3.0.
 
 ## [v0.3.1] - 2026-09-07
 

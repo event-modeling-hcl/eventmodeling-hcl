@@ -65,6 +65,38 @@ func TestRender_RendersEveryCurrentExample(t *testing.T) {
 	}
 }
 
+func TestRender_EmbedsScreenFields(t *testing.T) {
+	path := filepath.Join("..", "..", "examples", "complete.em.hcl")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read example: %v", err)
+	}
+	loaded, diagnostics := model.Load(path, source, model.Valid)
+	if diagnostics.HasErrors() {
+		t.Fatalf("load example: %s", diagnostics.Error())
+	}
+
+	view := BuildViewModel(path, loaded)
+	screen := findElement(t, findSlice(t, view, "register_pet"), "register_pet__screen__pet_screen")
+	name := findField(t, screen, "pet_name")
+	if got, want := name.Type, "String"; got != want {
+		t.Fatalf("screen field pet_name type = %q, want %q", got, want)
+	}
+	id := findField(t, screen, "pet_id")
+	if got, want := id.Type, "UUID"; got != want || !id.ID {
+		t.Fatalf("screen field pet_id = %+v, want UUID with ID badge", id)
+	}
+
+	html, err := Render(path, loaded)
+	if err != nil {
+		t.Fatalf("render example: %v", err)
+	}
+	if !strings.Contains(html, `"kind":"screen","title":"Pet screen"`) ||
+		!strings.Contains(html, `"actor":"clinic_staff","fields":[{"name":"pet_name"`) {
+		t.Error("rendered model JSON does not carry the screen card's fields")
+	}
+}
+
 func TestRenderHTML_IncludesAdaptiveTimelineLayout(t *testing.T) {
 	view := &ViewModel{
 		Title:    "Layout",

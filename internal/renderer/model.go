@@ -4,7 +4,7 @@ package renderer
 
 import "encoding/json"
 
-const specVersion = "v0.2.0"
+const specVersion = "v0.3.0"
 
 type ViewModel struct {
 	Title    string             `json:"title"`

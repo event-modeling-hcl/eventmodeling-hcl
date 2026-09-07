@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`eventmodeling-hcl` v0.3.1 implements Event Modeling HCL Specification v0.2.0.
+`eventmodeling-hcl` v0.4.0 implements Event Modeling HCL Specification v0.3.0.
 This repository provides a strict validator, canonical formatter, typed semantic model,
 normative language documentation, and executable examples. The domain reference is the upstream [Event Modeling
 Specification](https://github.com/dilgerma/event-modeling-spec); the HCL
@@ -40,7 +40,7 @@ With GitHub CLI 2.49.0 or newer, verify the downloaded archive was produced by
 this repository's release workflow:
 
 ```bash
-gh attestation verify eventmodeling-hcl_0.3.1_linux_amd64.tar.gz \
+gh attestation verify eventmodeling-hcl_0.4.0_linux_amd64.tar.gz \
   --repo event-modeling-hcl/eventmodeling-hcl
 ```
 
@@ -135,6 +135,11 @@ state_change "add_pet" {
 }
 ```
 
+A `field` whose name matches a `field_type` may drop the `type`
+(`field "pet_id" {}`), and `fields = [field_type.pet_management.pet_id]` adds
+several typed fields at once. Screens and other workflow elements carry fields
+the same way events do.
+
 Source position is model order. A flow edge has one canonical spelling: the
 source element uses `to`, except catalog events flow through the receiver's
 `from`. References are unquoted traversals and are checked for scope, kind, and
@@ -184,8 +189,6 @@ field "pets" {
   five-workflow golden model in native HCL.
 - [Language decisions and migration guidance](https://github.com/event-modeling-hcl/spec):
   authoritative ADRs, migration material, examples, and RFCs.
-- [Release runbook](RELEASING.md): stable-tag publication, verification, and
-  GitHub repository controls.
 
 ## Verification
 
@@ -223,7 +226,7 @@ exhaustiveness, vulnerability, example-validation, and release checks.
 
 ## Boundaries
 
-The supported HCL Specification v0.2.0 resolves references within a single document and enforces scoped
+The supported HCL Specification v0.3.0 resolves references within a single document and enforces scoped
 identity, canonical typed flows, scenario shape, field examples, and workflow
 patterns. `internal/model.Load` exposes a validated typed IR with normalized
 edges; it does not support event groups, context maps, multi-file loading,

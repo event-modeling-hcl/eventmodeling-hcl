@@ -57,8 +57,8 @@ release-annotation-check: ## Test annotated-tag verification from a tagless chec
 release-version-check: ## Verify linker-injected release versions are reported by the binary.
 	@temporary=$$(mktemp -d); \
 	trap 'rm -rf "$$temporary"' EXIT; \
-	$(GO) build -ldflags '-X main.version=v0.3.1' -o "$$temporary/eventmodeling-hcl" ./cmd/eventmodeling-hcl; \
-	test "$$($$temporary/eventmodeling-hcl version)" = 'eventmodeling-hcl v0.3.1'
+	$(GO) build -ldflags '-X main.version=v0.4.0' -o "$$temporary/eventmodeling-hcl" ./cmd/eventmodeling-hcl; \
+	test "$$($$temporary/eventmodeling-hcl version)" = 'eventmodeling-hcl v0.4.0'
 
 verify: fmt-check tidy-check vet test test-race staticcheck exhaustive vulncheck validate-examples release-tag-check release-annotation-check release-version-check ## Run the complete local verification suite.
 
