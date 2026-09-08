@@ -51,6 +51,7 @@ validate-examples: build ## Validate every shipped Event Modeling example.
 
 build-wasm: ## Build the WebAssembly playground module into web/playground/.
 	@mkdir -p $(WASM_DIR)
+	$(GO) run ./cmd/playground-seed examples/minimal.em.hcl > $(WASM_DIR)/seed.js
 	GOOS=js GOARCH=wasm $(GO) build -o $(WASM_DIR)/eventmodeling-hcl.wasm ./cmd/wasm
 	@wasm_exec="$$($(GO) env GOROOT)/lib/wasm/wasm_exec.js"; \
 	if [ ! -f "$$wasm_exec" ]; then wasm_exec="$$($(GO) env GOROOT)/misc/wasm/wasm_exec.js"; fi; \
@@ -81,7 +82,7 @@ release-version-check: ## Verify linker-injected release versions are reported b
 verify: fmt-check tidy-check vet test test-race staticcheck exhaustive vulncheck validate-examples wasm-check release-tag-check release-annotation-check release-version-check ## Run the complete local verification suite.
 
 clean: ## Remove locally built artifacts.
-	rm -rf bin dist $(WASM_DIR)/eventmodeling-hcl.wasm $(WASM_DIR)/wasm_exec.js
+	rm -rf bin dist $(WASM_DIR)/eventmodeling-hcl.wasm $(WASM_DIR)/wasm_exec.js $(WASM_DIR)/seed.js
 
 # -- pre-commit --
 .PHONY: pre-commit-install pre-commit-run

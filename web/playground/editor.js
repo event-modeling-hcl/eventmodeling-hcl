@@ -17,56 +17,13 @@
 (function () {
   "use strict";
 
-  var SEED = [
-    '# Minimal Event Modeling document with context-owned contracts.',
-    '',
-    'bounded_context "pet_management" {',
-    '  title = "Pet Management"',
-    '',
-    '  aggregate "pet" {',
-    '  }',
-    '',
-    '  field_type "pet_id" {',
-    '    type         = "Int"',
-    '    id_attribute = true',
-    '    example      = 5',
-    '  }',
-    '',
-    '  event "pet_added" {',
-    '    title     = "Pet Added"',
-    '    aggregate = aggregate.pet',
-    '',
-    '    field "pet_id" {',
-    '      type = field_type.pet_id',
-    '    }',
-    '  }',
-    '}',
-    '',
-    'state_change "add_pet" {',
-    '  title = "Add Pet"',
-    '',
-    '  screen "add_pet_form" {',
-    '    title = "Add Pet Form"',
-    '    to    = [command.add_pet_command]',
-    '  }',
-    '',
-    '  command "add_pet_command" {',
-    '    title     = "Add Pet"',
-    '    aggregate = aggregate.pet_management.pet',
-    '    to        = [event.pet_management.pet_added]',
-    '',
-    '    field "pet_id" {',
-    '      type = field_type.pet_management.pet_id',
-    '    }',
-    '  }',
-    '}',
-    '',
-  ].join('\n');
+  var SEED = typeof window.EVENT_MODELING_SEED === 'string' ? window.EVENT_MODELING_SEED : '';
 
   var DEBOUNCE_MS = 300;
 
   var editorEl, profileEl, previewEl, diagnosticsEl, formatBtnEl, statusEl;
   var debounceHandle = null;
+  var hasRendered = false;
 
   function setStatus(text) {
     if (statusEl) statusEl.textContent = text;
@@ -118,12 +75,15 @@
     renderDiagnostics(result.diagnostics);
     if (result.html) {
       previewEl.srcdoc = result.html;
+      hasRendered = true;
       setStatus('Rendered.');
     } else {
-      previewEl.srcdoc =
-        '<!doctype html><meta charset="utf-8"><body style="font:14px system-ui;padding:16px;color:#a33">' +
-        'Model has errors — see diagnostics.</body>';
-      setStatus('Model has errors.');
+      if (!hasRendered) {
+        previewEl.srcdoc =
+          '<!doctype html><meta charset="utf-8"><body style="font:14px system-ui;padding:16px;color:#a33">' +
+          'Model has errors — see diagnostics.</body>';
+      }
+      setStatus(hasRendered ? 'Model has errors; showing last valid diagram.' : 'Model has errors.');
     }
   }
 
@@ -165,7 +125,7 @@
   // via <script src="editor.js"> placed AFTER the markup below in the
   // document (so the elements already exist) and BEFORE the wasm-loading
   // script (so this callback is registered before the module can call it).
-  // Both host pages (this one and the website's playground.html) must keep
+  // Both host pages (this one and the website's /playground/) must keep
   // that ordering.
   function init() {
     editorEl = document.getElementById('editor');

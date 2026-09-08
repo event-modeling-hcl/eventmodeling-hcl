@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"net"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -11,6 +12,22 @@ import (
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/replcore"
 )
+
+func TestServingURLUsesTheActualBoundPort(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	got := servingURL(listener, "127.0.0.1")
+	if strings.HasSuffix(got, ":0") {
+		t.Fatalf("serving URL retained requested port zero: %q", got)
+	}
+	if !strings.HasPrefix(got, "http://127.0.0.1:") {
+		t.Fatalf("serving URL = %q", got)
+	}
+}
 
 func validResult(t *testing.T) replcore.RenderResult {
 	t.Helper()
@@ -187,25 +204,21 @@ func TestWatch_RegeneratesWhenTheWatchedFileChanges(t *testing.T) {
 	}
 	_, hashBefore := s.snapshot()
 
-	startMod, err := modTime(path)
+	startHash, err := fileSourceHash(path)
 	if err != nil {
-		t.Fatalf("stat seed file: %v", err)
+		t.Fatalf("hash seed file: %v", err)
 	}
 
 	invalid, err := os.ReadFile(filepath.Join("..", "..", "testdata", "invalid", "reverse-flow.em.hcl"))
 	if err != nil {
 		t.Fatalf("read invalid fixture: %v", err)
 	}
-	// Guarantee a strictly later mtime than startMod, even on filesystems
-	// with coarse timestamp resolution.
-	time.Sleep(10 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go watch(ctx, s, path, replcore.Valid, startHash)
 	if err := os.WriteFile(path, invalid, 0o644); err != nil {
 		t.Fatalf("rewrite file: %v", err)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go watch(ctx, s, path, replcore.Valid, startMod)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -219,4 +232,62 @@ func TestWatch_RegeneratesWhenTheWatchedFileChanges(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("watch did not regenerate after the watched file changed")
+}
+
+func TestWatch_RegeneratesWhenContentChangesWithoutMTimeAdvancing(t *testing.T) {
+	originalPollInterval := pollInterval
+	pollInterval = 20 * time.Millisecond
+	defer func() { pollInterval = originalPollInterval }()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "model.em.hcl")
+	initial, err := os.ReadFile(filepath.Join("..", "..", "examples", "minimal.em.hcl"))
+	if err != nil {
+		t.Fatalf("read seed example: %v", err)
+	}
+	if err := os.WriteFile(path, initial, 0o644); err != nil {
+		t.Fatalf("write seed: %v", err)
+	}
+
+	s := &state{}
+	if err := regenerate(s, path, replcore.Valid); err != nil {
+		t.Fatalf("initial regenerate: %v", err)
+	}
+	_, before := s.snapshot()
+	startHash, err := fileSourceHash(path)
+	if err != nil {
+		t.Fatalf("hash seed: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat seed: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go watch(ctx, s, path, replcore.Valid, startHash)
+
+	invalid, err := os.ReadFile(filepath.Join("..", "..", "testdata", "invalid", "reverse-flow.em.hcl"))
+	if err != nil {
+		t.Fatalf("read invalid fixture: %v", err)
+	}
+	if err := os.WriteFile(path, invalid, 0o644); err != nil {
+		t.Fatalf("rewrite file: %v", err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatalf("restore mtime: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		result, after := s.snapshot()
+		if after != before {
+			if result.HTML != "" {
+				t.Fatal("expected invalid replacement to clear HTML")
+			}
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("watch did not regenerate after a same-mtime content change")
 }

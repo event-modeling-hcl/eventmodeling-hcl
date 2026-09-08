@@ -193,6 +193,9 @@ func serveCLICommand(args []string) (cliCommand, error) {
 			if err != nil {
 				return cliCommand{}, errors.New("port must be a number")
 			}
+			if parsedPort < 0 || parsedPort > 65535 {
+				return cliCommand{}, errors.New("port must be between 0 and 65535")
+			}
 			port = parsedPort
 			index++
 		case "--profile":

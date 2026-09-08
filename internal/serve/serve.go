@@ -14,19 +14,22 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/replcore"
 )
 
-// pollInterval is how often the watch loop checks the model file's mtime.
+// pollInterval is how often the watch loop checks the model file's content.
 // It is a var, not a const, so tests can shrink it instead of waiting on
 // the real interval.
 var pollInterval = 500 * time.Millisecond
@@ -175,17 +178,24 @@ func regenerate(s *state, filePath string, profile replcore.Profile) error {
 	return nil
 }
 
-func modTime(filePath string) (time.Time, error) {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return info.ModTime(), nil
+func sourceHash(source []byte) string {
+	sum := sha256.Sum256(source)
+	return hex.EncodeToString(sum[:])
 }
 
-// watch polls filePath every pollInterval and, whenever its mtime advances
-// past lastMod, re-renders it into s. It runs until ctx is done.
-func watch(ctx context.Context, s *state, filePath string, profile replcore.Profile, lastMod time.Time) {
+func fileSourceHash(filePath string) (string, error) {
+	source, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	return sourceHash(source), nil
+}
+
+// watch polls filePath every pollInterval and re-renders it whenever its
+// content changes. Content, rather than mtime, is the reliable contract:
+// editors and source-control tools may preserve timestamps when replacing a
+// file.
+func watch(ctx context.Context, s *state, filePath string, profile replcore.Profile, lastSourceHash string) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
@@ -194,18 +204,18 @@ func watch(ctx context.Context, s *state, filePath string, profile replcore.Prof
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			info, err := os.Stat(filePath)
+			currentSourceHash, err := fileSourceHash(filePath)
 			if err != nil {
 				continue
 			}
-			if !info.ModTime().After(lastMod) {
+			if currentSourceHash == lastSourceHash {
 				continue
 			}
-			lastMod = info.ModTime()
 			if err := regenerate(s, filePath, profile); err != nil {
 				fmt.Fprintf(os.Stderr, "eventmodeling-hcl serve: regeneration error: %v\n", err)
 				continue
 			}
+			lastSourceHash = currentSourceHash
 			fmt.Println("Diagram updated.")
 		}
 	}
@@ -228,6 +238,18 @@ func openBrowser(url string) {
 	_ = cmd.Start()
 }
 
+func servingURL(listener net.Listener, requestedHost string) string {
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		return "http://" + listener.Addr().String()
+	}
+	host := requestedHost
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+	return "http://" + net.JoinHostPort(host, port)
+}
+
 // Start renders filePath once, then serves it at http://addr:port, live-
 // reloading in the browser whenever filePath changes on disk, until it
 // receives SIGINT.
@@ -237,22 +259,24 @@ func Start(filePath string, addr string, port int, profile replcore.Profile) err
 		return err
 	}
 
-	lastMod, err := modTime(filePath)
+	lastSourceHash, err := fileSourceHash(filePath)
 	if err != nil {
 		return err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go watch(ctx, s, filePath, profile, lastMod)
+	go watch(ctx, s, filePath, profile, lastSourceHash)
 
-	server := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", addr, port),
-		Handler: newMux(s),
+	listener, err := net.Listen("tcp", net.JoinHostPort(addr, strconv.Itoa(port)))
+	if err != nil {
+		return err
 	}
+	server := &http.Server{Handler: newMux(s)}
 
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 	go func() {
 		<-sigCh
 		fmt.Println("\nShutting down server...")
@@ -260,15 +284,11 @@ func Start(filePath string, addr string, port int, profile replcore.Profile) err
 		_ = server.Shutdown(context.Background())
 	}()
 
-	displayHost := addr
-	if displayHost == "" || displayHost == "0.0.0.0" {
-		displayHost = "localhost"
-	}
-	url := fmt.Sprintf("http://%s:%d", displayHost, port)
+	url := servingURL(listener, addr)
 	fmt.Printf("Serving %s at %s\n", filePath, url)
 	openBrowser(url)
 
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 		return err
 	}
 	return nil

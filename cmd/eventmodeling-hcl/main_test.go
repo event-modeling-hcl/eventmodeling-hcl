@@ -94,6 +94,15 @@ func TestParseCommand_RecognizesServeInvocation(t *testing.T) {
 	}
 }
 
+func TestParseCommand_RejectsServePortsOutsideTheTCPRange(t *testing.T) {
+	for _, port := range []string{"-1", "65536"} {
+		_, err := parseCommand([]string{"serve", "--port", port, "model.em.hcl"})
+		if err == nil || !strings.Contains(err.Error(), "between 0 and 65535") {
+			t.Errorf("port %s error = %v, want TCP range error", port, err)
+		}
+	}
+}
+
 func TestParseCommand_RecognizesServeFlags(t *testing.T) {
 	// Given a serve invocation overriding every optional flag, in any order.
 	args := []string{"serve", "--addr", "127.0.0.1", "--port", "9090", "--profile", "strict", "model.em.hcl"}

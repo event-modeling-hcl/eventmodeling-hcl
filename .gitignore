@@ -27,6 +27,7 @@ dist/
 # WebAssembly playground build artifacts (built by `make build-wasm`)
 /web/playground/eventmodeling-hcl.wasm
 /web/playground/wasm_exec.js
+/web/playground/seed.js
 
 # Local Event Model diagram previews
 /site*.html

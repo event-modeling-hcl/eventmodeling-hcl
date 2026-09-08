@@ -105,29 +105,10 @@
      before wasm_exec.js loads the module that will call it. Both must load
      after the markup above, since editor.js looks up elements by id as
      soon as it runs (see the comment on init() in editor.js). -->
+<script src="seed.js"></script>
 <script src="editor.js"></script>
 <script src="wasm_exec.js"></script>
-<script>
-  (function () {
-    var go = new Go();
-    var wasmSupportsInstantiateStreaming =
-      typeof WebAssembly.instantiateStreaming === "function";
-    var instantiate = wasmSupportsInstantiateStreaming
-      ? WebAssembly.instantiateStreaming(fetch("eventmodeling-hcl.wasm"), go.importObject)
-      : fetch("eventmodeling-hcl.wasm")
-          .then(function (response) { return response.arrayBuffer(); })
-          .then(function (bytes) { return WebAssembly.instantiate(bytes, go.importObject); });
-
-    instantiate
-      .then(function (result) {
-        go.run(result.instance);
-      })
-      .catch(function (err) {
-        document.getElementById("status").textContent =
-          "Failed to load eventmodeling-hcl.wasm: " + err;
-      });
-  })();
-</script>
+<script src="loader.js"></script>
 
 </body>
 </html>
