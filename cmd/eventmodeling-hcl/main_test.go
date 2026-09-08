@@ -77,6 +77,75 @@ func TestParseCommand_RecognizesDiagramInvocations(t *testing.T) {
 	}
 }
 
+func TestParseCommand_RecognizesServeInvocation(t *testing.T) {
+	// Given a bare serve invocation with just a model path.
+	args := []string{"serve", "model.em.hcl"}
+
+	// When its command is parsed.
+	command, err := parseCommand(args)
+
+	// Then it produces a serve command with the documented defaults.
+	if err != nil {
+		t.Fatalf("err = %q, want nil", err)
+	}
+	want := cliCommand{kind: serveCommand, path: "model.em.hcl", profile: validator.Valid, addr: defaultServeAddr, port: defaultServePort}
+	if command != want {
+		t.Fatalf("command = %#v, want %#v", command, want)
+	}
+}
+
+func TestParseCommand_RecognizesServeFlags(t *testing.T) {
+	// Given a serve invocation overriding every optional flag, in any order.
+	args := []string{"serve", "--addr", "127.0.0.1", "--port", "9090", "--profile", "strict", "model.em.hcl"}
+
+	// When its command is parsed.
+	command, err := parseCommand(args)
+
+	// Then every flag is reflected in the resulting command.
+	if err != nil {
+		t.Fatalf("err = %q, want nil", err)
+	}
+	want := cliCommand{kind: serveCommand, path: "model.em.hcl", profile: validator.Strict, addr: "127.0.0.1", port: 9090}
+	if command != want {
+		t.Fatalf("command = %#v, want %#v", command, want)
+	}
+}
+
+func TestParseCommand_RejectsServeWithoutModelPath(t *testing.T) {
+	_, err := parseCommand([]string{"serve"})
+	if err == nil {
+		t.Fatal("expected an error for a serve invocation with no model path")
+	}
+}
+
+func TestParseCommand_RejectsServeNonNumericPort(t *testing.T) {
+	_, err := parseCommand([]string{"serve", "--port", "notanumber", "model.em.hcl"})
+	if err == nil {
+		t.Fatal("expected an error for a non-numeric --port")
+	}
+}
+
+func TestParseCommand_RejectsServeInvalidProfile(t *testing.T) {
+	_, err := parseCommand([]string{"serve", "--profile", "bogus", "model.em.hcl"})
+	if got, want := err, "profile must be workshop, valid, or strict"; got == nil || got.Error() != want {
+		t.Fatalf("err = %v, want %q", got, want)
+	}
+}
+
+func TestParseCommand_RejectsServeUnsupportedExtension(t *testing.T) {
+	_, err := parseCommand([]string{"serve", "model.hcl"})
+	if got, want := err, "model file must use the .em.hcl extension"; got == nil || got.Error() != want {
+		t.Fatalf("err = %v, want %q", got, want)
+	}
+}
+
+func TestUsageMessage_DocumentsServe(t *testing.T) {
+	want := "usage: eventmodeling-hcl <validate [--profile workshop|valid|strict] | fmt [-w] | diagram | serve> <model.em.hcl> [diagram: -o <file>] [serve: --addr <host> --port <n> --profile <p>]"
+	if usageMessage != want {
+		t.Fatalf("usageMessage = %q, want %q", usageMessage, want)
+	}
+}
+
 func TestParseCommand_RejectsUnsupportedExtension(t *testing.T) {
 	// Given a validate invocation with a non-Event-Modeling extension.
 	args := []string{"validate", "model.hcl"}
@@ -368,6 +437,8 @@ func TestRun_RejectsInvalidArguments(t *testing.T) {
 		{"diagram missing model path", []string{"diagram"}},
 		{"diagram missing output value", []string{"diagram", "model.em.hcl", "-o"}},
 		{"diagram multiple models", []string{"diagram", "first.em.hcl", "second.em.hcl"}},
+		{"serve missing port value", []string{"serve", "model.em.hcl", "--port"}},
+		{"serve multiple models", []string{"serve", "first.em.hcl", "second.em.hcl"}},
 	}
 
 	for _, test := range tests {
@@ -381,7 +452,7 @@ func TestRun_RejectsInvalidArguments(t *testing.T) {
 			if result.exitCode != 2 {
 				t.Fatalf("exit code = %d, want 2; stderr = %q", result.exitCode, result.stderr)
 			}
-			if got, want := result.stderr, "usage: eventmodeling-hcl <validate [--profile workshop|valid|strict] | fmt [-w] | diagram> <model.em.hcl> [diagram: -o <file>]\n"; got != want {
+			if got, want := result.stderr, usageMessage+"\n"; got != want {
 				t.Fatalf("stderr = %q, want %q", got, want)
 			}
 		})

@@ -1,10 +1,11 @@
 GO ?= go
 BINARY := bin/eventmodeling-hcl
 EXAMPLES := $(wildcard examples/*.em.hcl)
+WASM_DIR := web/playground
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build test test-race vet fmt-check tidy-check staticcheck exhaustive vulncheck validate-examples release-tag-check release-annotation-check release-version-check verify clean
+.PHONY: help build test test-race vet fmt-check tidy-check staticcheck exhaustive vulncheck validate-examples build-wasm wasm-check release-tag-check release-annotation-check release-version-check verify clean
 
 help: ## List available commands.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -48,6 +49,23 @@ validate-examples: build ## Validate every shipped Event Modeling example.
 		$(BINARY) validate "$$model" || exit $$?; \
 	done
 
+build-wasm: ## Build the WebAssembly playground module into web/playground/.
+	@mkdir -p $(WASM_DIR)
+	GOOS=js GOARCH=wasm $(GO) build -o $(WASM_DIR)/eventmodeling-hcl.wasm ./cmd/wasm
+	@wasm_exec="$$($(GO) env GOROOT)/lib/wasm/wasm_exec.js"; \
+	if [ ! -f "$$wasm_exec" ]; then wasm_exec="$$($(GO) env GOROOT)/misc/wasm/wasm_exec.js"; fi; \
+	if [ ! -f "$$wasm_exec" ]; then \
+		echo "wasm_exec.js not found under GOROOT (checked lib/wasm and misc/wasm)" >&2; \
+		exit 1; \
+	fi; \
+	cp "$$wasm_exec" $(WASM_DIR)/wasm_exec.js
+	@ls -lh $(WASM_DIR)/eventmodeling-hcl.wasm $(WASM_DIR)/wasm_exec.js
+
+wasm-check: ## Verify the WebAssembly module still compiles for js/wasm.
+	@temporary=$$(mktemp -d); \
+	trap 'rm -rf "$$temporary"' EXIT; \
+	GOOS=js GOARCH=wasm $(GO) build -o "$$temporary/eventmodeling-hcl.wasm" ./cmd/wasm
+
 release-tag-check: ## Test the stable semantic-version tag validator.
 	sh scripts/test-require-stable-tag.sh
 
@@ -60,10 +78,10 @@ release-version-check: ## Verify linker-injected release versions are reported b
 	$(GO) build -ldflags '-X main.version=v0.4.0' -o "$$temporary/eventmodeling-hcl" ./cmd/eventmodeling-hcl; \
 	test "$$($$temporary/eventmodeling-hcl version)" = 'eventmodeling-hcl v0.4.0'
 
-verify: fmt-check tidy-check vet test test-race staticcheck exhaustive vulncheck validate-examples release-tag-check release-annotation-check release-version-check ## Run the complete local verification suite.
+verify: fmt-check tidy-check vet test test-race staticcheck exhaustive vulncheck validate-examples wasm-check release-tag-check release-annotation-check release-version-check ## Run the complete local verification suite.
 
 clean: ## Remove locally built artifacts.
-	rm -rf bin dist
+	rm -rf bin dist $(WASM_DIR)/eventmodeling-hcl.wasm $(WASM_DIR)/wasm_exec.js
 
 # -- pre-commit --
 .PHONY: pre-commit-install pre-commit-run

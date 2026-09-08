@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eventmodeling-hcl playground</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex;
+    flex-direction: column;
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #8884;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .spacer { flex: 1; min-width: 0; }
+  @media (max-width: 480px) {
+    header .spacer { display: none; }
+    header #status { flex-basis: 100%; order: 1; }
+  }
+  header select, header button {
+    font: inherit;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    padding: 5px 10px;
+  }
+  #status { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; opacity: 0.7; }
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 0;
+  }
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  }
+  .pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .pane + .pane { border-left: 1px solid #8884; }
+  @media (max-width: 800px) {
+    .pane + .pane { border-left: 0; border-top: 1px solid #8884; }
+  }
+  #editor {
+    flex: 1;
+    border: 0;
+    resize: none;
+    padding: 12px;
+    font: inherit;
+    tab-size: 2;
+  }
+  #preview { flex: 1; border: 0; background: #fff; }
+  #diagnostics-wrap {
+    border-top: 1px solid #8884;
+    max-height: 30%;
+    overflow-y: auto;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px;
+  }
+  #diagnostics { list-style: none; margin: 0; padding: 8px 12px; }
+  #diagnostics li { padding: 4px 0; border-bottom: 1px solid #8882; }
+  #diagnostics li:last-child { border-bottom: 0; }
+  .diagnostic-error code { color: #c33; }
+  .diagnostic-warning code { color: #b70; }
+  .diagnostic-info code { color: #666; }
+  .diagnostic-location { opacity: 0.65; }
+  .diagnostic-empty { opacity: 0.6; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>eventmodeling-hcl playground</h1>
+  <span id="status">Loading…</span>
+  <span class="spacer"></span>
+  <label for="profile">Profile</label>
+  <select id="profile">
+    <option value="workshop">workshop</option>
+    <option value="valid" selected>valid</option>
+    <option value="strict">strict</option>
+  </select>
+  <button id="format-btn" type="button">Format</button>
+</header>
+
+<main>
+  <div class="pane">
+    <textarea id="editor" spellcheck="false" aria-label=".em.hcl source"></textarea>
+    <div id="diagnostics-wrap">
+      <ul id="diagnostics"></ul>
+    </div>
+  </div>
+  <div class="pane">
+    <iframe id="preview" title="Rendered diagram" sandbox="allow-scripts"></iframe>
+  </div>
+</main>
+
+<!-- Ordering matters: editor.js registers window.onEventModelingReady
+     before wasm_exec.js loads the module that will call it. Both must load
+     after the markup above, since editor.js looks up elements by id as
+     soon as it runs (see the comment on init() in editor.js). -->
+<script src="editor.js"></script>
+<script src="wasm_exec.js"></script>
+<script>
+  (function () {
+    var go = new Go();
+    var wasmSupportsInstantiateStreaming =
+      typeof WebAssembly.instantiateStreaming === "function";
+    var instantiate = wasmSupportsInstantiateStreaming
+      ? WebAssembly.instantiateStreaming(fetch("eventmodeling-hcl.wasm"), go.importObject)
+      : fetch("eventmodeling-hcl.wasm")
+          .then(function (response) { return response.arrayBuffer(); })
+          .then(function (bytes) { return WebAssembly.instantiate(bytes, go.importObject); });
+
+    instantiate
+      .then(function (result) {
+        go.run(result.instance);
+      })
+      .catch(function (err) {
+        document.getElementById("status").textContent =
+          "Failed to load eventmodeling-hcl.wasm: " + err;
+      });
+  })();
+</script>
+
+</body>
+</html>
