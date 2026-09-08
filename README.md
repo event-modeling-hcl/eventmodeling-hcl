@@ -84,6 +84,16 @@ their source) use a dashed stroke, turning solid only while hovered. A
 `screen_image` retains its user-supplied URL, so that preview may load external
 media when the HTML is opened.
 
+For a local edit-and-render loop, serve one model and keep the browser open
+while the file changes:
+
+```bash
+eventmodeling-hcl serve examples/minimal.em.hcl
+```
+
+`serve` binds to `127.0.0.1:8080` by default. Use `--port 0` to request an
+available port; the actual browser URL is printed after binding.
+
 ## Authoring
 
 Top-level `bounded_context` blocks define domain contracts. Top-level

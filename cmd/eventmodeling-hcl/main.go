@@ -7,18 +7,30 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/formatter"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/model"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/renderer"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/serve"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
 	"github.com/hashicorp/hcl/v2"
 )
 
 var version = "dev"
 
-const usageMessage = "usage: eventmodeling-hcl <validate [--profile workshop|valid|strict] | fmt [-w] | diagram> <model.em.hcl> [diagram: -o <file>]"
+const usageMessage = "usage: eventmodeling-hcl <validate [--profile workshop|valid|strict] | fmt [-w] | diagram | serve> <model.em.hcl> [diagram: -o <file>] [serve: --addr <host> --port <n> --profile <p>]"
+
+// defaultServeAddr and defaultServePort are serve's defaults when a
+// command line omits --addr / --port: loopback only, so a model isn't
+// reachable from the rest of the network unless --addr is passed
+// explicitly, on a port unlikely to already be in use by another local dev
+// server. Pass --addr 0.0.0.0 (or a specific interface) to share it.
+const (
+	defaultServeAddr = "127.0.0.1"
+	defaultServePort = 8080
+)
 
 // commandKind names which subcommand a parsed command line requested.
 type commandKind uint8
@@ -27,6 +39,7 @@ const (
 	validateCommand commandKind = iota
 	formatCommand
 	diagramCommand
+	serveCommand
 	versionCommand
 )
 
@@ -38,6 +51,8 @@ type cliCommand struct {
 	profile validator.Profile
 	write   bool
 	output  string
+	addr    string
+	port    int
 }
 
 // main runs the CLI against the process's real arguments and standard
@@ -65,6 +80,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if command.kind == diagramCommand {
 		return diagramFile(command, stdout, stderr)
+	}
+	if command.kind == serveCommand {
+		return serveFile(command, stderr)
 	}
 	diagnostics := validator.ValidateFileWithProfile(command.path, command.profile)
 	if len(diagnostics) > 0 {
@@ -103,6 +121,9 @@ func parseCommand(args []string) (cliCommand, error) {
 	}
 	if len(args) >= 1 && args[0] == "diagram" {
 		return diagramCLICommand(args[1:])
+	}
+	if len(args) >= 1 && args[0] == "serve" {
+		return serveCLICommand(args[1:])
 	}
 	return cliCommand{}, errors.New(usageMessage)
 }
@@ -148,6 +169,61 @@ func diagramCLICommand(args []string) (cliCommand, error) {
 	return cliCommand{kind: diagramCommand, path: path, output: output}, nil
 }
 
+// serveCLICommand parses the arguments following "serve": exactly one
+// model path, plus any of --addr, --port, and --profile in any order.
+func serveCLICommand(args []string) (cliCommand, error) {
+	path := ""
+	addr := defaultServeAddr
+	port := defaultServePort
+	profile := validator.Valid
+
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--addr":
+			if index+1 >= len(args) {
+				return cliCommand{}, errors.New(usageMessage)
+			}
+			addr = args[index+1]
+			index++
+		case "--port":
+			if index+1 >= len(args) {
+				return cliCommand{}, errors.New(usageMessage)
+			}
+			parsedPort, err := strconv.Atoi(args[index+1])
+			if err != nil {
+				return cliCommand{}, errors.New("port must be a number")
+			}
+			if parsedPort < 0 || parsedPort > 65535 {
+				return cliCommand{}, errors.New("port must be between 0 and 65535")
+			}
+			port = parsedPort
+			index++
+		case "--profile":
+			if index+1 >= len(args) {
+				return cliCommand{}, errors.New(usageMessage)
+			}
+			parsedProfile, ok := validator.ParseProfile(args[index+1])
+			if !ok {
+				return cliCommand{}, errors.New("profile must be workshop, valid, or strict")
+			}
+			profile = parsedProfile
+			index++
+		default:
+			if path != "" {
+				return cliCommand{}, errors.New(usageMessage)
+			}
+			path = args[index]
+		}
+	}
+	if path == "" {
+		return cliCommand{}, errors.New(usageMessage)
+	}
+	if !strings.HasSuffix(path, ".em.hcl") {
+		return cliCommand{}, errors.New("model file must use the .em.hcl extension")
+	}
+	return cliCommand{kind: serveCommand, path: path, profile: profile, addr: addr, port: port}, nil
+}
+
 func formatFile(command cliCommand, stdout, stderr io.Writer) int {
 	source, err := os.ReadFile(command.path)
 	if err != nil {
@@ -172,6 +248,20 @@ func formatFile(command cliCommand, stdout, stderr io.Writer) int {
 	}
 	if err := os.WriteFile(command.path, formatted, info.Mode().Perm()); err != nil {
 		fmt.Fprintf(stderr, "failed to write %s: %v\n", command.path, err)
+		return 1
+	}
+	return 0
+}
+
+// serveFile runs a local live-reload server for command.path until it is
+// interrupted (Ctrl-C) or fails to start. All behavior — rendering,
+// file-watching, HTTP, browser-opening — is internal/serve's; this is
+// deliberately thin, blocking glue with nothing of its own worth unit
+// testing (internal/serve's own test suite already covers every part of it
+// that is testable without actually binding a live socket).
+func serveFile(command cliCommand, stderr io.Writer) int {
+	if err := serve.Start(command.path, command.addr, command.port, command.profile); err != nil {
+		fmt.Fprintf(stderr, "failed to serve %s: %v\n", command.path, err)
 		return 1
 	}
 	return 0
