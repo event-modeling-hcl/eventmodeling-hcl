@@ -6,6 +6,29 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-09-08
+
+This release adds ways to author and preview models interactively. The Event
+Modeling HCL language is unchanged — it still implements Specification v0.3.0.
+
+### Added
+
+- `serve <model.em.hcl> [--addr H] [--port N] [--profile P]` command: a local
+  edit-and-render loop that watches one model and live-reloads the rendered
+  diagram in the browser. It binds `127.0.0.1:8080` by default; `--port 0`
+  requests an available port and the actual URL is printed after binding.
+- In-browser playground: the real parse, validate, and render core compiled to
+  WebAssembly (`cmd/wasm`), driven by a dependency-free editor under
+  `web/playground/`. Everything runs client-side — nothing typed leaves the
+  browser.
+- `internal/replcore`, a facade returning plain `RenderResult` and `Diagnostic`
+  values, so the `serve` and WebAssembly entrypoints depend on a stable contract
+  rather than the internal parser, validator, and renderer packages directly.
+- `cmd/playground-seed` (with `internal/playground`) generates the playground's
+  seed model from `examples/minimal.em.hcl`.
+- `build-wasm` and `wasm-check` Makefile targets; `wasm-check` runs as part of
+  `make verify`.
+
 ## [v0.4.0] - 2026-09-07
 
 This release implements Event Modeling HCL Specification v0.3.0: a `field` block
