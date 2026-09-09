@@ -21,12 +21,13 @@
 
   var DEBOUNCE_MS = 300;
 
-  var editorEl, profileEl, previewEl, diagnosticsEl, formatBtnEl, statusEl;
+  var editorEl, profileEl, previewEl, diagnosticsEl, formatBtnEl, statusEl, sourceEditor;
   var debounceHandle = null;
   var hasRendered = false;
 
   function setStatus(text) {
     if (statusEl) statusEl.textContent = text;
+    document.dispatchEvent(new CustomEvent('eventmodeling:status', { detail: text }));
   }
 
   function renderDiagnostics(diagnostics) {
@@ -36,6 +37,7 @@
       empty.className = 'diagnostic-empty';
       empty.textContent = 'No diagnostics.';
       diagnosticsEl.appendChild(empty);
+      document.dispatchEvent(new CustomEvent('eventmodeling:diagnostics', { detail: [] }));
       return;
     }
     diagnostics.forEach(function (diagnostic) {
@@ -60,6 +62,7 @@
       }
       diagnosticsEl.appendChild(item);
     });
+    document.dispatchEvent(new CustomEvent('eventmodeling:diagnostics', { detail: diagnostics || [] }));
   }
 
   // renderNow calls into WASM immediately (no debounce) — used both by the
@@ -67,7 +70,7 @@
   // changes the source is reflected in the preview without waiting.
   function renderNow() {
     if (typeof window.eventModelingRender !== 'function') return;
-    var result = window.eventModelingRender(editorEl.value, profileEl.value);
+    var result = window.eventModelingRender(sourceEditor.getValue(), profileEl.value);
     if (result && result.error) {
       setStatus('Error: ' + result.error);
       return;
@@ -77,6 +80,7 @@
       previewEl.srcdoc = result.html;
       hasRendered = true;
       setStatus('Rendered.');
+      document.dispatchEvent(new CustomEvent('eventmodeling:rendered', { detail: result }));
     } else {
       if (!hasRendered) {
         previewEl.srcdoc =
@@ -94,7 +98,7 @@
 
   function formatNow() {
     if (typeof window.eventModelingFormat !== 'function') return;
-    var result = window.eventModelingFormat(editorEl.value);
+    var result = window.eventModelingFormat(sourceEditor.getValue());
     if (result && result.error) {
       setStatus('Error: ' + result.error);
       return;
@@ -104,7 +108,7 @@
       setStatus('Could not format — fix the errors below first.');
       return;
     }
-    editorEl.value = result.source;
+    sourceEditor.setValue(result.source);
     renderNow();
   }
 
@@ -112,7 +116,7 @@
   // (window.onEventModelingReady, wired below, before the module loads).
   function ready() {
     setStatus('Ready.');
-    editorEl.disabled = false;
+    sourceEditor.setDisabled(false);
     formatBtnEl.disabled = false;
     renderNow();
   }
@@ -135,11 +139,18 @@
     formatBtnEl = document.getElementById('format-btn');
     statusEl = document.getElementById('status');
 
-    editorEl.value = SEED;
-    editorEl.disabled = true;
+    sourceEditor = window.EventModelingEditorAdapter || {
+      getValue: function () { return editorEl.value; },
+      setValue: function (value) { editorEl.value = value; },
+      setDisabled: function (disabled) { editorEl.disabled = disabled; },
+      onChange: function (listener) { editorEl.addEventListener('input', listener); }
+    };
+
+    sourceEditor.setValue(typeof window.EventModelingInitialSource === 'string' ? window.EventModelingInitialSource : SEED);
+    sourceEditor.setDisabled(true);
     formatBtnEl.disabled = true;
 
-    editorEl.addEventListener('input', scheduleRender);
+    sourceEditor.onChange(scheduleRender);
     profileEl.addEventListener('change', renderNow);
     formatBtnEl.addEventListener('click', formatNow);
 
