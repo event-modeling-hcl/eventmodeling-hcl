@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`eventmodeling-hcl` v0.4.0 implements Event Modeling HCL Specification v0.3.0.
+`eventmodeling-hcl` v0.5.0 implements Event Modeling HCL Specification v0.3.0.
 This repository provides a strict validator, canonical formatter, typed semantic model,
 normative language documentation, and executable examples. The domain reference is the upstream [Event Modeling
 Specification](https://github.com/dilgerma/event-modeling-spec); the HCL
@@ -40,7 +40,7 @@ With GitHub CLI 2.49.0 or newer, verify the downloaded archive was produced by
 this repository's release workflow:
 
 ```bash
-gh attestation verify eventmodeling-hcl_0.4.0_linux_amd64.tar.gz \
+gh attestation verify eventmodeling-hcl_0.5.0_linux_amd64.tar.gz \
   --repo event-modeling-hcl/eventmodeling-hcl
 ```
 

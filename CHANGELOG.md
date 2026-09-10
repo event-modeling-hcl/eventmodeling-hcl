@@ -6,23 +6,12 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
-### Changed
+## [v0.5.0] - 2026-09-10
 
-- Rendered diagrams now group domain events into one lane per aggregate under a
-  bounded-context header, replacing the single flat Events swimlane. The Screens,
-  Processors, and Model rows are unchanged, and all wiring, filtering, drawer, and
-  theme behavior is preserved.
-- Enforced a typed validation boundary before canonical model construction and
-  centralized shared source interpretation.
-- Consolidated CLI, WASM, and live-server use cases in `internal/app`, removing
-  the redundant `internal/replcore` facade.
-- Added `architecture-guide.md` documenting the repository's Axiomatic Design
-  requirements, influence matrix, module contracts, and change rules.
-
-## [v0.5.0] - 2026-09-08
-
-This release adds ways to author and preview models interactively. The Event
-Modeling HCL language is unchanged — it still implements Specification v0.3.0.
+This release adds interactive ways to author and preview models, improves the
+diagram's domain layout, and reorganizes the implementation around explicit
+application and validation boundaries. The Event Modeling HCL language is
+unchanged — it still implements Specification v0.3.0.
 
 ### Added
 
@@ -30,17 +19,33 @@ Modeling HCL language is unchanged — it still implements Specification v0.3.0.
   edit-and-render loop that watches one model and live-reloads the rendered
   diagram in the browser. It binds `127.0.0.1:8080` by default; `--port 0`
   requests an available port and the actual URL is printed after binding.
-- In-browser playground: the real parse, validate, and render core compiled to
-  WebAssembly (`cmd/wasm`), driven by a dependency-free editor under
+- In-browser playground: the real parse, validate, format, and render core
+  compiled to WebAssembly (`cmd/wasm`), driven by a dependency-free editor under
   `web/playground/`. Everything runs client-side — nothing typed leaves the
   browser.
-- `internal/replcore`, a facade returning plain `RenderResult` and `Diagnostic`
-  values, so the `serve` and WebAssembly entrypoints depend on a stable contract
-  rather than the internal parser, validator, and renderer packages directly.
+- Playground integration hooks for a host-supplied editor and initial source,
+  plus `eventmodeling:status`, `eventmodeling:diagnostics`, and
+  `eventmodeling:rendered` events.
 - `cmd/playground-seed` (with `internal/playground`) generates the playground's
   seed model from `examples/minimal.em.hcl`.
 - `build-wasm` and `wasm-check` Makefile targets; `wasm-check` runs as part of
   `make verify`.
+- `architecture-guide.md` documents the repository's Axiomatic Design
+  requirements, influence matrix, module contracts, and change rules.
+
+### Changed
+
+- Rendered diagrams now group domain events into one lane per aggregate under a
+  bounded-context header, replacing the single flat Events swimlane. The
+  Screens, Processors, and Model rows are unchanged, and all wiring, filtering,
+  drawer, and theme behavior is preserved.
+- CLI, WebAssembly, and live-server use cases now share `internal/app`; source
+  interpretation is centralized in `internal/source`, grammar lives in
+  `internal/syntax`, and canonical model construction requires a
+  validator-issued typed document.
+- The Go toolchain is pinned to patched Go 1.26.6 for release and verification
+  builds.
+
 
 ## [v0.4.0] - 2026-09-07
 
