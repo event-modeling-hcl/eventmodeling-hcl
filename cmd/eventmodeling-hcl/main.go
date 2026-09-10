@@ -80,49 +80,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if command.kind == serveCommand {
 		return serveFile(command, stderr)
 	}
-	diagnostics := validateFile(command.path, command.profile)
+	diagnostics := app.ValidateFile(command.path, command.profile)
 	if len(diagnostics) > 0 {
 		writeDiagnostics(stderr, diagnostics)
 	}
-	if hasErrorDiagnostic(diagnostics) {
+	if diagnostics.HasErrors() {
 		return 1
 	}
 
 	fmt.Fprintf(stdout, "%s valid\n", command.path)
 	return 0
-}
-
-// validateFile reads path and validates it under profile, reporting a
-// single EM001 diagnostic — mirroring the internal/validator package's own
-// ValidateFileWithProfile — when the file cannot even be read.
-func validateFile(path string, profile app.Profile) []app.Diagnostic {
-	source, err := os.ReadFile(path)
-	if err != nil {
-		return []app.Diagnostic{readFileDiagnostic(path)}
-	}
-	return app.Validate(path, source, profile)
-}
-
-// readFileDiagnostic reports the EM001 diagnostic used whenever a model
-// file cannot be read, before any source text exists to point at.
-func readFileDiagnostic(path string) app.Diagnostic {
-	return app.Diagnostic{
-		Code:     "EM001",
-		Severity: "Error",
-		Summary:  "Failed to read file",
-		Detail:   fmt.Sprintf("The configuration file %q could not be read.", path),
-	}
-}
-
-// hasErrorDiagnostic reports whether diagnostics contains at least one
-// Error-severity entry.
-func hasErrorDiagnostic(diagnostics []app.Diagnostic) bool {
-	for _, diagnostic := range diagnostics {
-		if diagnostic.Severity == "Error" {
-			return true
-		}
-	}
-	return false
 }
 
 // parseCommand turns raw command-line arguments into a cliCommand, or
@@ -254,16 +221,11 @@ func serveCLICommand(args []string) (cliCommand, error) {
 }
 
 func formatFile(command cliCommand, stdout, stderr io.Writer) int {
-	source, err := os.ReadFile(command.path)
-	if err != nil {
-		fmt.Fprintf(stderr, "failed to read %s: %v\n", command.path, err)
-		return 1
-	}
-	result := app.Format(command.path, source)
+	result := app.FormatFile(command.path)
 	if len(result.Diagnostics) > 0 {
 		writeDiagnostics(stderr, result.Diagnostics)
 	}
-	if hasErrorDiagnostic(result.Diagnostics) {
+	if result.Diagnostics.HasErrors() {
 		return 1
 	}
 	formatted := []byte(result.Source)
@@ -298,16 +260,11 @@ func serveFile(command cliCommand, stderr io.Writer) int {
 }
 
 func diagramFile(command cliCommand, stdout, stderr io.Writer) int {
-	source, err := os.ReadFile(command.path)
-	if err != nil {
-		writeDiagnostics(stderr, []app.Diagnostic{readFileDiagnostic(command.path)})
-		return 1
-	}
-	result := app.Render(command.path, source, app.Valid)
+	result := app.RenderFile(command.path, app.Valid)
 	if len(result.Diagnostics) > 0 {
 		writeDiagnostics(stderr, result.Diagnostics)
 	}
-	if hasErrorDiagnostic(result.Diagnostics) {
+	if result.Diagnostics.HasErrors() {
 		return 1
 	}
 	if command.output == "" {

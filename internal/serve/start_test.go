@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/replcore"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/app"
 )
 
 // syncBuffer is a bytes.Buffer safe for concurrent Write (from the
@@ -23,6 +23,19 @@ type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
 }
+
+type failingListener struct {
+	err error
+}
+
+func (l failingListener) Accept() (net.Conn, error) { return nil, l.err }
+func (failingListener) Close() error                { return nil }
+func (failingListener) Addr() net.Addr              { return testAddr("127.0.0.1:43210") }
+
+type testAddr string
+
+func (a testAddr) Network() string { return "tcp" }
+func (a testAddr) String() string  { return string(a) }
 
 func (b *syncBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
@@ -56,7 +69,7 @@ func testModelPath() string {
 func runStart(env environment) <-chan error {
 	done := make(chan error, 1)
 	go func() {
-		done <- start(testModelPath(), "127.0.0.1", 0, replcore.Valid, env)
+		done <- start(testModelPath(), "127.0.0.1", 0, app.Valid, env)
 	}()
 	return done
 }
@@ -153,7 +166,7 @@ func TestStart_ReadFileErrorOnInitialRegeneratePropagates(t *testing.T) {
 		signals:     signals,
 	}
 
-	err := start(testModelPath(), "127.0.0.1", 0, replcore.Valid, env)
+	err := start(testModelPath(), "127.0.0.1", 0, app.Valid, env)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("start() error = %v, want it to wrap/equal %v", err, sentinel)
 	}
@@ -174,9 +187,34 @@ func TestStart_ListenErrorPropagates(t *testing.T) {
 		signals:     signals,
 	}
 
-	err := start(testModelPath(), "127.0.0.1", 0, replcore.Valid, env)
+	err := start(testModelPath(), "127.0.0.1", 0, app.Valid, env)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("start() error = %v, want it to wrap/equal %v", err, sentinel)
+	}
+}
+
+func TestStart_ServeFailureStopsSignalWorker(t *testing.T) {
+	sentinel := errors.New("boom: accept failed")
+	sigCh, signals := fakeSignals()
+	stdout := &syncBuffer{}
+	env := environment{
+		readFile:    os.ReadFile,
+		listen:      func(string, string) (net.Listener, error) { return failingListener{err: sentinel}, nil },
+		openBrowser: func(string) {},
+		stdout:      stdout,
+		stderr:      &bytes.Buffer{},
+		signals:     signals,
+	}
+
+	err := start(testModelPath(), "127.0.0.1", 0, app.Valid, env)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("start() error = %v, want %v", err, sentinel)
+	}
+
+	sigCh <- os.Interrupt
+	time.Sleep(20 * time.Millisecond)
+	if strings.Contains(stdout.String(), "Shutting down server...") {
+		t.Fatal("signal worker remained active after start returned")
 	}
 }
 
@@ -203,7 +241,7 @@ func TestWatch_PrintsDiagramUpdatedToTheInjectedStdout(t *testing.T) {
 	}
 
 	s := &state{}
-	if err := regenerate(env, s, path, replcore.Valid); err != nil {
+	if err := regenerate(env, s, path, app.Valid); err != nil {
 		t.Fatalf("initial regenerate: %v", err)
 	}
 	startHash, err := fileSourceHash(env, path)
@@ -213,7 +251,7 @@ func TestWatch_PrintsDiagramUpdatedToTheInjectedStdout(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go watch(ctx, env, s, path, replcore.Valid, startHash)
+	go watch(ctx, env, s, path, app.Valid, startHash)
 
 	changed, err := os.ReadFile(filepath.Join("..", "..", "testdata", "invalid", "reverse-flow.em.hcl"))
 	if err != nil {
@@ -282,7 +320,7 @@ func TestWatch_PrintsRegenerationErrorToTheInjectedStderr(t *testing.T) {
 	}
 
 	s := &state{}
-	if err := regenerate(env, s, path, replcore.Valid); err != nil {
+	if err := regenerate(env, s, path, app.Valid); err != nil {
 		t.Fatalf("initial regenerate: %v", err)
 	}
 	startHash, err := fileSourceHash(env, path)
@@ -292,7 +330,7 @@ func TestWatch_PrintsRegenerationErrorToTheInjectedStderr(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go watch(ctx, env, s, path, replcore.Valid, startHash)
+	go watch(ctx, env, s, path, app.Valid, startHash)
 
 	if err := os.WriteFile(path, changed, 0o644); err != nil {
 		t.Fatalf("rewrite file: %v", err)

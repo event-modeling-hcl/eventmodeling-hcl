@@ -3,28 +3,22 @@
 package validator
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/source"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/syntax"
 )
 
-// ValidateFile parses and validates one native HCL Event Modeling document.
-func ValidateFile(path string) hcl.Diagnostics {
-	return ValidateFileWithProfile(path, Valid)
+// ValidatedDocument is the capability required to construct the canonical
+// model. Its source cannot be supplied without first passing validation.
+type ValidatedDocument struct {
+	source *source.Document
 }
 
-// ValidateFileWithProfile parses and validates one native HCL Event Modeling
-// document using the requested validation profile.
-func ValidateFileWithProfile(path string, profile Profile) hcl.Diagnostics {
-	source, err := os.ReadFile(path)
-	if err != nil {
-		return hcl.Diagnostics{&hcl.Diagnostic{Severity: hcl.DiagError, Summary: "Failed to read file", Detail: fmt.Sprintf("The configuration file %q could not be read.", path), Extra: codeReadFile}}
-	}
-	return ValidateSourceWithProfile(path, source, profile)
+// Source returns the decoded source document that passed validation.
+func (d *ValidatedDocument) Source() *source.Document {
+	return d.source
 }
 
 // ValidateSource parses and validates one in-memory Event Modeling document.
@@ -48,7 +42,18 @@ func ValidateSourceWithProfile(filename string, source []byte, profile Profile) 
 // Model) can parse once with syntax.Parse and pass the result here, instead
 // of parsing again through ValidateSourceWithProfile.
 func ValidateDocument(doc *syntax.Document, profile Profile) hcl.Diagnostics {
-	return applyProfile(validateBody(doc.Body()), profile)
+	_, diagnostics := ValidateDecodedDocument(source.Decode(doc), profile)
+	return diagnostics
+}
+
+// ValidateDecodedDocument validates decoded source and returns a construction
+// capability only when the selected profile contains no error diagnostics.
+func ValidateDecodedDocument(doc *source.Document, profile Profile) (*ValidatedDocument, hcl.Diagnostics) {
+	diagnostics := applyProfile(validateBody(doc), profile)
+	if diagnostics.HasErrors() {
+		return nil, diagnostics
+	}
+	return &ValidatedDocument{source: doc}, diagnostics
 }
 
 type fieldTypeRef struct {
@@ -66,7 +71,6 @@ type modelIndex struct {
 	boundedContexts  map[string]bool
 	catalogEvents    map[string]bool
 	fieldTypes       map[string]fieldTypeRef
-	fieldTypeNames   map[string][]string
 	chapters         map[string]bool
 	hotspots         map[string]bool
 	systems          map[string]bool
@@ -79,7 +83,8 @@ type modelIndex struct {
 }
 
 type modelValidator struct {
-	index modelIndex
+	index    modelIndex
+	document *source.Document
 }
 
 type contextValidator struct {
@@ -92,10 +97,10 @@ type contextValidator struct {
 // checks per top-level block (structure.go, which in turn covers scenarios
 // in scenarios.go and per-workflow smells in smells.go), and finally the
 // whole-model shelf-anti-pattern smell check.
-func validateBody(body hcl.Body) hcl.Diagnostics {
-	index, diagnostics := buildIndex(body)
-	validator := &modelValidator{index: index}
-	content, contentDiagnostics := syntax.Content(body, syntax.ModelSchema())
+func validateBody(document *source.Document) hcl.Diagnostics {
+	index, diagnostics := buildIndex(document)
+	validator := &modelValidator{index: index, document: document}
+	content, contentDiagnostics := syntax.Content(document.Parsed().Body(), syntax.ModelSchema())
 	diagnostics = append(diagnostics, contentDiagnostics...)
 	for _, block := range content.Blocks {
 		switch block.Type {

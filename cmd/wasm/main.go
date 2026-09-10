@@ -1,10 +1,10 @@
 // Command wasm compiles the eventmodeling-hcl core to WebAssembly and
 // exposes it to a browser as two global functions, eventModelingRender and
 // eventModelingFormat. It holds no logic of its own beyond marshaling
-// js.Value arguments into internal/replcore calls and its plain result
-// structs back into JS values — every real behavior (parsing, validating,
-// rendering, formatting, diagnostic codes) lives in replcore, where it is
-// unit-tested under the normal (non-wasm) Go toolchain. This file cannot be
+// js.Value arguments into internal/app calls and its plain result structs
+// back into JS values — every real behavior (parsing, validating, rendering,
+// formatting, diagnostic codes) lives in app, where it is unit-tested under
+// the normal (non-wasm) Go toolchain. This file cannot be
 // covered by `go test` at all (it only builds under GOOS=js GOARCH=wasm),
 // which is exactly why it is kept this thin.
 //
@@ -15,24 +15,24 @@ package main
 import (
 	"syscall/js"
 
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/replcore"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/app"
 )
 
 // profileArg reads an optional profile-name argument (args[index]), falling
-// back to replcore.Valid — the same default the CLI's `validate` uses —
+// back to app.Valid — the same default the CLI's `validate` uses —
 // when absent, not a string, or unrecognized.
-func profileArg(args []js.Value, index int) replcore.Profile {
+func profileArg(args []js.Value, index int) app.Profile {
 	if len(args) <= index || args[index].Type() != js.TypeString {
-		return replcore.Valid
+		return app.Valid
 	}
-	profile, ok := replcore.ParseProfile(args[index].String())
+	profile, ok := app.ParseProfile(args[index].String())
 	if !ok {
-		return replcore.Valid
+		return app.Valid
 	}
 	return profile
 }
 
-func diagnosticsToJS(diagnostics []replcore.Diagnostic) []interface{} {
+func diagnosticsToJS(diagnostics []app.Diagnostic) []interface{} {
 	items := make([]interface{}, len(diagnostics))
 	for index, diagnostic := range diagnostics {
 		items[index] = map[string]interface{}{
@@ -53,7 +53,7 @@ func render(_ js.Value, args []js.Value) interface{} {
 		return map[string]interface{}{"error": "eventModelingRender: missing source string argument"}
 	}
 
-	result := replcore.Render("playground.em.hcl", []byte(args[0].String()), profileArg(args, 1))
+	result := app.Render("playground.em.hcl", []byte(args[0].String()), profileArg(args, 1))
 	return map[string]interface{}{
 		"html":        result.HTML,
 		"diagnostics": diagnosticsToJS(result.Diagnostics),
@@ -66,7 +66,7 @@ func format(_ js.Value, args []js.Value) interface{} {
 		return map[string]interface{}{"error": "eventModelingFormat: missing source string argument"}
 	}
 
-	result := replcore.Format("playground.em.hcl", []byte(args[0].String()))
+	result := app.Format("playground.em.hcl", []byte(args[0].String()))
 	return map[string]interface{}{
 		"source":      result.Source,
 		"diagnostics": diagnosticsToJS(result.Diagnostics),

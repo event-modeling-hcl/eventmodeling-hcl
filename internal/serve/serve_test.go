@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/replcore"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/app"
 )
 
 // discardEnv is an environment that reads real files but throws away all
@@ -41,24 +41,24 @@ func TestServingURLUsesTheActualBoundPort(t *testing.T) {
 	}
 }
 
-func validResult(t *testing.T) replcore.RenderResult {
+func validResult(t *testing.T) app.RenderResult {
 	t.Helper()
 	path := filepath.Join("..", "..", "examples", "minimal.em.hcl")
 	source, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read example: %v", err)
 	}
-	return replcore.Render(path, source, replcore.Valid)
+	return app.Render(path, source, app.Valid)
 }
 
-func invalidResult(t *testing.T) replcore.RenderResult {
+func invalidResult(t *testing.T) app.RenderResult {
 	t.Helper()
 	path := filepath.Join("..", "..", "testdata", "invalid", "reverse-flow.em.hcl")
 	source, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
-	return replcore.Render(path, source, replcore.Valid)
+	return app.Render(path, source, app.Valid)
 }
 
 // Behavior 1: the served hash changes iff the servable content changes.
@@ -82,7 +82,7 @@ func TestState_HashChangesWhenHTMLChanges(t *testing.T) {
 
 	s.update(validResult(t))
 	_, hash1 := s.snapshot()
-	s.update(replcore.RenderResult{HTML: "<html>different</html>"})
+	s.update(app.RenderResult{HTML: "<html>different</html>"})
 	_, hash2 := s.snapshot()
 
 	if hash1 == hash2 {
@@ -98,7 +98,7 @@ func TestState_HashChangesWhenDiagnosticsChangeEvenWithEmptyHTML(t *testing.T) {
 
 	s.update(invalidResult(t))
 	_, hash1 := s.snapshot()
-	s.update(replcore.RenderResult{Diagnostics: []replcore.Diagnostic{
+	s.update(app.RenderResult{Diagnostics: []app.Diagnostic{
 		{Code: "EM999", Severity: "Error", Summary: "a different problem"},
 	}})
 	_, hash2 := s.snapshot()
@@ -211,7 +211,7 @@ func TestWatch_RegeneratesWhenTheWatchedFileChanges(t *testing.T) {
 	}
 
 	s := &state{}
-	if err := regenerate(discardEnv(), s, path, replcore.Valid); err != nil {
+	if err := regenerate(discardEnv(), s, path, app.Valid); err != nil {
 		t.Fatalf("initial regenerate: %v", err)
 	}
 	_, hashBefore := s.snapshot()
@@ -227,7 +227,7 @@ func TestWatch_RegeneratesWhenTheWatchedFileChanges(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go watch(ctx, discardEnv(), s, path, replcore.Valid, startHash)
+	go watch(ctx, discardEnv(), s, path, app.Valid, startHash)
 	if err := os.WriteFile(path, invalid, 0o644); err != nil {
 		t.Fatalf("rewrite file: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestWatch_RegeneratesWhenContentChangesWithoutMTimeAdvancing(t *testing.T) 
 	}
 
 	s := &state{}
-	if err := regenerate(discardEnv(), s, path, replcore.Valid); err != nil {
+	if err := regenerate(discardEnv(), s, path, app.Valid); err != nil {
 		t.Fatalf("initial regenerate: %v", err)
 	}
 	_, before := s.snapshot()
@@ -277,7 +277,7 @@ func TestWatch_RegeneratesWhenContentChangesWithoutMTimeAdvancing(t *testing.T) 
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go watch(ctx, discardEnv(), s, path, replcore.Valid, startHash)
+	go watch(ctx, discardEnv(), s, path, app.Valid, startHash)
 
 	invalid, err := os.ReadFile(filepath.Join("..", "..", "testdata", "invalid", "reverse-flow.em.hcl"))
 	if err != nil {

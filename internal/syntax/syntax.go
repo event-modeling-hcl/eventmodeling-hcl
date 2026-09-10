@@ -1,10 +1,8 @@
 // Package syntax is the single owner of the HCL grammar for the native
 // Event Modeling language. Every hcl.BodySchema describing which blocks and
 // attributes the language allows lives here, and Parse performs exactly one
-// HCL parse of a document's source. Consumers — the validator today, the
-// model package in a later refactor stage — decode the same parsed content
-// through Content/PartialContent and the schema functions below instead of
-// each re-declaring the grammar and re-parsing the source.
+// HCL parse of a document's source. Later stages decode the same parsed content
+// through Content/PartialContent instead of re-declaring the grammar.
 package syntax
 
 import (

@@ -24,9 +24,11 @@ make verify
 
 ## Code conventions
 
-- Keep the package layout as-is: `cmd/eventmodeling-hcl` is the thin CLI, the
-  parsing/validation engine lives in `internal/validator` and is not a public
-  API.
+- Follow the responsibilities and change sequence in
+  [architecture-guide.md](architecture-guide.md). In particular, entry points
+  delegate to `internal/app`, grammar belongs to `internal/syntax`, shared
+  source interpretation belongs to `internal/source`, and validation policy
+  belongs to `internal/validator`.
 - Prefer table-driven tests with `t.Run` subtests, matching the existing style
   in `internal/validator/validator_test.go` and
   `cmd/eventmodeling-hcl/main_test.go`.

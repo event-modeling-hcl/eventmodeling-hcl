@@ -6,19 +6,19 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/source"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/syntax"
 )
 
 var modelIdentifier = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
-func buildIndex(body hcl.Body) (modelIndex, hcl.Diagnostics) {
+func buildIndex(document *source.Document) (modelIndex, hcl.Diagnostics) {
 	index := modelIndex{
 		actors:           map[string]bool{},
 		aggregates:       map[string]bool{},
 		boundedContexts:  map[string]bool{},
 		catalogEvents:    map[string]bool{},
 		fieldTypes:       map[string]fieldTypeRef{},
-		fieldTypeNames:   map[string][]string{},
 		chapters:         map[string]bool{},
 		hotspots:         map[string]bool{},
 		systems:          map[string]bool{},
@@ -29,7 +29,7 @@ func buildIndex(body hcl.Body) (modelIndex, hcl.Diagnostics) {
 		externalContexts: map[string]bool{},
 	}
 	var diagnostics hcl.Diagnostics
-	content, _, _ := syntax.PartialContent(body, syntax.ModelSchema())
+	content, _, _ := syntax.PartialContent(document.Parsed().Body(), syntax.ModelSchema())
 	for _, block := range content.Blocks {
 		if len(block.Labels) == 0 {
 			continue
@@ -79,7 +79,6 @@ func (i *modelIndex) addBoundedContext(block *hcl.Block) hcl.Diagnostics {
 				continue
 			}
 			i.fieldTypes[address] = readFieldType(child.Body)
-			i.fieldTypeNames[child.Labels[0]] = append(i.fieldTypeNames[child.Labels[0]], contextID)
 		}
 	}
 	return diagnostics

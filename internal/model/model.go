@@ -1,11 +1,13 @@
-// Package model loads valid Event Modeling HCL into a canonical typed model.
+// Package model lowers validated Event Modeling source into a canonical model.
 package model
 
 import (
 	"encoding/json"
 	"strings"
 
+	sourcepkg "github.com/event-modeling-hcl/eventmodeling-hcl/internal/source"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/syntax"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
@@ -205,16 +207,12 @@ type Edge struct {
 	To         string `json:"to"`
 }
 
-// Build lowers a parsed Document into the canonical Model. It is a pure
-// transformation: no HCL parsing and no validation happen here. Build
-// assumes doc's source has already been validated (as Load does before
-// calling it) — schema violations in an unvalidated document are silently
-// ignored rather than reported, matching the guarantees the language
-// validator already provides.
-func Build(doc *syntax.Document) *Model {
-	content, _ := syntax.Content(doc.Body(), syntax.ModelSchema())
+// Build lowers a validated source document into the canonical Model. It is a
+// pure transformation: parsing and validation have already succeeded.
+func Build(doc *validator.ValidatedDocument) *Model {
+	sourceDocument := doc.Source()
+	content, _ := syntax.Content(sourceDocument.Parsed().Body(), syntax.ModelSchema())
 	model := &Model{}
-	catalog := fieldTypeCatalog(content.Blocks)
 	for _, block := range content.Blocks {
 		if len(block.Labels) == 0 {
 			continue
@@ -225,13 +223,13 @@ func Build(doc *syntax.Document) *Model {
 		case "team", "system":
 			model.Owners = append(model.Owners, decodeOwner(block))
 		case "bounded_context":
-			model.Contexts = append(model.Contexts, decodeContext(block, catalog))
+			model.Contexts = append(model.Contexts, decodeContext(block, sourceDocument))
 		case "chapter":
 			model.Chapters = append(model.Chapters, decodeChapter(block))
 		case "hotspot":
 			model.Hotspots = append(model.Hotspots, decodeHotspot(block))
 		case "state_change", "state_view", "automation", "translation":
-			workflow, edges := decodeWorkflow(block, catalog)
+			workflow, edges := decodeWorkflow(block, sourceDocument)
 			model.Workflows = append(model.Workflows, workflow)
 			model.Edges = append(model.Edges, edges...)
 		}
@@ -253,12 +251,12 @@ func decodeOwner(block *hcl.Block) Owner {
 	return Owner{Kind: block.Type, ID: block.Labels[0], Title: title, TitleExplicit: explicit, Description: stringValue(content.Attributes["description"]), External: external}
 }
 
-func decodeContext(block *hcl.Block, catalog map[string][]string) Context {
+func decodeContext(block *hcl.Block, document *sourcepkg.Document) Context {
 	content, _ := syntax.Content(block.Body, syntax.BoundedContextSchema())
 	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
 	external, _ := boolValue(content.Attributes["external"])
 	context := Context{ID: block.Labels[0], Title: title, TitleExplicit: explicit, Description: stringValue(content.Attributes["description"]), External: external, Owner: traversalValue(content.Attributes["owner"])}
-	fc := fieldContext{contextID: block.Labels[0], catalog: catalog}
+	fc := fieldContext{contextID: block.Labels[0], document: document}
 	for _, child := range content.Blocks {
 		switch child.Type {
 		case "aggregate":
@@ -291,7 +289,7 @@ func decodeEvent(block *hcl.Block, fc fieldContext) Event {
 	return Event{ID: block.Labels[0], Title: title, TitleExplicit: explicit, Semantic: semanticFrom(content.Attributes), Presentation: presentationFrom(content.Attributes), Fields: decodeElementFields(content, fc)}
 }
 
-func decodeWorkflow(block *hcl.Block, catalog map[string][]string) (Workflow, []Edge) {
+func decodeWorkflow(block *hcl.Block, document *sourcepkg.Document) (Workflow, []Edge) {
 	content, _ := syntax.Content(block.Body, syntax.WorkflowSchema())
 	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
 	workflow := Workflow{Kind: mustWorkflowKind(block.Type), ID: block.Labels[0], Title: title, TitleExplicit: explicit, Status: stringValue(content.Attributes["status"]), Owner: traversalValue(content.Attributes["owner"]), Description: stringValue(content.Attributes["description"])}
@@ -299,22 +297,22 @@ func decodeWorkflow(block *hcl.Block, catalog map[string][]string) (Workflow, []
 	for _, child := range content.Blocks {
 		switch child.Type {
 		case "command", "readmodel", "screen", "processor", "screen_image", "table":
-			element, elementEdges := decodeElement(workflow.ID, child, catalog)
+			element, elementEdges := decodeElement(workflow.ID, child, document)
 			workflow.Elements = append(workflow.Elements, element)
 			edges = append(edges, elementEdges...)
 		case "scenario":
-			workflow.Scenarios = append(workflow.Scenarios, decodeScenario(child, catalog))
+			workflow.Scenarios = append(workflow.Scenarios, decodeScenario(child, document))
 		}
 	}
 	return workflow, edges
 }
 
-func decodeElement(workflowID string, block *hcl.Block, catalog map[string][]string) (Element, []Edge) {
+func decodeElement(workflowID string, block *hcl.Block, document *sourcepkg.Document) (Element, []Edge) {
 	content, _ := syntax.Content(block.Body, elementSchemaFor(block.Type))
 	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
 	from := traversalList(content.Attributes["from"])
 	to := traversalList(content.Attributes["to"])
-	element := Element{Kind: mustElementKind(block.Type), ID: block.Labels[0], Title: title, TitleExplicit: explicit, Semantic: semanticFrom(content.Attributes), Presentation: presentationFrom(content.Attributes), Fields: decodeElementFields(content, fieldContext{catalog: catalog}), From: from, To: to}
+	element := Element{Kind: mustElementKind(block.Type), ID: block.Labels[0], Title: title, TitleExplicit: explicit, Semantic: semanticFrom(content.Attributes), Presentation: presentationFrom(content.Attributes), Fields: decodeElementFields(content, fieldContext{document: document}), From: from, To: to}
 	owner := block.Type + "." + block.Labels[0]
 	edges := make([]Edge, 0, len(from)+len(to))
 	for _, target := range to {
@@ -326,7 +324,7 @@ func decodeElement(workflowID string, block *hcl.Block, catalog map[string][]str
 	return element, edges
 }
 
-func decodeScenario(block *hcl.Block, catalog map[string][]string) Scenario {
+func decodeScenario(block *hcl.Block, document *sourcepkg.Document) Scenario {
 	content, _ := syntax.Content(block.Body, syntax.ScenarioSchema())
 	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
 	scenario := Scenario{ID: block.Labels[0], Title: title, TitleExplicit: explicit, Description: stringValue(content.Attributes["description"])}
@@ -336,15 +334,15 @@ func decodeScenario(block *hcl.Block, catalog map[string][]string) Scenario {
 			scenario.Comments = append(scenario.Comments, stringValue(comment.Attributes["description"]))
 			continue
 		}
-		step := decodeStep(child, catalog)
+		step := decodeStep(child, document)
 		scenario.Steps = append(scenario.Steps, step)
 	}
 	return scenario
 }
 
-func decodeStep(block *hcl.Block, catalog map[string][]string) Step {
+func decodeStep(block *hcl.Block, document *sourcepkg.Document) Step {
 	content, _ := syntax.Content(block.Body, syntax.ScenarioStepSchema())
-	step := Step{Kind: mustStepKind(block.Type), Title: stringValue(content.Attributes["title"]), Examples: jsonValue(content.Attributes["examples"]), ExpectEmptyList: boolValueOrFalse(content.Attributes["expect_empty_list"]), Fields: decodeElementFields(content, fieldContext{catalog: catalog})}
+	step := Step{Kind: mustStepKind(block.Type), Title: stringValue(content.Attributes["title"]), Examples: jsonValue(content.Attributes["examples"]), ExpectEmptyList: boolValueOrFalse(content.Attributes["expect_empty_list"]), Fields: decodeElementFields(content, fieldContext{document: document})}
 	for _, target := range []string{"event", "command", "readmodel", "processor", "error"} {
 		attribute := content.Attributes[target]
 		if attribute == nil {
@@ -404,48 +402,20 @@ func presentationFrom(attributes hcl.Attributes) Presentation {
 // fields and empty for workflow-element fields, which resolve by unique name.
 type fieldContext struct {
 	contextID string
-	catalog   map[string][]string
-}
-
-// fieldTypeCatalog maps every field_type name to the bounded_contexts that
-// declare it, so workflow-element shorthand fields can resolve by unique name.
-func fieldTypeCatalog(blocks hcl.Blocks) map[string][]string {
-	catalog := map[string][]string{}
-	for _, block := range blocks {
-		if block.Type != "bounded_context" || len(block.Labels) == 0 {
-			continue
-		}
-		content, _ := syntax.Content(block.Body, syntax.BoundedContextSchema())
-		for _, child := range content.Blocks {
-			if child.Type == "field_type" && len(child.Labels) > 0 {
-				catalog[child.Labels[0]] = append(catalog[child.Labels[0]], block.Labels[0])
-			}
-		}
-	}
-	return catalog
+	document  *sourcepkg.Document
 }
 
 // inferredType synthesizes the canonical field_type reference a typeless field
 // block infers from its name, matching the string an explicit type decodes to.
 // Load runs only on validated source, so resolution always succeeds here.
 func (fc fieldContext) inferredType(name string) string {
-	if fc.contextID != "" {
-		return "field_type." + fc.contextID + "." + name
-	}
-	if contexts := fc.catalog[name]; len(contexts) == 1 {
-		return "field_type." + contexts[0] + "." + name
-	}
-	return ""
+	return fc.document.InferFieldType(fc.contextID, name)
 }
 
 // canonicalRef expands a two-part context-local field_type reference used in a
 // fields = [...] entry into its fully qualified form.
 func (fc fieldContext) canonicalRef(reference string) string {
-	parts := strings.Split(reference, ".")
-	if len(parts) == 2 && parts[0] == "field_type" && fc.contextID != "" {
-		return "field_type." + fc.contextID + "." + parts[1]
-	}
-	return reference
+	return sourcepkg.CanonicalFieldTypeReference(fc.contextID, reference)
 }
 
 // decodeElementFields merges the shorthand fields = [...] list attribute with
@@ -547,45 +517,14 @@ func traversalValue(attribute *hcl.Attribute) string {
 	if attribute == nil {
 		return ""
 	}
-	traversal, diagnostics := hcl.AbsTraversalForExpr(attribute.Expr)
-	if diagnostics.HasErrors() {
-		return ""
-	}
-	return traversalString(traversal)
+	return sourcepkg.ReferenceString(attribute.Expr)
 }
 
 func traversalList(attribute *hcl.Attribute) []string {
 	if attribute == nil {
 		return nil
 	}
-	expressions, diagnostics := hcl.ExprList(attribute.Expr)
-	if diagnostics.HasErrors() {
-		return nil
-	}
-	values := make([]string, 0, len(expressions))
-	for _, expression := range expressions {
-		traversal, traversalDiagnostics := hcl.AbsTraversalForExpr(expression)
-		if traversalDiagnostics.HasErrors() {
-			continue
-		}
-		values = append(values, traversalString(traversal))
-	}
-	return values
-}
-
-func traversalString(traversal hcl.Traversal) string {
-	if len(traversal) == 0 {
-		return ""
-	}
-	parts := []string{traversal.RootName()}
-	for _, step := range traversal[1:] {
-		attribute, ok := step.(hcl.TraverseAttr)
-		if !ok {
-			return ""
-		}
-		parts = append(parts, attribute.Name)
-	}
-	return strings.Join(parts, ".")
+	return sourcepkg.ReferenceList(attribute.Expr)
 }
 
 func stringList(attribute *hcl.Attribute) []string {

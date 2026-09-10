@@ -6,28 +6,28 @@ import (
 	"path/filepath"
 	"testing"
 
+	sourcepkg "github.com/event-modeling-hcl/eventmodeling-hcl/internal/source"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/syntax"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
 	"github.com/hashicorp/hcl/v2"
 )
 
-// loadTestModel parses and builds source the same way the deleted
-// model.Load used to, minus the validation step: it exists only in this
-// test file, since production code (internal/app) is the one place that
-// composes parse, validate, and build together, and model itself no longer
-// depends on the validator package at all — including from its tests. Every
-// fixture these tests use is hand-verified valid, so skipping validation
-// costs nothing here; Build is a pure lowering step that never consults
-// validity anyway.
+// loadTestModel follows the production parse, decode, validate, and build
+// sequence while keeping model assertions inside this package.
 func loadTestModel(t *testing.T, filename string, source []byte) (*Model, hcl.Diagnostics) {
 	t.Helper()
 	doc, diagnostics := syntax.Parse(filename, source)
 	if diagnostics.HasErrors() {
 		return nil, diagnostics
 	}
-	return Build(doc), diagnostics
+	validated, validationDiagnostics := validator.ValidateDecodedDocument(sourcepkg.Decode(doc), validator.Valid)
+	if validationDiagnostics.HasErrors() {
+		return nil, validationDiagnostics
+	}
+	return Build(validated), validationDiagnostics
 }
 
-func TestLoad_DecodesCompleteModelIntoCanonicalIR(t *testing.T) {
+func TestBuild_DecodesCompleteModelIntoCanonicalIR(t *testing.T) {
 	path := filepath.Join("..", "..", "examples", "complete.em.hcl")
 	source, err := os.ReadFile(path)
 	if err != nil {
@@ -88,7 +88,7 @@ func TestLoad_DecodesCompleteModelIntoCanonicalIR(t *testing.T) {
 	}
 }
 
-func TestLoad_DerivesTitlesWithoutChangingExplicitTitles(t *testing.T) {
+func TestBuild_DerivesTitlesWithoutChangingExplicitTitles(t *testing.T) {
 	source := []byte(`state_change "register_pet" {
   command "register_pet" {}
 }
@@ -115,7 +115,7 @@ state_change "explicit_title" {
 	}
 }
 
-func TestLoad_PreservesFieldTypeBadgesAndScenarioExamples(t *testing.T) {
+func TestBuild_PreservesFieldTypeBadgesAndScenarioExamples(t *testing.T) {
 	source := []byte(`bounded_context "clinic" {
   field_type "pet_id" {
     type         = "UUID"
@@ -217,7 +217,7 @@ func TestAppointmentWeatherPatternsModel_SpecifiesEveryWorkflowPattern(t *testin
 	assertScenarioSteps(t, workflowByID(t, loaded, "translate_weather_change"), []StepKind{Given, Given, When, Then})
 }
 
-func TestLoad_ResolvesFieldShorthands(t *testing.T) {
+func TestBuild_ResolvesFieldShorthands(t *testing.T) {
 	source := []byte(`bounded_context "clinic" {
   field_type "pet_id" { type = "UUID" }
   field_type "pet_name" { type = "String" }

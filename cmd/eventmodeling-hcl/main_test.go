@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/app"
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
 )
 
 func TestParseCommand_RecognizesValidateInvocation(t *testing.T) {
@@ -23,7 +22,7 @@ func TestParseCommand_RecognizesValidateInvocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %q, want nil", err)
 	}
-	if got, want := command, (cliCommand{kind: validateCommand, path: "model.em.hcl", profile: validator.Valid}); got != want {
+	if got, want := command, (cliCommand{kind: validateCommand, path: "model.em.hcl", profile: app.Valid}); got != want {
 		t.Fatalf("command = %#v, want %#v", got, want)
 	}
 }
@@ -34,7 +33,7 @@ func TestParseCommand_RecognizesValidationProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %q, want nil", err)
 	}
-	if got, want := command, (cliCommand{kind: validateCommand, path: "model.em.hcl", profile: validator.Strict}); got != want {
+	if got, want := command, (cliCommand{kind: validateCommand, path: "model.em.hcl", profile: app.Strict}); got != want {
 		t.Fatalf("command = %#v, want %#v", got, want)
 	}
 }
@@ -88,7 +87,7 @@ func TestParseCommand_RecognizesServeInvocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %q, want nil", err)
 	}
-	want := cliCommand{kind: serveCommand, path: "model.em.hcl", profile: validator.Valid, addr: defaultServeAddr, port: defaultServePort}
+	want := cliCommand{kind: serveCommand, path: "model.em.hcl", profile: app.Valid, addr: defaultServeAddr, port: defaultServePort}
 	if command != want {
 		t.Fatalf("command = %#v, want %#v", command, want)
 	}
@@ -114,7 +113,7 @@ func TestParseCommand_RecognizesServeFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %q, want nil", err)
 	}
-	want := cliCommand{kind: serveCommand, path: "model.em.hcl", profile: validator.Strict, addr: "127.0.0.1", port: 9090}
+	want := cliCommand{kind: serveCommand, path: "model.em.hcl", profile: app.Strict, addr: "127.0.0.1", port: 9090}
 	if command != want {
 		t.Fatalf("command = %#v, want %#v", command, want)
 	}

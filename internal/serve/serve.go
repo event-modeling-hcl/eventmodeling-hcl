@@ -1,7 +1,7 @@
 // Package serve runs a local live-reload HTTP server for one .em.hcl model:
-// it watches the file, re-renders it with internal/replcore on every change,
+// it watches the file, re-renders it with internal/app on every change,
 // and serves the result in a browser tab that reloads itself. All rendering
-// is delegated to replcore's plain RenderResult/Diagnostic types — this
+// is delegated to app's plain RenderResult/Diagnostic types — this
 // package owns only HTTP and file-watching, never HCL parsing or the
 // renderer's output format.
 package serve
@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/replcore"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/app"
 )
 
 // pollInterval is how often the watch loop checks the model file's content.
@@ -35,11 +35,11 @@ var pollInterval = 500 * time.Millisecond
 // it concurrently with the file-watch goroutine that updates it.
 type state struct {
 	mu     sync.RWMutex
-	result replcore.RenderResult
+	result app.RenderResult
 	hash   string
 }
 
-func (s *state) update(result replcore.RenderResult) {
+func (s *state) update(result app.RenderResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.result = result
@@ -48,7 +48,7 @@ func (s *state) update(result replcore.RenderResult) {
 
 // snapshot returns the current result and its hash together, so a caller
 // can never observe a hash that doesn't match the result it read.
-func (s *state) snapshot() (replcore.RenderResult, string) {
+func (s *state) snapshot() (app.RenderResult, string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.result, s.hash
@@ -59,7 +59,7 @@ func (s *state) snapshot() (replcore.RenderResult, string) {
 // make any two error states indistinguishable, since both render no HTML
 // at all, and the served page would never know to reload from one error to
 // a different one.
-func hashResult(result replcore.RenderResult) string {
+func hashResult(result app.RenderResult) string {
 	encoded, err := json.Marshal(result)
 	if err != nil {
 		// RenderResult's fields are all plain strings/ints/slices thereof;
@@ -104,7 +104,7 @@ func shellPage() []byte {
 // diagnosticsPage is served at "/diagram" in place of HTML whenever the
 // current model has errors, so "nothing changed" and "the model is broken"
 // never look the same as a blank response.
-func diagnosticsPage(diagnostics []replcore.Diagnostic) []byte {
+func diagnosticsPage(diagnostics []app.Diagnostic) []byte {
 	var items strings.Builder
 	for _, diagnostic := range diagnostics {
 		items.WriteString("<li><code>")
@@ -167,12 +167,12 @@ func newMux(s *state) *http.ServeMux {
 
 // regenerate reads filePath (via env.readFile) and renders it into s, under
 // profile.
-func regenerate(env environment, s *state, filePath string, profile replcore.Profile) error {
+func regenerate(env environment, s *state, filePath string, profile app.Profile) error {
 	source, err := env.readFile(filePath)
 	if err != nil {
 		return err
 	}
-	s.update(replcore.Render(filePath, source, profile))
+	s.update(app.Render(filePath, source, profile))
 	return nil
 }
 
@@ -193,7 +193,7 @@ func fileSourceHash(env environment, filePath string) (string, error) {
 // content changes. Content, rather than mtime, is the reliable contract:
 // editors and source-control tools may preserve timestamps when replacing a
 // file.
-func watch(ctx context.Context, env environment, s *state, filePath string, profile replcore.Profile, lastSourceHash string) {
+func watch(ctx context.Context, env environment, s *state, filePath string, profile app.Profile, lastSourceHash string) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
@@ -252,7 +252,7 @@ func servingURL(listener net.Listener, requestedHost string) string {
 // reloading in the browser whenever filePath changes on disk, until it
 // receives SIGINT. It runs against the real OS environment; see start for
 // the version that takes an injected environment.
-func Start(filePath string, addr string, port int, profile replcore.Profile) error {
+func Start(filePath string, addr string, port int, profile app.Profile) error {
 	return start(filePath, addr, port, profile, defaultEnvironment())
 }
 
@@ -260,7 +260,7 @@ func Start(filePath string, addr string, port int, profile replcore.Profile) err
 // through env instead of directly through the os/net/fmt packages. This is
 // what tests drive, so that file reads, the listener, browser-opening,
 // console output, and shutdown signaling can all be faked deterministically.
-func start(filePath string, addr string, port int, profile replcore.Profile, env environment) error {
+func start(filePath string, addr string, port int, profile app.Profile, env environment) error {
 	s := &state{}
 	if err := regenerate(env, s, filePath, profile); err != nil {
 		return err
@@ -288,20 +288,26 @@ func start(filePath string, addr string, port int, profile replcore.Profile, env
 		defer close(watchDone)
 		watch(ctx, env, s, filePath, profile, lastSourceHash)
 	}()
-	defer func() {
-		cancel()
-		<-watchDone
-	}()
 
 	server := &http.Server{Handler: newMux(s)}
 
 	sigCh, stopSignals := env.signals()
 	defer stopSignals()
+	signalDone := make(chan struct{})
 	go func() {
-		<-sigCh
-		fmt.Fprintln(env.stdout, "\nShutting down server...")
+		defer close(signalDone)
+		select {
+		case <-sigCh:
+			fmt.Fprintln(env.stdout, "\nShutting down server...")
+			cancel()
+			_ = server.Shutdown(context.Background())
+		case <-ctx.Done():
+		}
+	}()
+	defer func() {
 		cancel()
-		_ = server.Shutdown(context.Background())
+		<-watchDone
+		<-signalDone
 	}()
 
 	url := servingURL(listener, addr)

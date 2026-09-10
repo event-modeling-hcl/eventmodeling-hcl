@@ -128,6 +128,67 @@ func TestValidate_PopulatesFilenameForCLIFormatting(t *testing.T) {
 	}
 }
 
+func TestValidatedModel_InvalidSourceDoesNotProduceAModel(t *testing.T) {
+	path, source := readExample(t, "testdata/invalid/dangling-reference.em.hcl")
+
+	built, diagnostics := ValidatedModel(path, source, Valid)
+
+	if built != nil {
+		t.Fatal("model is non-nil for invalid source")
+	}
+	if !diagnostics.HasErrors() {
+		t.Fatal("diagnostics has no errors for invalid source")
+	}
+}
+
+func TestValidatedModel_WarningOnlySourceProducesAModel(t *testing.T) {
+	path, source := readExample(t, "examples/complete.em.hcl")
+
+	built, diagnostics := ValidatedModel(path, source, Valid)
+
+	if built == nil {
+		t.Fatal("model is nil for warning-only source")
+	}
+	if diagnostics.HasErrors() {
+		t.Fatalf("diagnostics = %#v, want warnings without errors", diagnostics)
+	}
+}
+
+func TestValidateFile_UnreadablePathReturnsEM001(t *testing.T) {
+	diagnostics := ValidateFile(filepath.Join(t.TempDir(), "missing.em.hcl"), Valid)
+
+	assertReadFailure(t, diagnostics)
+}
+
+func TestRenderFile_UnreadablePathReturnsEM001(t *testing.T) {
+	result := RenderFile(filepath.Join(t.TempDir(), "missing.em.hcl"), Valid)
+
+	assertReadFailure(t, result.Diagnostics)
+	if result.HTML != "" {
+		t.Fatal("HTML is non-empty for unreadable input")
+	}
+}
+
+func TestFormatFile_UnreadablePathReturnsEM001(t *testing.T) {
+	result := FormatFile(filepath.Join(t.TempDir(), "missing.em.hcl"))
+
+	assertReadFailure(t, result.Diagnostics)
+	if result.Source != "" {
+		t.Fatal("formatted source is non-empty for unreadable input")
+	}
+}
+
+func assertReadFailure(t *testing.T, diagnostics []Diagnostic) {
+	t.Helper()
+	if len(diagnostics) != 1 {
+		t.Fatalf("diagnostics = %#v, want exactly one", diagnostics)
+	}
+	diagnostic := diagnostics[0]
+	if diagnostic.Code != "EM001" || diagnostic.Severity != "Error" || diagnostic.Summary != "Failed to read file" {
+		t.Fatalf("diagnostic = %#v, want EM001 read error", diagnostic)
+	}
+}
+
 func TestParseProfile_RecognizesKnownNames(t *testing.T) {
 	cases := map[string]Profile{"workshop": Workshop, "valid": Valid, "strict": Strict}
 	for name, expected := range cases {

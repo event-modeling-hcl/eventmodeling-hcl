@@ -199,6 +199,8 @@ field "pets" {
   five-workflow golden model in native HCL.
 - [Language decisions and migration guidance](https://github.com/event-modeling-hcl/spec):
   authoritative ADRs, migration material, examples, and RFCs.
+- [Architecture guide](architecture-guide.md): package responsibilities,
+  pipeline contracts, and the repository's Axiomatic Design rationale.
 
 ## Verification
 
@@ -236,11 +238,13 @@ exhaustiveness, vulnerability, example-validation, and release checks.
 
 ## Boundaries
 
-The supported HCL Specification v0.3.0 resolves references within a single document and enforces scoped
-identity, canonical typed flows, scenario shape, field examples, and workflow
-patterns. `internal/model.Load` exposes a validated typed IR with normalized
-edges; it does not support event groups, context maps, multi-file loading,
-cross-file reference resolution, JSON conversion, or editor integration.
+The supported HCL Specification v0.3.0 resolves references within a single
+document and enforces scoped identity, canonical typed flows, scenario shape,
+field examples, and workflow patterns. `internal/app` exposes the shared
+application operations, and `internal/model.Build` constructs a typed IR only
+from a validator-issued `ValidatedDocument`. The tool does not support event
+groups, context maps, multi-file loading, cross-file reference resolution,
+JSON conversion, or editor integration.
 
 ## License
 

@@ -10,9 +10,13 @@
 package app
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/formatter"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/model"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/renderer"
+	sourcepkg "github.com/event-modeling-hcl/eventmodeling-hcl/internal/source"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/syntax"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
 	"github.com/hashicorp/hcl/v2"
@@ -60,8 +64,8 @@ type RenderResult struct {
 	// HTML is the self-contained interactive canvas document — the same
 	// bytes `eventmodeling-hcl diagram` would write to a file — or empty
 	// when Diagnostics contains an error.
-	HTML        string       `json:"html"`
-	Diagnostics []Diagnostic `json:"diagnostics"`
+	HTML        string      `json:"html"`
+	Diagnostics Diagnostics `json:"diagnostics"`
 }
 
 // Render parses and validates source under profile and, if it contains no
@@ -70,18 +74,11 @@ type RenderResult struct {
 // is produced; modeling-smell warnings are reported but do not block
 // rendering. source is parsed exactly once, whether or not it validates.
 func Render(filename string, source []byte, profile Profile) RenderResult {
-	doc, parseDiagnostics := syntax.Parse(filename, source)
-	if parseDiagnostics.HasErrors() {
-		return RenderResult{Diagnostics: toDiagnostics(parseDiagnostics)}
-	}
-
-	diagnostics := validator.ValidateDocument(doc, profile)
-	result := RenderResult{Diagnostics: toDiagnostics(diagnostics)}
+	built, diagnostics := ValidatedModel(filename, source, profile)
+	result := RenderResult{Diagnostics: diagnostics}
 	if diagnostics.HasErrors() {
 		return result
 	}
-
-	built := model.Build(doc)
 	html, err := renderer.Render(filename, built)
 	if err != nil {
 		result.Diagnostics = append(result.Diagnostics, Diagnostic{
@@ -96,12 +93,21 @@ func Render(filename string, source []byte, profile Profile) RenderResult {
 	return result
 }
 
+// RenderFile reads and renders one Event Modeling document.
+func RenderFile(path string, profile Profile) RenderResult {
+	source, diagnostics := readSource(path)
+	if diagnostics.HasErrors() {
+		return RenderResult{Diagnostics: diagnostics}
+	}
+	return Render(path, source, profile)
+}
+
 // FormatResult is the output of Format.
 type FormatResult struct {
 	// Source is the canonicalized document, or empty when Diagnostics
 	// contains an error.
-	Source      string       `json:"source"`
-	Diagnostics []Diagnostic `json:"diagnostics"`
+	Source      string      `json:"source"`
+	Diagnostics Diagnostics `json:"diagnostics"`
 }
 
 // Format canonicalizes source's whitespace and attribute order, the same
@@ -115,26 +121,82 @@ func Format(filename string, source []byte) FormatResult {
 	}
 }
 
-// Validate parses and validates source under profile, returning its
-// diagnostics as the plain Diagnostic type. source is parsed exactly once.
-func Validate(filename string, source []byte, profile Profile) []Diagnostic {
-	doc, parseDiagnostics := syntax.Parse(filename, source)
-	if parseDiagnostics.HasErrors() {
-		return toDiagnostics(parseDiagnostics)
+// FormatFile reads and formats one Event Modeling document.
+func FormatFile(path string) FormatResult {
+	source, diagnostics := readSource(path)
+	if diagnostics.HasErrors() {
+		return FormatResult{Diagnostics: diagnostics}
 	}
-	return toDiagnostics(validator.ValidateDocument(doc, profile))
+	return Format(path, source)
 }
 
-// toDiagnostics converts hcl.Diagnostics to the plain Diagnostic slice both
-// public functions return. A nil or empty input converts to nil, so JSON
-// marshaling produces `"diagnostics":[]` only when there is content to
-// report — never a spurious null the JS/WASM side would need to guard
-// against separately from the empty-array case.
-func toDiagnostics(diagnostics hcl.Diagnostics) []Diagnostic {
+// Validate parses and validates source under profile, returning its
+// diagnostics as the plain Diagnostic type. source is parsed exactly once.
+func Validate(filename string, source []byte, profile Profile) Diagnostics {
+	_, diagnostics := validateSource(filename, source, profile)
+	return diagnostics
+}
+
+// ValidateFile reads and validates one Event Modeling document.
+func ValidateFile(path string, profile Profile) Diagnostics {
+	source, diagnostics := readSource(path)
+	if diagnostics.HasErrors() {
+		return diagnostics
+	}
+	return Validate(path, source, profile)
+}
+
+// Diagnostics is an ordered collection of application diagnostics.
+type Diagnostics []Diagnostic
+
+// HasErrors reports whether at least one diagnostic has error severity.
+func (d Diagnostics) HasErrors() bool {
+	for _, diagnostic := range d {
+		if diagnostic.Severity == "Error" {
+			return true
+		}
+	}
+	return false
+}
+
+func readSource(path string) ([]byte, Diagnostics) {
+	source, err := os.ReadFile(path)
+	if err == nil {
+		return source, nil
+	}
+	return nil, Diagnostics{{
+		Code:     "EM001",
+		Severity: "Error",
+		Summary:  "Failed to read file",
+		Detail:   fmt.Sprintf("The configuration file %q could not be read.", path),
+	}}
+}
+
+// ValidatedModel parses, decodes, validates, and builds source exactly once.
+// Invalid input returns a nil model and the diagnostics that rejected it.
+func ValidatedModel(filename string, input []byte, profile Profile) (*model.Model, Diagnostics) {
+	validated, diagnostics := validateSource(filename, input, profile)
+	if diagnostics.HasErrors() {
+		return nil, diagnostics
+	}
+	return model.Build(validated), diagnostics
+}
+
+func validateSource(filename string, input []byte, profile Profile) (*validator.ValidatedDocument, Diagnostics) {
+	doc, parseDiagnostics := syntax.Parse(filename, input)
+	if parseDiagnostics.HasErrors() {
+		return nil, toDiagnostics(parseDiagnostics)
+	}
+	validated, validationDiagnostics := validator.ValidateDecodedDocument(sourcepkg.Decode(doc), profile)
+	return validated, toDiagnostics(validationDiagnostics)
+}
+
+// toDiagnostics converts HCL diagnostics to the plain application contract.
+func toDiagnostics(diagnostics hcl.Diagnostics) Diagnostics {
 	if len(diagnostics) == 0 {
 		return nil
 	}
-	converted := make([]Diagnostic, len(diagnostics))
+	converted := make(Diagnostics, len(diagnostics))
 	for index, diagnostic := range diagnostics {
 		converted[index] = toDiagnostic(diagnostic)
 	}

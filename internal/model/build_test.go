@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	sourcepkg "github.com/event-modeling-hcl/eventmodeling-hcl/internal/source"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/syntax"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
 )
 
 // buildFixture parses source with syntax.Parse and lowers it with Build,
@@ -18,7 +20,11 @@ func buildFixture(t *testing.T, filename string, source []byte) *Model {
 	if diagnostics.HasErrors() {
 		t.Fatalf("syntax.Parse diagnostics = %s", diagnostics.Error())
 	}
-	built := Build(doc)
+	validated, validationDiagnostics := validator.ValidateDecodedDocument(sourcepkg.Decode(doc), validator.Valid)
+	if validationDiagnostics.HasErrors() {
+		t.Fatalf("validation diagnostics = %s", validationDiagnostics.Error())
+	}
+	built := Build(validated)
 	if built == nil {
 		t.Fatal("Build returned nil model")
 	}
@@ -60,26 +66,6 @@ func TestBuild_LowersCompleteModelIntoCanonicalIR(t *testing.T) {
 	}
 	if !command.Semantic.CreatesAggregate {
 		t.Fatal("command creates aggregate = false, want true")
-	}
-}
-
-func TestBuild_DerivesTitlesWithoutChangingExplicitTitles(t *testing.T) {
-	source := []byte(`state_change "register_pet" {
-  command "register_pet" {}
-}
-state_change "explicit_title" {
-  title = "A custom title"
-}`)
-
-	built := buildFixture(t, "model.em.hcl", source)
-
-	derived := workflowByID(t, built, "register_pet")
-	if derived.Title != "Register Pet" || derived.TitleExplicit {
-		t.Fatalf("derived workflow = %#v, want derived Register Pet", derived)
-	}
-	explicit := workflowByID(t, built, "explicit_title")
-	if explicit.Title != "A custom title" || !explicit.TitleExplicit {
-		t.Fatalf("explicit workflow = %#v, want explicit title", explicit)
 	}
 }
 

@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
+
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/source"
 )
 
 func (v *modelValidator) validateOwnerReference(attribute *hcl.Attribute) hcl.Diagnostics {
@@ -282,17 +284,15 @@ func (v *contextValidator) fieldTypeAddress(attribute *hcl.Attribute) (string, h
 // resolves against that context; a workflow-element field resolves the unique
 // document-wide field_type of the same name and errors on absence or ambiguity.
 func (v *contextValidator) inferredFieldTypeAddress(name string, subject hcl.Range) (string, hcl.Diagnostics) {
-	if v.contextID != "" {
-		address := v.contextID + "." + name
+	if address := v.model.document.InferFieldType(v.contextID, name); address != "" {
+		address = strings.TrimPrefix(address, "field_type.")
 		if _, exists := v.model.index.fieldTypes[address]; !exists {
 			return "", hcl.Diagnostics{errorDiagnostic(codeInvalidFieldType, subject, "Unresolved field type", fmt.Sprintf("field %q has no type and bounded_context %q declares no field_type %q.", name, v.contextID, name))}
 		}
 		return address, nil
 	}
-	contexts := v.model.index.fieldTypeNames[name]
+	contexts := v.model.document.FieldTypeContexts(name)
 	switch len(contexts) {
-	case 1:
-		return contexts[0] + "." + name, nil
 	case 0:
 		return "", hcl.Diagnostics{errorDiagnostic(codeInvalidFieldType, subject, "Unresolved field type", fmt.Sprintf("field %q has no type and no field_type %q is declared in any bounded_context.", name, name))}
 	default:
@@ -301,22 +301,11 @@ func (v *contextValidator) inferredFieldTypeAddress(name string, subject hcl.Ran
 }
 
 func absoluteTraversal(attribute *hcl.Attribute) (hcl.Traversal, hcl.Diagnostics) {
-	return hcl.AbsTraversalForExpr(attribute.Expr)
+	return source.AbsoluteTraversal(attribute.Expr)
 }
 
 func traversalParts(traversal hcl.Traversal) ([]string, bool) {
-	if len(traversal) == 0 {
-		return nil, false
-	}
-	parts := []string{traversal.RootName()}
-	for _, step := range traversal[1:] {
-		attribute, ok := step.(hcl.TraverseAttr)
-		if !ok {
-			return nil, false
-		}
-		parts = append(parts, attribute.Name)
-	}
-	return parts, true
+	return source.TraversalParts(traversal)
 }
 
 func invalidReferenceShape(attribute *hcl.Attribute, detail string) *hcl.Diagnostic {
