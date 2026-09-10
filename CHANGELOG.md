@@ -6,6 +6,19 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+### Changed
+
+- Rendered diagrams now group domain events into one lane per aggregate under a
+  bounded-context header, replacing the single flat Events swimlane. The Screens,
+  Processors, and Model rows are unchanged, and all wiring, filtering, drawer, and
+  theme behavior is preserved.
+- Enforced a typed validation boundary before canonical model construction and
+  centralized shared source interpretation.
+- Consolidated CLI, WASM, and live-server use cases in `internal/app`, removing
+  the redundant `internal/replcore` facade.
+- Added `architecture-guide.md` documenting the repository's Axiomatic Design
+  requirements, influence matrix, module contracts, and change rules.
+
 ## [v0.5.0] - 2026-09-08
 
 This release adds ways to author and preview models interactively. The Event

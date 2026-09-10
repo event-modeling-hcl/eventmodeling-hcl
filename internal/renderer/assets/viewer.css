@@ -220,7 +220,7 @@ button{font-family:inherit}
   position:relative;
   display:grid;
   grid-template-columns:var(--rail-w);
-  --rail-w:72px;
+  --rail-w:112px;
   --h-chapter:38px; --h-header:70px;
   width:max-content;
 }
@@ -301,6 +301,37 @@ button{font-family:inherit}
 .event-strip .card{flex:0 0 176px}
 .event-group{display:flex; align-items:flex-start; gap:12px; flex:none}
 .event-group.outcome{margin-left:auto}
+
+/* ---- context / aggregate event lanes ------------------------------ */
+.ctx-head-rail{position:sticky; left:0; z-index:13; display:flex; align-items:center; padding:0 10px;
+  background:var(--rail); border-right:1px solid var(--line); border-top:2px solid var(--accent)}
+.ctx-rail-tag{font-family:var(--font-cond); font-weight:800; font-stretch:condensed;
+  text-transform:uppercase; letter-spacing:.07em; font-size:9.5px; color:var(--accent-ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ctx-head{display:flex; align-items:stretch; background:var(--surface);
+  border-left:1px solid var(--line-soft); border-top:2px solid var(--accent); padding:0}
+.ctx-toggle{appearance:none; border:0; background:transparent; font:inherit; cursor:default;
+  display:flex; align-items:center; gap:10px; width:100%; padding:8px 14px; color:var(--ink);
+  position:sticky; left:0}
+.ctx-toggle .ctx-caret{display:none}
+.ctx-toggle .ctx-name{font-family:var(--font-cond); font-weight:800; font-stretch:condensed;
+  text-transform:uppercase; letter-spacing:.1em; font-size:12px}
+.ctx-toggle .ctx-name .ext{color:var(--accent)}
+.ctx-toggle .ctx-count{font-family:var(--font-mono); font-size:10px; color:var(--ink-faint)}
+
+.rail-lane.agg-lane{justify-content:flex-start; padding:10px 10px}
+.agg-lane .agg-rail{display:flex; flex-direction:column; gap:4px; align-items:flex-start; width:100%}
+.agg-lane .ctx-kicker{font-family:var(--font-cond); font-weight:700; font-stretch:condensed;
+  text-transform:uppercase; letter-spacing:.11em; font-size:8.5px; color:var(--accent-ink)}
+.agg-lane .ctx-kicker.sub{opacity:.4}
+.agg-lane .agg-name{font-family:var(--font-cond); font-weight:700; font-stretch:condensed;
+  letter-spacing:.02em; font-size:11px; color:var(--ink-soft); line-height:1.2}
+
+.band.events.agg-band{min-height:92px}
+.band.events.agg-band.lane-empty{align-items:center; justify-items:center}
+.lane-empty-mark{grid-column:1/-1; text-align:center; color:var(--ink-faint); opacity:.35;
+  font-family:var(--font-mono); font-size:12px}
+.board .cell.lane-dim{opacity:.26; transition:opacity .14s}
 
 .actor-card{appearance:none; position:relative; z-index:4; width:100%; min-height:42px;
   display:flex; align-items:center; gap:9px; padding:8px 10px; border:1px solid #5DBFB3;

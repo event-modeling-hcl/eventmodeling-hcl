@@ -196,3 +196,32 @@ func TestRenderHTML_UsesDottedIdleBackwardArrows(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderHTML_GroupsEventsByContextAggregate(t *testing.T) {
+	view := &ViewModel{
+		Title:    "Lanes",
+		Version:  specVersion,
+		Actors:   map[string]Actor{},
+		Contexts: map[string]Context{"catalogue": {Title: "Catalogue"}, "lending": {Title: "Lending"}},
+		Slices: []Slice{{
+			ID: "add_book", Type: "state_change", Title: "Add Book", StageCount: 2,
+			Elements: []Element{
+				{ID: "event__catalogue__added", Kind: "event", Title: "Added", Agg: "catalogue_book", Ctx: "catalogue"},
+				{ID: "event__lending__held", Kind: "event", Title: "Held", Agg: "patron", Ctx: "lending"},
+			},
+		}},
+	}
+
+	html, err := RenderHTML(view)
+	if err != nil {
+		t.Fatalf("render HTML: %v", err)
+	}
+	for _, expected := range []string{"ctx-head-rail", "agg-band", "function eventLaneCell", "CTX_ORDER"} {
+		if !strings.Contains(html, expected) {
+			t.Errorf("HTML missing context/aggregate lane hook %q", expected)
+		}
+	}
+	if strings.Contains(html, `{key:"events"`) {
+		t.Error("HTML still declares the flat Events swimlane band")
+	}
+}

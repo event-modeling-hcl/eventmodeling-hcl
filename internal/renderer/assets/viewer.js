@@ -35,6 +35,30 @@ const ELEMENTS = {};
 const SLICE_OF = {};
 MODEL.slices.forEach((s, si) => s.elements.forEach(e => { ELEMENTS[e.id]=e; SLICE_OF[e.id]=si; }));
 
+/* ---- bounded-context / aggregate index for the event lanes ---- */
+const titleize = s => String(s).replace(/[_-]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+const CTX_AGGS = {};                       // context id -> [aggregate id], first-seen order
+(function(){
+  const seen = new Set();
+  MODEL.slices.forEach(s => s.elements.forEach(e => {
+    if (e.kind !== "event") return;
+    const ctx = (e.ctx && MODEL.contexts[e.ctx]) ? e.ctx : "__unmapped";
+    const agg = e.agg || "__none";
+    const key = ctx + " " + agg;
+    if (seen.has(key)) return;
+    seen.add(key);
+    (CTX_AGGS[ctx] = CTX_AGGS[ctx] || []).push(agg);
+  }));
+})();
+const CTX_ORDER = [
+  ...Object.keys(MODEL.contexts).filter(c => CTX_AGGS[c]),
+  ...(CTX_AGGS["__unmapped"] ? ["__unmapped"] : []),
+];
+const ctxTitle = c => c === "__unmapped" ? "Unmapped" : ((MODEL.contexts[c] && MODEL.contexts[c].title) || titleize(c));
+const ctxExternal = c => !!(MODEL.contexts[c] && MODEL.contexts[c].external);
+const aggTitle = a => a === "__none" ? "No aggregate" : titleize(a);
+const eventCtx = e => (e.ctx && MODEL.contexts[e.ctx]) ? e.ctx : "__unmapped";
+
 // directed edges from the canonical typed IR, de-duplicated defensively
 const EDGES = [];
 (function(){
@@ -178,7 +202,6 @@ const BANDS = [
   {key:"screens",    name:"Screens",    sub:"interfaces"},
   {key:"processors", name:"Processors", sub:"automation"},
   {key:"domain",     name:"Model",      sub:"commands & views"},
-  {key:"events",     name:"Events",     sub:"facts"},
 ];
 BANDS.forEach(b => {
   const rail = el("div","cell rail-lane");
@@ -229,6 +252,64 @@ BANDS.forEach(b => {
     frag.appendChild(cell);
   });
 });
+
+// Event lanes: one grid row per aggregate, grouped under a bounded-context header.
+function eventLaneCell(slice, sliceIx, ctx, agg, cix, aix){
+  const cell = el("div","cell band events agg-band");
+  cell.dataset.ctx = ctx; cell.dataset.agg = agg; cell.dataset.cix = cix; cell.dataset.aix = aix;
+  if(sliceIx === 0) cell.classList.add("lane-start");
+  if(sliceIx === MODEL.slices.length - 1) cell.classList.add("lane-end");
+  cell.style.gridTemplateColumns = stageTemplate(slice);
+  const items = slice.elements.filter(e => e.kind==="event" && eventCtx(e)===ctx && (e.agg||"__none")===agg);
+  if(items.length){
+    const strip = el("div","event-strip");
+    const upstream = el("div","event-group upstream");
+    const outcome = el("div","event-group outcome");
+    items.forEach(e => (e.given?upstream:outcome).appendChild(cardHTML(e)));
+    if(upstream.childElementCount) strip.appendChild(upstream);
+    if(outcome.childElementCount) strip.appendChild(outcome);
+    cell.appendChild(strip);
+  } else {
+    cell.classList.add("lane-empty");
+    cell.appendChild(el("div","lane-empty-mark","—"));
+  }
+  return cell;
+}
+
+let aggIx = -1;
+CTX_ORDER.forEach((ctx, cix) => {
+  const aggs = CTX_AGGS[ctx];
+
+  const headRail = el("div","cell ctx-head-rail");
+  headRail.dataset.ctx = ctx; headRail.dataset.cix = cix;
+  headRail.innerHTML = `<span class="ctx-rail-tag">${esc(ctxTitle(ctx))}</span>`;
+  frag.appendChild(headRail);
+
+  const head = el("div","cell ctx-head");
+  head.dataset.ctx = ctx; head.dataset.cix = cix;
+  head.style.gridColumn = "2 / -1";
+  head.innerHTML =
+    `<button class="ctx-toggle" type="button" aria-expanded="true" data-ctx="${esc(ctx)}">`+
+      `<span class="ctx-caret" aria-hidden="true">▾</span>`+
+      `<span class="ctx-name">${esc(ctxTitle(ctx))}${ctxExternal(ctx)?' <span class="ext">↗</span>':''}</span>`+
+      `<span class="ctx-count">${aggs.length} aggregate${aggs.length>1?"s":""}</span>`+
+    `</button>`;
+  frag.appendChild(head);
+
+  aggs.forEach((agg, ai) => {
+    aggIx++;
+    const rail = el("div","cell rail-lane agg-lane"+(ai===0?" ctx-start":"")+(ai===aggs.length-1?" ctx-end":""));
+    rail.dataset.ctx = ctx; rail.dataset.agg = agg; rail.dataset.cix = cix; rail.dataset.aix = aggIx;
+    rail.innerHTML =
+      `<div class="agg-rail">`+
+        `<span class="ctx-kicker${ai===0?"":" sub"}">${esc(ctxTitle(ctx))}</span>`+
+        `<span class="agg-name">◈ ${esc(aggTitle(agg))}</span>`+
+      `</div>`;
+    frag.appendChild(rail);
+    MODEL.slices.forEach((s, si) => frag.appendChild(eventLaneCell(s, si, ctx, agg, cix, aggIx)));
+  });
+});
+
 board.appendChild(frag);
 
 // --- hotspots: pin onto visible targets; keep the rest in the legend ---
@@ -375,6 +456,9 @@ function applyFilters(){
       const okCtx = state.context==="__all" || !e.ctx || e.ctx===state.context;
       c.classList.toggle("filtered", !(sliceVisible && okCtx));
     });
+  });
+  board.querySelectorAll(".cell[data-ctx]").forEach(n => {
+    n.classList.toggle("lane-dim", state.context !== "__all" && n.dataset.ctx !== state.context);
   });
   requestAnimationFrame(drawWires);
 }
