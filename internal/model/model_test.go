@@ -5,7 +5,27 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/syntax"
+	"github.com/hashicorp/hcl/v2"
 )
+
+// loadTestModel parses and builds source the same way the deleted
+// model.Load used to, minus the validation step: it exists only in this
+// test file, since production code (internal/app) is the one place that
+// composes parse, validate, and build together, and model itself no longer
+// depends on the validator package at all — including from its tests. Every
+// fixture these tests use is hand-verified valid, so skipping validation
+// costs nothing here; Build is a pure lowering step that never consults
+// validity anyway.
+func loadTestModel(t *testing.T, filename string, source []byte) (*Model, hcl.Diagnostics) {
+	t.Helper()
+	doc, diagnostics := syntax.Parse(filename, source)
+	if diagnostics.HasErrors() {
+		return nil, diagnostics
+	}
+	return Build(doc), diagnostics
+}
 
 func TestLoad_DecodesCompleteModelIntoCanonicalIR(t *testing.T) {
 	path := filepath.Join("..", "..", "examples", "complete.em.hcl")
@@ -14,7 +34,7 @@ func TestLoad_DecodesCompleteModelIntoCanonicalIR(t *testing.T) {
 		t.Fatalf("read fixture: %v", err)
 	}
 
-	loaded, diagnostics := Load(path, source, Valid)
+	loaded, diagnostics := loadTestModel(t, path, source)
 
 	if diagnostics.HasErrors() {
 		t.Fatalf("diagnostics = %s", diagnostics.Error())
@@ -76,7 +96,7 @@ state_change "explicit_title" {
   title = "A custom title"
 }`)
 
-	loaded, diagnostics := Load("model.em.hcl", source, Valid)
+	loaded, diagnostics := loadTestModel(t, "model.em.hcl", source)
 
 	if diagnostics.HasErrors() {
 		t.Fatalf("diagnostics = %s", diagnostics.Error())
@@ -123,7 +143,7 @@ state_change "register_pet" {
   }
 }`)
 
-	loaded, diagnostics := Load("model.em.hcl", source, Valid)
+	loaded, diagnostics := loadTestModel(t, "model.em.hcl", source)
 	if diagnostics.HasErrors() {
 		t.Fatalf("diagnostics = %s", diagnostics.Error())
 	}
@@ -150,7 +170,7 @@ func TestPetManagementDetailedModel_UsesCausalProjectionInputs(t *testing.T) {
 		t.Fatalf("read fixture: %v", err)
 	}
 
-	loaded, diagnostics := Load(path, source, Valid)
+	loaded, diagnostics := loadTestModel(t, path, source)
 	if diagnostics.HasErrors() {
 		t.Fatalf("diagnostics = %s", diagnostics.Error())
 	}
@@ -186,7 +206,7 @@ func TestAppointmentWeatherPatternsModel_SpecifiesEveryWorkflowPattern(t *testin
 		t.Fatalf("read fixture: %v", err)
 	}
 
-	loaded, diagnostics := Load(path, source, Valid)
+	loaded, diagnostics := loadTestModel(t, path, source)
 	if diagnostics.HasErrors() {
 		t.Fatalf("diagnostics = %s", diagnostics.Error())
 	}
@@ -221,7 +241,7 @@ state_change "add_pet" {
   }
 }`)
 
-	loaded, diagnostics := Load("model.em.hcl", source, Valid)
+	loaded, diagnostics := loadTestModel(t, "model.em.hcl", source)
 	if diagnostics.HasErrors() {
 		t.Fatalf("diagnostics = %s", diagnostics.Error())
 	}

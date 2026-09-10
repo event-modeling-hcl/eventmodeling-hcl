@@ -2,9 +2,13 @@
 // interactive HTML canvas.
 package renderer
 
-import "encoding/json"
+import (
+	"encoding/json"
 
-const specVersion = "v0.3.0"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/version"
+)
+
+const specVersion = version.Spec
 
 type ViewModel struct {
 	Title    string             `json:"title"`

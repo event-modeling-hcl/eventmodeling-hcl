@@ -10,12 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/formatter"
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/model"
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/renderer"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/app"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/serve"
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
-	"github.com/hashicorp/hcl/v2"
 )
 
 var version = "dev"
@@ -48,7 +44,7 @@ const (
 type cliCommand struct {
 	kind    commandKind
 	path    string
-	profile validator.Profile
+	profile app.Profile
 	write   bool
 	output  string
 	addr    string
@@ -84,16 +80,49 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if command.kind == serveCommand {
 		return serveFile(command, stderr)
 	}
-	diagnostics := validator.ValidateFileWithProfile(command.path, command.profile)
+	diagnostics := validateFile(command.path, command.profile)
 	if len(diagnostics) > 0 {
 		writeDiagnostics(stderr, diagnostics)
 	}
-	if diagnostics.HasErrors() {
+	if hasErrorDiagnostic(diagnostics) {
 		return 1
 	}
 
 	fmt.Fprintf(stdout, "%s valid\n", command.path)
 	return 0
+}
+
+// validateFile reads path and validates it under profile, reporting a
+// single EM001 diagnostic — mirroring the internal/validator package's own
+// ValidateFileWithProfile — when the file cannot even be read.
+func validateFile(path string, profile app.Profile) []app.Diagnostic {
+	source, err := os.ReadFile(path)
+	if err != nil {
+		return []app.Diagnostic{readFileDiagnostic(path)}
+	}
+	return app.Validate(path, source, profile)
+}
+
+// readFileDiagnostic reports the EM001 diagnostic used whenever a model
+// file cannot be read, before any source text exists to point at.
+func readFileDiagnostic(path string) app.Diagnostic {
+	return app.Diagnostic{
+		Code:     "EM001",
+		Severity: "Error",
+		Summary:  "Failed to read file",
+		Detail:   fmt.Sprintf("The configuration file %q could not be read.", path),
+	}
+}
+
+// hasErrorDiagnostic reports whether diagnostics contains at least one
+// Error-severity entry.
+func hasErrorDiagnostic(diagnostics []app.Diagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == "Error" {
+			return true
+		}
+	}
+	return false
 }
 
 // parseCommand turns raw command-line arguments into a cliCommand, or
@@ -104,10 +133,10 @@ func parseCommand(args []string) (cliCommand, error) {
 		return cliCommand{kind: versionCommand}, nil
 	}
 	if len(args) == 2 && args[0] == "validate" {
-		return validateCLICommand(args[1], validator.Valid)
+		return validateCLICommand(args[1], app.Valid)
 	}
 	if len(args) == 4 && args[0] == "validate" && args[1] == "--profile" {
-		profile, ok := validator.ParseProfile(args[2])
+		profile, ok := app.ParseProfile(args[2])
 		if !ok {
 			return cliCommand{}, errors.New("profile must be workshop, valid, or strict")
 		}
@@ -128,7 +157,7 @@ func parseCommand(args []string) (cliCommand, error) {
 	return cliCommand{}, errors.New(usageMessage)
 }
 
-func validateCLICommand(path string, profile validator.Profile) (cliCommand, error) {
+func validateCLICommand(path string, profile app.Profile) (cliCommand, error) {
 	if !strings.HasSuffix(path, ".em.hcl") {
 		return cliCommand{}, errors.New("model file must use the .em.hcl extension")
 	}
@@ -175,7 +204,7 @@ func serveCLICommand(args []string) (cliCommand, error) {
 	path := ""
 	addr := defaultServeAddr
 	port := defaultServePort
-	profile := validator.Valid
+	profile := app.Valid
 
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
@@ -202,7 +231,7 @@ func serveCLICommand(args []string) (cliCommand, error) {
 			if index+1 >= len(args) {
 				return cliCommand{}, errors.New(usageMessage)
 			}
-			parsedProfile, ok := validator.ParseProfile(args[index+1])
+			parsedProfile, ok := app.ParseProfile(args[index+1])
 			if !ok {
 				return cliCommand{}, errors.New("profile must be workshop, valid, or strict")
 			}
@@ -230,13 +259,14 @@ func formatFile(command cliCommand, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "failed to read %s: %v\n", command.path, err)
 		return 1
 	}
-	formatted, diagnostics := formatter.Format(command.path, source)
-	if len(diagnostics) > 0 {
-		writeDiagnostics(stderr, diagnostics)
+	result := app.Format(command.path, source)
+	if len(result.Diagnostics) > 0 {
+		writeDiagnostics(stderr, result.Diagnostics)
 	}
-	if diagnostics.HasErrors() {
+	if hasErrorDiagnostic(result.Diagnostics) {
 		return 1
 	}
+	formatted := []byte(result.Source)
 	if !command.write {
 		_, _ = stdout.Write(formatted)
 		return 0
@@ -270,32 +300,21 @@ func serveFile(command cliCommand, stderr io.Writer) int {
 func diagramFile(command cliCommand, stdout, stderr io.Writer) int {
 	source, err := os.ReadFile(command.path)
 	if err != nil {
-		diagnostics := hcl.Diagnostics{&hcl.Diagnostic{
-			Severity: hcl.DiagError,
-			Extra:    validator.DiagnosticCodeExtra("EM001"),
-			Summary:  "Failed to read file",
-			Detail:   fmt.Sprintf("The configuration file %q could not be read.", command.path),
-		}}
-		writeDiagnostics(stderr, diagnostics)
+		writeDiagnostics(stderr, []app.Diagnostic{readFileDiagnostic(command.path)})
 		return 1
 	}
-	loaded, diagnostics := model.Load(command.path, source, model.Valid)
-	if len(diagnostics) > 0 {
-		writeDiagnostics(stderr, diagnostics)
+	result := app.Render(command.path, source, app.Valid)
+	if len(result.Diagnostics) > 0 {
+		writeDiagnostics(stderr, result.Diagnostics)
 	}
-	if diagnostics.HasErrors() {
-		return 1
-	}
-	html, err := renderer.Render(command.path, loaded)
-	if err != nil {
-		fmt.Fprintf(stderr, "failed to render %s: %v\n", command.path, err)
+	if hasErrorDiagnostic(result.Diagnostics) {
 		return 1
 	}
 	if command.output == "" {
-		_, _ = io.WriteString(stdout, html)
+		_, _ = io.WriteString(stdout, result.HTML)
 		return 0
 	}
-	if err := os.WriteFile(command.output, []byte(html), 0o644); err != nil {
+	if err := os.WriteFile(command.output, []byte(result.HTML), 0o644); err != nil {
 		fmt.Fprintf(stderr, "failed to write %s: %v\n", command.output, err)
 		return 1
 	}
@@ -305,13 +324,13 @@ func diagramFile(command cliCommand, stdout, stderr io.Writer) int {
 
 // writeDiagnostics renders diagnostics in the CLI's text format and writes
 // the result to w.
-func writeDiagnostics(w io.Writer, diagnostics hcl.Diagnostics) {
+func writeDiagnostics(w io.Writer, diagnostics []app.Diagnostic) {
 	_, _ = io.WriteString(w, formatDiagnostics(diagnostics))
 }
 
 // formatDiagnostics renders every diagnostic with formatDiagnostic and
 // concatenates the results in order.
-func formatDiagnostics(diagnostics hcl.Diagnostics) string {
+func formatDiagnostics(diagnostics []app.Diagnostic) string {
 	return strings.Join(mapSlice(diagnostics, formatDiagnostic), "")
 }
 
@@ -326,26 +345,19 @@ func mapSlice[T, U any](items []T, transform func(T) U) []U {
 }
 
 // formatDiagnostic renders one diagnostic as a single line of text, in the
-// form "file:line:column: Severity: Summary: Detail\n". Diagnostics that
-// have no source location (for example, a failure to even read the model
-// file, which happens before any source text exists to point at) omit the
-// "file:line:column:" prefix.
-func formatDiagnostic(diagnostic *hcl.Diagnostic) string {
-	severity := ""
-	switch diagnostic.Severity {
-	case hcl.DiagInvalid:
-		severity = "Info"
-	case hcl.DiagError:
-		severity = "Error"
-	case hcl.DiagWarning:
-		severity = "Warning"
-	}
-	message := fmt.Sprintf("%s %s: %s", severity, validator.DiagnosticCode(diagnostic), diagnostic.Summary)
+// form "file:line:column: Severity EMxxx: Summary: Detail\n". Diagnostics
+// that have no source location (for example, a failure to even read the
+// model file, which happens before any source text exists to point at) omit
+// the "file:line:column:" prefix — recognized here by an empty Filename,
+// which app.Diagnostic only ever leaves unset when the underlying
+// hcl.Diagnostic had no Subject.
+func formatDiagnostic(diagnostic app.Diagnostic) string {
+	message := fmt.Sprintf("%s %s: %s", diagnostic.Severity, diagnostic.Code, diagnostic.Summary)
 	if diagnostic.Detail != "" {
 		message += ": " + diagnostic.Detail
 	}
-	if diagnostic.Subject == nil {
+	if diagnostic.Filename == "" {
 		return fmt.Sprintf("%s\n", message)
 	}
-	return fmt.Sprintf("%s:%d:%d: %s\n", diagnostic.Subject.Filename, diagnostic.Subject.Start.Line, diagnostic.Subject.Start.Column, message)
+	return fmt.Sprintf("%s:%d:%d: %s\n", diagnostic.Filename, diagnostic.Line, diagnostic.Column, message)
 }

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/model"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/version"
 )
 
 func TestRenderHTML_InjectsEscapedModelIntoSelfContainedPage(t *testing.T) {
@@ -38,6 +38,30 @@ func TestRenderHTML_InjectsEscapedModelIntoSelfContainedPage(t *testing.T) {
 	}
 }
 
+func TestRenderHTML_SpecVersionCommentDerivesFromVersionPackage(t *testing.T) {
+	if strings.Contains(viewerJS, "v0.3.0") {
+		t.Fatal("viewer.js still contains a hardcoded spec version literal; it should reference the __SPEC_VERSION__ marker instead")
+	}
+
+	view := &ViewModel{
+		Title:    "Example",
+		Version:  specVersion,
+		Actors:   map[string]Actor{},
+		Contexts: map[string]Context{},
+	}
+
+	html, err := RenderHTML(view)
+	if err != nil {
+		t.Fatalf("render HTML: %v", err)
+	}
+	if !strings.Contains(html, "Event Modeling HCL Specification "+version.Spec) {
+		t.Fatalf("rendered HTML does not contain spec version comment derived from version.Spec (%s)", version.Spec)
+	}
+	if strings.Contains(html, "__SPEC_VERSION__") {
+		t.Fatal("HTML still contains the spec version marker")
+	}
+}
+
 func TestRender_RendersEveryCurrentExample(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "examples", "*.em.hcl"))
 	if err != nil {
@@ -49,7 +73,7 @@ func TestRender_RendersEveryCurrentExample(t *testing.T) {
 			if readErr != nil {
 				t.Fatalf("read example: %v", readErr)
 			}
-			loaded, diagnostics := model.Load(path, source, model.Valid)
+			loaded, diagnostics := loadTestModel(t, path, source)
 			if diagnostics.HasErrors() {
 				t.Fatalf("load example: %s", diagnostics.Error())
 			}
@@ -71,7 +95,7 @@ func TestRender_EmbedsScreenFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read example: %v", err)
 	}
-	loaded, diagnostics := model.Load(path, source, model.Valid)
+	loaded, diagnostics := loadTestModel(t, path, source)
 	if diagnostics.HasErrors() {
 		t.Fatalf("load example: %s", diagnostics.Error())
 	}

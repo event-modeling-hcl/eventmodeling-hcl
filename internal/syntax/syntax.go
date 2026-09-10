@@ -1,8 +1,64 @@
-package validator
+// Package syntax is the single owner of the HCL grammar for the native
+// Event Modeling language. Every hcl.BodySchema describing which blocks and
+// attributes the language allows lives here, and Parse performs exactly one
+// HCL parse of a document's source. Consumers — the validator today, the
+// model package in a later refactor stage — decode the same parsed content
+// through Content/PartialContent and the schema functions below instead of
+// each re-declaring the grammar and re-parsing the source.
+package syntax
 
-import "github.com/hashicorp/hcl/v2"
+import (
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclparse"
+)
 
-func modelSchema() hcl.BodySchema {
+// Document is one native HCL Event Modeling source file, parsed exactly
+// once. It carries no interpretation of the content — callers decode
+// bodies (the root body from Body, or a nested block's Body) against the
+// schema functions below via Content/PartialContent.
+type Document struct {
+	file *hcl.File
+}
+
+// Parse parses filename's source as HCL. On a syntax error it returns a nil
+// Document along with the diagnostics describing the error; callers must
+// not call methods on a nil Document. On success it returns a Document
+// wrapping the parsed file and no diagnostics.
+func Parse(filename string, source []byte) (*Document, hcl.Diagnostics) {
+	parser := hclparse.NewParser()
+	file, diagnostics := parser.ParseHCL(source, filename)
+	if diagnostics.HasErrors() {
+		return nil, diagnostics
+	}
+	return &Document{file: file}, diagnostics
+}
+
+// Body returns the document's root HCL body — the body decoded against
+// ModelSchema.
+func (d *Document) Body() hcl.Body {
+	return d.file.Body
+}
+
+// Content decodes body against schema, exactly like body.Content(&schema):
+// every block or attribute outside the schema, and every missing Required
+// attribute, is reported as a diagnostic. The returned blocks' and
+// attributes' ranges point back into the original source.
+func Content(body hcl.Body, schema hcl.BodySchema) (*hcl.BodyContent, hcl.Diagnostics) {
+	return body.Content(&schema)
+}
+
+// PartialContent decodes body against schema, exactly like
+// body.PartialContent(&schema): blocks and attributes outside the schema
+// are silently omitted from the returned content (and left in the returned
+// remainder body) rather than reported as diagnostics. Used where a caller
+// needs to read a subset of a body's content without yet committing to
+// full validation of that body.
+func PartialContent(body hcl.Body, schema hcl.BodySchema) (*hcl.BodyContent, hcl.Body, hcl.Diagnostics) {
+	return body.PartialContent(&schema)
+}
+
+// ModelSchema is the root schema of an Event Modeling document.
+func ModelSchema() hcl.BodySchema {
 	return hcl.BodySchema{Blocks: []hcl.BlockHeaderSchema{
 		{Type: "bounded_context", LabelNames: []string{"id"}},
 		{Type: "actor", LabelNames: []string{"id"}},
@@ -17,7 +73,8 @@ func modelSchema() hcl.BodySchema {
 	}}
 }
 
-func boundedContextSchema() hcl.BodySchema {
+// BoundedContextSchema is the schema of a bounded_context block's body.
+func BoundedContextSchema() hcl.BodySchema {
 	return hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}, {Name: "external"}, {Name: "owner"}},
 		Blocks: []hcl.BlockHeaderSchema{
@@ -28,11 +85,13 @@ func boundedContextSchema() hcl.BodySchema {
 	}
 }
 
-func aggregateSchema() hcl.BodySchema {
+// AggregateSchema is the schema of an aggregate block's body.
+func AggregateSchema() hcl.BodySchema {
 	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}}}
 }
 
-func eventSchema() hcl.BodySchema {
+// EventSchema is the schema of an event block's body.
+func EventSchema() hcl.BodySchema {
 	return hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{
 			{Name: "group_id"}, {Name: "tags"}, {Name: "title"}, {Name: "description"},
@@ -43,7 +102,9 @@ func eventSchema() hcl.BodySchema {
 	}
 }
 
-func workflowSchema() hcl.BodySchema {
+// WorkflowSchema is the schema of a state_change/state_view/automation/
+// translation block's body.
+func WorkflowSchema() hcl.BodySchema {
 	return hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "status"}, {Name: "description"}, {Name: "owner"}},
 		Blocks: []hcl.BlockHeaderSchema{
@@ -55,7 +116,10 @@ func workflowSchema() hcl.BodySchema {
 	}
 }
 
-func elementSchema(kind string) hcl.BodySchema {
+// ElementSchema is the schema of a command/readmodel/screen/processor
+// block's body. kind selects the block type so readmodel can require
+// question and screen can accept actor.
+func ElementSchema(kind string) hcl.BodySchema {
 	attributes := []hcl.AttributeSchema{
 		{Name: "group_id"}, {Name: "tags"}, {Name: "title"}, {Name: "description"},
 		{Name: "aggregate"}, {Name: "aggregate_dependencies"}, {Name: "api_endpoint"}, {Name: "service"},
@@ -71,7 +135,8 @@ func elementSchema(kind string) hcl.BodySchema {
 	return hcl.BodySchema{Attributes: attributes, Blocks: []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}}}
 }
 
-func fieldSchema(_ string) hcl.BodySchema {
+// FieldSchema is the schema of a field/subfield/field_type block's body.
+func FieldSchema() hcl.BodySchema {
 	return hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{
 			{Name: "type"}, {Name: "example"}, {Name: "mapping"}, {Name: "optional"},
@@ -82,18 +147,21 @@ func fieldSchema(_ string) hcl.BodySchema {
 	}
 }
 
-func tableSchema() hcl.BodySchema {
+// TableSchema is the schema of a table block's body.
+func TableSchema() hcl.BodySchema {
 	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "fields"}}, Blocks: []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}}}
 }
 
-func scenarioSchema() hcl.BodySchema {
+// ScenarioSchema is the schema of a scenario block's body.
+func ScenarioSchema() hcl.BodySchema {
 	return hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}},
 		Blocks:     []hcl.BlockHeaderSchema{{Type: "given"}, {Type: "when"}, {Type: "then"}, {Type: "comment"}},
 	}
 }
 
-func scenarioStepSchema() hcl.BodySchema {
+// ScenarioStepSchema is the schema of a given/when/then block's body.
+func ScenarioStepSchema() hcl.BodySchema {
 	return hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{
 			{Name: "title"}, {Name: "tags"}, {Name: "examples"}, {Name: "event"}, {Name: "command"},
@@ -103,11 +171,14 @@ func scenarioStepSchema() hcl.BodySchema {
 	}
 }
 
-func actorSchema() hcl.BodySchema {
+// ActorSchema is the schema of an actor block's body.
+func ActorSchema() hcl.BodySchema {
 	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "auth_required", Required: true}, {Name: "description"}}}
 }
 
-func ownerSchema(kind string) hcl.BodySchema {
+// OwnerSchema is the schema of a team/system block's body. kind selects the
+// block type so system can accept external.
+func OwnerSchema(kind string) hcl.BodySchema {
 	attributes := []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}}
 	if kind == "system" {
 		attributes = append(attributes, hcl.AttributeSchema{Name: "external"})
@@ -115,18 +186,22 @@ func ownerSchema(kind string) hcl.BodySchema {
 	return hcl.BodySchema{Attributes: attributes}
 }
 
-func chapterSchema() hcl.BodySchema {
+// ChapterSchema is the schema of a chapter block's body.
+func ChapterSchema() hcl.BodySchema {
 	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}, {Name: "workflows", Required: true}}}
 }
 
-func hotspotSchema() hcl.BodySchema {
+// HotspotSchema is the schema of a hotspot block's body.
+func HotspotSchema() hcl.BodySchema {
 	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "question", Required: true}, {Name: "description"}, {Name: "on"}, {Name: "status"}}}
 }
 
-func screenImageSchema() hcl.BodySchema {
+// ScreenImageSchema is the schema of a screen_image block's body.
+func ScreenImageSchema() hcl.BodySchema {
 	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "url"}}}
 }
 
-func commentSchema() hcl.BodySchema {
+// CommentSchema is the schema of a comment block's body.
+func CommentSchema() hcl.BodySchema {
 	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "description", Required: true}}}
 }

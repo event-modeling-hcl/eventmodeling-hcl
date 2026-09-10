@@ -16,7 +16,7 @@ func TestBuildViewModel_AdaptsCurrentCompleteModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read example: %v", err)
 	}
-	loaded, diagnostics := model.Load(path, source, model.Valid)
+	loaded, diagnostics := loadTestModel(t, path, source)
 	if diagnostics.HasErrors() {
 		t.Fatalf("load example: %s", diagnostics.Error())
 	}
@@ -125,7 +125,7 @@ func TestBuildViewModel_AssignsIncreasingStagesToLocalFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read example: %v", err)
 	}
-	loaded, diagnostics := model.Load(path, source, model.Valid)
+	loaded, diagnostics := loadTestModel(t, path, source)
 	if diagnostics.HasErrors() {
 		t.Fatalf("load example: %s", diagnostics.Error())
 	}
@@ -165,7 +165,7 @@ func TestBuildViewModel_AssignsActorsToScreens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read example: %v", err)
 	}
-	loaded, diagnostics := model.Load(path, source, model.Valid)
+	loaded, diagnostics := loadTestModel(t, path, source)
 	if diagnostics.HasErrors() {
 		t.Fatalf("load example: %s", diagnostics.Error())
 	}

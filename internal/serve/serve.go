@@ -16,14 +16,11 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
-	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/replcore"
@@ -168,9 +165,10 @@ func newMux(s *state) *http.ServeMux {
 	return mux
 }
 
-// regenerate reads filePath and renders it into s, under profile.
-func regenerate(s *state, filePath string, profile replcore.Profile) error {
-	source, err := os.ReadFile(filePath)
+// regenerate reads filePath (via env.readFile) and renders it into s, under
+// profile.
+func regenerate(env environment, s *state, filePath string, profile replcore.Profile) error {
+	source, err := env.readFile(filePath)
 	if err != nil {
 		return err
 	}
@@ -183,8 +181,8 @@ func sourceHash(source []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func fileSourceHash(filePath string) (string, error) {
-	source, err := os.ReadFile(filePath)
+func fileSourceHash(env environment, filePath string) (string, error) {
+	source, err := env.readFile(filePath)
 	if err != nil {
 		return "", err
 	}
@@ -195,7 +193,7 @@ func fileSourceHash(filePath string) (string, error) {
 // content changes. Content, rather than mtime, is the reliable contract:
 // editors and source-control tools may preserve timestamps when replacing a
 // file.
-func watch(ctx context.Context, s *state, filePath string, profile replcore.Profile, lastSourceHash string) {
+func watch(ctx context.Context, env environment, s *state, filePath string, profile replcore.Profile, lastSourceHash string) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
@@ -204,19 +202,19 @@ func watch(ctx context.Context, s *state, filePath string, profile replcore.Prof
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			currentSourceHash, err := fileSourceHash(filePath)
+			currentSourceHash, err := fileSourceHash(env, filePath)
 			if err != nil {
 				continue
 			}
 			if currentSourceHash == lastSourceHash {
 				continue
 			}
-			if err := regenerate(s, filePath, profile); err != nil {
-				fmt.Fprintf(os.Stderr, "eventmodeling-hcl serve: regeneration error: %v\n", err)
+			if err := regenerate(env, s, filePath, profile); err != nil {
+				fmt.Fprintf(env.stderr, "eventmodeling-hcl serve: regeneration error: %v\n", err)
 				continue
 			}
 			lastSourceHash = currentSourceHash
-			fmt.Println("Diagram updated.")
+			fmt.Fprintln(env.stdout, "Diagram updated.")
 		}
 	}
 }
@@ -252,41 +250,63 @@ func servingURL(listener net.Listener, requestedHost string) string {
 
 // Start renders filePath once, then serves it at http://addr:port, live-
 // reloading in the browser whenever filePath changes on disk, until it
-// receives SIGINT.
+// receives SIGINT. It runs against the real OS environment; see start for
+// the version that takes an injected environment.
 func Start(filePath string, addr string, port int, profile replcore.Profile) error {
+	return start(filePath, addr, port, profile, defaultEnvironment())
+}
+
+// start is Start's implementation, with every external interaction routed
+// through env instead of directly through the os/net/fmt packages. This is
+// what tests drive, so that file reads, the listener, browser-opening,
+// console output, and shutdown signaling can all be faked deterministically.
+func start(filePath string, addr string, port int, profile replcore.Profile, env environment) error {
 	s := &state{}
-	if err := regenerate(s, filePath, profile); err != nil {
+	if err := regenerate(env, s, filePath, profile); err != nil {
 		return err
 	}
 
-	lastSourceHash, err := fileSourceHash(filePath)
+	lastSourceHash, err := fileSourceHash(env, filePath)
 	if err != nil {
 		return err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go watch(ctx, s, filePath, profile, lastSourceHash)
 
-	listener, err := net.Listen("tcp", net.JoinHostPort(addr, strconv.Itoa(port)))
+	listener, err := env.listen("tcp", net.JoinHostPort(addr, strconv.Itoa(port)))
 	if err != nil {
 		return err
 	}
+
+	// Only start watching once the listener is bound, so a failed listen
+	// never leaks a watch goroutine, and join that goroutine before start
+	// returns: otherwise a leaked watch could still be reading pollInterval
+	// or updating state after the caller believes serving has stopped.
+	watchDone := make(chan struct{})
+	go func() {
+		defer close(watchDone)
+		watch(ctx, env, s, filePath, profile, lastSourceHash)
+	}()
+	defer func() {
+		cancel()
+		<-watchDone
+	}()
+
 	server := &http.Server{Handler: newMux(s)}
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sigCh)
+	sigCh, stopSignals := env.signals()
+	defer stopSignals()
 	go func() {
 		<-sigCh
-		fmt.Println("\nShutting down server...")
+		fmt.Fprintln(env.stdout, "\nShutting down server...")
 		cancel()
 		_ = server.Shutdown(context.Background())
 	}()
 
 	url := servingURL(listener, addr)
-	fmt.Printf("Serving %s at %s\n", filePath, url)
-	openBrowser(url)
+	fmt.Fprintf(env.stdout, "Serving %s at %s\n", filePath, url)
+	env.openBrowser(url)
 
 	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 		return err

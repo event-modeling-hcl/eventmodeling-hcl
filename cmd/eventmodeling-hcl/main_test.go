@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/app"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
-	"github.com/hashicorp/hcl/v2"
 )
 
 func TestParseCommand_RecognizesValidateInvocation(t *testing.T) {
@@ -170,12 +170,14 @@ func TestParseCommand_RejectsUnsupportedExtension(t *testing.T) {
 
 func TestFormatDiagnostics_FormatsSourceLocatedError(t *testing.T) {
 	// Given one source-located validation error.
-	diagnostics := hcl.Diagnostics{&hcl.Diagnostic{
-		Severity: hcl.DiagError,
-		Extra:    validator.DiagnosticCodeExtra("EM007"),
+	diagnostics := []app.Diagnostic{{
+		Code:     "EM007",
+		Severity: "Error",
 		Summary:  "Invalid attribute value",
 		Detail:   "title must be a string.",
-		Subject:  &hcl.Range{Filename: "model.em.hcl", Start: hcl.Pos{Line: 3, Column: 11}},
+		Filename: "model.em.hcl",
+		Line:     3,
+		Column:   11,
 	}}
 
 	// When its diagnostics are formatted.

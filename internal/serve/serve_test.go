@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,17 @@ import (
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/replcore"
 )
+
+// discardEnv is an environment that reads real files but throws away all
+// console output and never touches the network/browser/signals — for tests
+// that only care about regenerate/watch's file-driven behavior.
+func discardEnv() environment {
+	return environment{
+		readFile: os.ReadFile,
+		stdout:   io.Discard,
+		stderr:   io.Discard,
+	}
+}
 
 func TestServingURLUsesTheActualBoundPort(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -199,12 +211,12 @@ func TestWatch_RegeneratesWhenTheWatchedFileChanges(t *testing.T) {
 	}
 
 	s := &state{}
-	if err := regenerate(s, path, replcore.Valid); err != nil {
+	if err := regenerate(discardEnv(), s, path, replcore.Valid); err != nil {
 		t.Fatalf("initial regenerate: %v", err)
 	}
 	_, hashBefore := s.snapshot()
 
-	startHash, err := fileSourceHash(path)
+	startHash, err := fileSourceHash(discardEnv(), path)
 	if err != nil {
 		t.Fatalf("hash seed file: %v", err)
 	}
@@ -215,7 +227,7 @@ func TestWatch_RegeneratesWhenTheWatchedFileChanges(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go watch(ctx, s, path, replcore.Valid, startHash)
+	go watch(ctx, discardEnv(), s, path, replcore.Valid, startHash)
 	if err := os.WriteFile(path, invalid, 0o644); err != nil {
 		t.Fatalf("rewrite file: %v", err)
 	}
@@ -250,11 +262,11 @@ func TestWatch_RegeneratesWhenContentChangesWithoutMTimeAdvancing(t *testing.T) 
 	}
 
 	s := &state{}
-	if err := regenerate(s, path, replcore.Valid); err != nil {
+	if err := regenerate(discardEnv(), s, path, replcore.Valid); err != nil {
 		t.Fatalf("initial regenerate: %v", err)
 	}
 	_, before := s.snapshot()
-	startHash, err := fileSourceHash(path)
+	startHash, err := fileSourceHash(discardEnv(), path)
 	if err != nil {
 		t.Fatalf("hash seed: %v", err)
 	}
@@ -265,7 +277,7 @@ func TestWatch_RegeneratesWhenContentChangesWithoutMTimeAdvancing(t *testing.T) 
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go watch(ctx, s, path, replcore.Valid, startHash)
+	go watch(ctx, discardEnv(), s, path, replcore.Valid, startHash)
 
 	invalid, err := os.ReadFile(filepath.Join("..", "..", "testdata", "invalid", "reverse-flow.em.hcl"))
 	if err != nil {
