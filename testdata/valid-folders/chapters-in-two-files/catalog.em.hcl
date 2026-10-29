@@ -1,7 +1,15 @@
+board {
+  workflows = [
+    workflow.add_product,
+    workflow.checkout_order,
+  ]
+}
+
 bounded_context "store" {
   title = "Store"
 
   aggregate "product" {
+    title = "Product"
   }
 
   field_type "id" {

@@ -417,3 +417,22 @@ state_view "b" {
 	result := migrateOne(t, source)
 	requireContains(t, string(result.Files[0].Source), "workflows = [\n    workflow.a,\n    workflow.b,\n  ]")
 }
+
+func TestMigrationRejectsV04ChapterRanges(t *testing.T) {
+	for name, chapter := range map[string]string{
+		"reversed":      "workflow.c, workflow.a",
+		"noncontiguous": "workflow.a, workflow.c",
+	} {
+		t.Run(name, func(t *testing.T) {
+			source := "state_change \"a\" {}\nstate_change \"b\" {}\nstate_change \"c\" {}\nchapter \"story\" {\n workflows = [" + chapter + "]\n}\n"
+			migrateError(t, []syntax.File{{Name: "m.em.hcl", Source: []byte(source)}}, "Invalid chapter range")
+		})
+	}
+}
+
+func TestMigrationRejectsV04ChaptersInSeveralFiles(t *testing.T) {
+	migrateError(t, []syntax.File{
+		{Name: "a.em.hcl", Source: []byte("state_change \"a\" {}\nchapter \"a\" {\n workflows = [workflow.a]\n}\n")},
+		{Name: "b.em.hcl", Source: []byte("state_change \"b\" {}\nchapter \"b\" {\n workflows = [workflow.b]\n}\n")},
+	}, "Chapters in several files")
+}

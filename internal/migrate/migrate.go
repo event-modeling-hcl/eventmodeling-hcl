@@ -75,6 +75,7 @@ func Migrate(files []syntax.File) (Result, hcl.Diagnostics) {
 
 	idx, indexDiagnostics := buildIndex(ordered)
 	diagnostics = append(diagnostics, indexDiagnostics...)
+	diagnostics = append(diagnostics, idx.checkChapters(ordered)...)
 	plan := edits{titles: map[*hclsyntax.Block]string{}, types: map[*hclsyntax.Block]hcl.Traversal{}, renames: map[*hclsyntax.Block]bool{}}
 	for _, file := range ordered {
 		diagnostics = append(diagnostics, idx.planFields(file.body, &plan)...)
@@ -163,6 +164,46 @@ func buildIndex(ordered []member) (*index, hcl.Diagnostics) {
 		}
 	}
 	return idx, diagnostics
+}
+
+// checkChapters preserves the v0.4.0 acceptance boundary. The new validator
+// cannot enforce EM006/EM013 after rewriting because v0.5.0 retired them.
+func (idx *index) checkChapters(files []member) hcl.Diagnostics {
+	positions := make(map[string]int, len(idx.workflows))
+	for position, flow := range idx.workflows {
+		positions[flow.id] = position
+	}
+	var diagnostics hcl.Diagnostics
+	chapterFile := ""
+	for _, file := range files {
+		for _, block := range file.body.Blocks {
+			if block.Type != "chapter" {
+				continue
+			}
+			if len(files) > 1 {
+				if chapterFile == "" {
+					chapterFile = file.name
+				} else if chapterFile != file.name {
+					diagnostics = append(diagnostics, errorAt(block.DefRange(), "Chapters in several files", "v0.4.0 requires all chapters in one member file (EM013)."))
+				}
+				continue
+			}
+			previous := -1
+			attribute := block.Body.Attributes["workflows"]
+			for _, id := range workflowReferences(attribute) {
+				position, exists := positions[id]
+				if !exists {
+					continue // The v0.5.0 reference check reports it after rewriting.
+				}
+				if previous >= 0 && position != previous+1 {
+					diagnostics = append(diagnostics, errorAt(attribute.Expr.Range(), "Invalid chapter range", "v0.4.0 requires chapter workflows to be contiguous and listed in source order (EM006)."))
+					break
+				}
+				previous = position
+			}
+		}
+	}
+	return diagnostics
 }
 
 // planFields records the explicit type of every typeless field and subfield.

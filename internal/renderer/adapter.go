@@ -56,10 +56,10 @@ func BuildViewModel(filename string, source *model.Model) *ViewModel {
 		OffBoard: []Slice{},
 	}
 	for _, actor := range source.Actors {
-		view.Actors[actor.ID] = Actor{Title: label(actor.Title, actor.ID), AuthRequired: actor.AuthRequired}
+		view.Actors[actor.ID] = Actor{Title: label(actor.Title, actor.ID, actor.TitlePresent), AuthRequired: actor.AuthRequired}
 	}
 	for _, context := range source.Contexts {
-		view.Contexts[context.ID] = Context{Title: label(context.Title, context.ID), External: context.External}
+		view.Contexts[context.ID] = Context{Title: label(context.Title, context.ID, context.TitlePresent), External: context.External}
 	}
 	for _, workflow := range source.Workflows {
 		if a.offBoard[workflow.ID] {
@@ -80,8 +80,8 @@ func BuildViewModel(filename string, source *model.Model) *ViewModel {
 
 // label is the display text of a construct: its title, or its raw ID when the
 // source states no title.
-func label(title, id string) string {
-	if title == "" {
+func label(title, id string, present bool) string {
+	if title == "" && !present {
 		return id
 	}
 	return title
@@ -107,15 +107,15 @@ func newAdapter(source *model.Model) *adapter {
 		}
 	}
 	for _, actor := range source.Actors {
-		a.owners["actor."+actor.ID] = label(actor.Title, actor.ID)
+		a.owners["actor."+actor.ID] = label(actor.Title, actor.ID, actor.TitlePresent)
 	}
 	for _, owner := range source.Owners {
-		a.owners[owner.Kind+"."+owner.ID] = label(owner.Title, owner.ID)
+		a.owners[owner.Kind+"."+owner.ID] = label(owner.Title, owner.ID, owner.TitlePresent)
 	}
 	for _, context := range source.Contexts {
-		a.owners["bounded_context."+context.ID] = label(context.Title, context.ID)
+		a.owners["bounded_context."+context.ID] = label(context.Title, context.ID, context.TitlePresent)
 		for _, aggregate := range context.Aggregates {
-			a.aggregates["aggregate."+context.ID+"."+aggregate.ID] = label(aggregate.Title, aggregate.ID)
+			a.aggregates["aggregate."+context.ID+"."+aggregate.ID] = label(aggregate.Title, aggregate.ID, aggregate.TitlePresent)
 		}
 		for _, fieldType := range context.FieldTypes {
 			a.fieldTypes[context.ID+"."+fieldType.ID] = fieldTypeEntry{
@@ -126,13 +126,13 @@ func newAdapter(source *model.Model) *adapter {
 		for _, event := range context.Events {
 			address := context.ID + "." + event.ID
 			a.events[address] = eventEntry{contextID: context.ID, event: event, external: context.External}
-			a.titles["event."+address] = label(event.Title, event.ID)
+			a.titles["event."+address] = label(event.Title, event.ID, event.TitlePresent)
 		}
 	}
 	for _, workflow := range source.Workflows {
-		a.titles["workflow."+workflow.ID] = label(workflow.Title, workflow.ID)
+		a.titles["workflow."+workflow.ID] = label(workflow.Title, workflow.ID, workflow.TitlePresent)
 		for _, element := range workflow.Elements {
-			elementLabel := label(element.Title, element.ID)
+			elementLabel := label(element.Title, element.ID, element.TitlePresent)
 			a.titles[string(element.Kind)+"."+workflow.ID+"."+element.ID] = elementLabel
 			a.titles[workflow.ID+"::"+string(element.Kind)+"."+element.ID] = elementLabel
 		}
@@ -151,7 +151,7 @@ func (a *adapter) pattern(workflow model.Workflow) string {
 
 func (a *adapter) adaptWorkflow(workflow model.Workflow) Slice {
 	slice := Slice{
-		ID: workflow.ID, Type: a.pattern(workflow), Title: label(workflow.Title, workflow.ID),
+		ID: workflow.ID, Type: a.pattern(workflow), Title: label(workflow.Title, workflow.ID, workflow.TitlePresent),
 		Status: workflow.Status, Owner: a.ownerTitle(workflow.Owner), Description: workflow.Description,
 		Elements: []Element{}, Scenarios: []Scenario{},
 	}
@@ -288,7 +288,7 @@ func (a *adapter) adaptElement(workflowID string, source model.Element) Element 
 	return Element{
 		ID:       elementNodeID(workflowID, string(source.Kind), source.ID),
 		Kind:     string(source.Kind),
-		Title:    label(source.Title, source.ID),
+		Title:    label(source.Title, source.ID, source.TitlePresent),
 		Actor:    lastPart(source.Semantic.Actor),
 		ImageURL: source.Presentation.URL,
 		Agg:      lastPart(source.Semantic.Aggregate),
@@ -324,7 +324,7 @@ func (a *adapter) adaptFields(source []model.Field, contextID string) []Field {
 }
 
 func (a *adapter) adaptScenario(workflowID string, source model.Scenario) Scenario {
-	scenario := Scenario{Title: label(source.Title, source.ID), Comments: append([]string(nil), source.Comments...)}
+	scenario := Scenario{Title: label(source.Title, source.ID, source.TitlePresent), Comments: append([]string(nil), source.Comments...)}
 	for _, sourceStep := range source.Steps {
 		step := a.adaptStep(workflowID, sourceStep)
 		switch sourceStep.Kind {
@@ -341,7 +341,7 @@ func (a *adapter) adaptScenario(workflowID string, source model.Scenario) Scenar
 
 func (a *adapter) adaptStep(workflowID string, source model.Step) Step {
 	title := source.Title
-	if title == "" {
+	if title == "" && !source.TitlePresent {
 		if source.Error != "" {
 			title = source.Error
 		} else {
@@ -393,7 +393,7 @@ func (a *adapter) buildContextMap() ContextMap {
 	}
 	for _, context := range a.model.Contexts {
 		contextMap.Nodes = append(contextMap.Nodes, ContextNode{
-			ID: context.ID, Title: label(context.Title, context.ID), External: context.External,
+			ID: context.ID, Title: label(context.Title, context.ID, context.TitlePresent), External: context.External,
 			Team: a.ownerTitle(context.Owner), Events: len(context.Events), Aggregates: len(context.Aggregates),
 		})
 	}
@@ -585,7 +585,7 @@ func (a *adapter) placeEvents(view *ViewModel) {
 		slices[placement.sliceIndex].Elements = append(slices[placement.sliceIndex].Elements, Element{
 			ID:       eventNodeID(address),
 			Kind:     "event",
-			Title:    label(entry.event.Title, entry.event.ID),
+			Title:    label(entry.event.Title, entry.event.ID, entry.event.TitlePresent),
 			Agg:      lastPart(entry.event.Semantic.Aggregate),
 			AggTitle: a.aggregateTitle(entry.event.Semantic.Aggregate),
 			Ctx:      entry.contextID,
@@ -623,7 +623,7 @@ func (a *adapter) adaptChapters(source []model.Chapter) []Chapter {
 				slices = append(slices, workflow.ID)
 			}
 		}
-		chapters = append(chapters, Chapter{ID: chapter.ID, Title: label(chapter.Title, chapter.ID), Slices: slices})
+		chapters = append(chapters, Chapter{ID: chapter.ID, Title: label(chapter.Title, chapter.ID, chapter.TitlePresent), Slices: slices})
 	}
 	return chapters
 }

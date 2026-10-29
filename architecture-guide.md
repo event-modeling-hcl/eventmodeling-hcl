@@ -2,6 +2,10 @@
 
 This guide describes how `emhcl` is organized. It also shows how the design uses Axiomatic Design to keep changes predictable. The guide describes the current repository. The language contract is in the [Event Modeling HCL specification](https://github.com/event-modeling-hcl/spec). The tool implements Specification v0.5.0: a model is one file or one folder, a `board` block sets the story order, and file layout has no meaning.
 
+The [v0.5.0 review record](v0.5.0-review.md) records the pre-fix status,
+reproduced conformance defects, and the distinction between local diagonal
+authoring controls and the decoupled semantic pipeline.
+
 ## Axiomatic Design terms
 
 Axiomatic Design separates what a system must do from the mechanisms that do it. This guide uses these terms:
@@ -36,16 +40,17 @@ Slice-based JSON is the document format that the [published Event Modeling JSON 
 
 ## Independence matrix for the tool
 
-| FR \ DP | DP1 Syntax | DP8 Loader | DP2 Source | DP3 Validation | DP4 Model | DP5 Output | DP7 Interchange | DP6 Adapters |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| FR1 Parse syntax | X | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| FR8 Load a model from a file or a folder | X | X | 0 | 0 | 0 | 0 | 0 | 0 |
-| FR2 Decode source facts | X | X | X | 0 | 0 | 0 | 0 | 0 |
-| FR3 Enforce validity | X | X | X | X | 0 | 0 | 0 | 0 |
-| FR4 Construct canonical model | X | X | X | X | X | 0 | 0 | 0 |
-| FR5 Produce the same output | X | X | X | X | X | X | 0 | 0 |
-| FR7 Convert to and from JSON | X | X | X | X | X | 0 | X | 0 |
-| FR6 Expose consistent operations | X | X | X | X | X | X | X | X |
+| FR \ DP | DP1 Syntax | DP8 Loader | DP2 Source | DP3 Validation | DP4 Model | DP5 Output | DP7 Interchange | DP9 Migration | DP6 Adapters |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| FR1 Parse syntax | X | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| FR8 Load a model from a file or a folder | X | X | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| FR2 Decode source facts | X | X | X | 0 | 0 | 0 | 0 | 0 | 0 |
+| FR3 Enforce validity | X | X | X | X | 0 | 0 | 0 | 0 | 0 |
+| FR4 Construct canonical model | X | X | X | X | X | 0 | 0 | 0 | 0 |
+| FR5 Produce the same output | X | X | X | X | X | X | 0 | 0 | 0 |
+| FR7 Convert to and from JSON | X | X | X | X | X | 0 | X | 0 | 0 |
+| FR9 Preserve a migrated model | X | X | X | X | 0 | 0 | 0 | X | 0 |
+| FR6 Expose consistent operations | X | X | X | X | X | X | X | X | X |
 
 The matrix is lower triangular, so the design is decoupled. The control sequence for the native pipeline is:
 
@@ -79,10 +84,10 @@ The DP8 column has an `X` in every row from FR8 down, and a `0` in the FR1 row. 
 
 - FR2: `source.Decode` reads the merged body that DP1 and DP8 produce, so file discovery changes the facts that it decodes.
 - FR3: No rule depends on the number of files. One-file and folder models use the same rules. The byte order of member files only fixes which declaration a duplicate diagnostic reports as the first one, and where a repeated `board` is reported.
-- FR4: The model does not depend on file order. `Model.Workflows` is the board sequence, then the off-board workflows (`Model.OffBoard`) in ID byte order. Catalog items, chapters, chapter members, hotspots, workflow elements, tables, screen images, and scenarios are sorted by ID. Field order, scenario step order, and explicit reference lists (`to`, `from`, the board) keep their source order. Edges follow the workflow order, then element ID order, then list order. An edge whose source is an event of an external bounded context has `External` set. An absent title is the empty string; no title is derived.
+- FR4: The model does not depend on file order. `Model.Workflows` is the board sequence, then the off-board workflows (`Model.OffBoard`) in ID byte order. Catalog items, chapters, chapter members, hotspots, workflow elements, tables, screen images, and scenarios are sorted by ID. Field order, scenario step order, and explicit reference lists (`to`, `from`, the board) keep their source order. Edges follow the workflow order, then element ID order, then list order. An edge whose source is an event of an external bounded context has `External` set. `TitlePresent` distinguishes omission from a literal empty `Title`; no title is derived.
 - FR5, FR7, and FR6: These rows depend on DP8 through DP2, DP3, and DP4, in the same way that the guide treats DP1.
 
-FR9 is outside the native pipeline, so the matrix has no row for it. DP9 reads files through DP1 and DP8 and checks its output with DP2 and DP3; no native DP reads DP9. A change to `internal/migrate` cannot change what the validator accepts.
+FR9 is included even though migration is separate from the native pipeline. DP9 reads raw syntax through DP1 and DP8 and checks its output through DP2 and DP3. The application adapters expose migration, so FR6 also depends on DP9. The reverse influence is absent: migration does not alter the native validator's acceptance rules.
 
 DP8 comes after DP1 in the build order because `syntax.File` and `syntax.ParseFiles` belong to the syntax package.
 

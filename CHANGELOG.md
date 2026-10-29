@@ -6,6 +6,11 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+### Fixed
+
+- Migration rejects v0.4.0-invalid one-file chapter ranges and chapters spread across several files before rewriting.
+- The IR records `TitlePresent` separately from literal title text, so `title = ""` is not confused with omission. Rendering and export preserve literal empty titles.
+
 ## [v0.12.0] - 2026-10-29
 
 This release implements Event Modeling HCL Specification v0.5.0 (RFC 0004, Uncoupled Authoring Controls). The [specification changelog](https://github.com/event-modeling-hcl/spec/blob/main/CHANGELOG.md) says: "v0.5.0 is a breaking revision … A v0.4.0 model does not load under v0.5.0 rules; `migrate` converts it without changing its meaning." Run `emhcl migrate -w <model>` on each v0.4.0 model.
@@ -21,7 +26,7 @@ This release implements Event Modeling HCL Specification v0.5.0 (RFC 0004, Uncou
 ### Changed
 
 - **Breaking:** a v0.4.0 model no longer validates. Every model needs a `board`, and every `field` and `subfield` needs `type` (`EM009` otherwise). Field types are never inferred from field names.
-- **Breaking:** titles are never derived. An omitted title is absent (`Title == ""` in the IR); views show the ID instead. `TitleExplicit` and the title-casing helper are removed from the IR.
+- **Breaking:** titles are never derived. An omitted title has `TitlePresent == false` in the IR; views show the ID instead. An explicit empty title has `TitlePresent == true` and `Title == ""`. The title-casing helper is removed.
 - **Breaking:** chapters are membership sets. List order has no meaning, chapter blocks may live in any member file, a repeated entry is `EM002`, and `EM014` applies to one-file and folder models alike.
 - **Breaking:** the IR no longer depends on file layout. `Model.Workflows` is the board sequence, then off-board workflows in ID order. Catalog items, chapters, chapter members, hotspots, workflow elements, tables, screen images, and scenarios are sorted by ID. Field order, scenario steps, and explicit reference lists keep source order.
 - An `automation` may consume internal and external events. Export writes slice type `TRANSLATION` for an automation with at least one external edge and `AUTOMATION` otherwise; import maps `TRANSLATION` to `automation` and writes a `board` in slice order. Export warns about off-board workflows and writes them after the board.
