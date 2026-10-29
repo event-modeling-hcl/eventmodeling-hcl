@@ -189,25 +189,31 @@ func TestRun_ExportRejectsFolderMemberOverwrite(t *testing.T) {
 	}
 }
 
-func TestRun_ImportEmptySlicesSucceeds(t *testing.T) {
+func TestRun_ImportEmptySlicesWritesAnEmptyBoard(t *testing.T) {
 	input := filepath.Join(t.TempDir(), "empty.json")
 	if err := os.WriteFile(input, []byte(`{"slices":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	const want = "board {\n  workflows = []\n}\n"
 	for _, output := range []string{"", filepath.Join(t.TempDir(), "empty.em.hcl")} {
 		args := []string{"import", input}
 		if output != "" {
 			args = append(args, "-o", output)
 		}
 		result := runCLI(t, args...)
-		if result.exitCode != 0 || result.stdout != "" {
+		if result.exitCode != 0 {
 			t.Fatalf("empty import result = %+v", result)
 		}
+		got := result.stdout
 		if output != "" {
 			data, err := os.ReadFile(output)
-			if err != nil || len(data) != 0 {
-				t.Fatalf("empty output = %q, error = %v", data, err)
+			if err != nil || result.stdout != "" {
+				t.Fatalf("empty output error = %v, stdout = %q", err, result.stdout)
 			}
+			got = string(data)
+		}
+		if got != want {
+			t.Fatalf("empty import = %q, want %q", got, want)
 		}
 	}
 }

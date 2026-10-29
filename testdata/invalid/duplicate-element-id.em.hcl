@@ -16,3 +16,7 @@ state_change "add_pet" {
     external_trigger = true
   }
 }
+
+board {
+  workflows = [workflow.add_pet]
+}

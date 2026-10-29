@@ -52,8 +52,13 @@ func TestBuild_LowersCompleteModelIntoCanonicalIR(t *testing.T) {
 	if got := workflowByID(t, built, "notify_owner").Kind; got != Automation {
 		t.Fatalf("notify_owner kind = %q, want %q", got, Automation)
 	}
-	if got := workflowByID(t, built, "import_partner_pet").Kind; got != Translation {
-		t.Fatalf("import_partner_pet kind = %q, want %q", got, Translation)
+	if got := workflowByID(t, built, "import_partner_pet").Kind; got != Automation {
+		t.Fatalf("import_partner_pet kind = %q, want %q", got, Automation)
+	}
+	for _, edge := range built.Edges {
+		if edge.External != (edge.WorkflowID == "import_partner_pet" && edge.To == "processor.translate_pet") {
+			t.Fatalf("edge %+v external = %v, want true only for the partner event consumed by import_partner_pet", edge, edge.External)
+		}
 	}
 
 	requireEdge(t, built, "register_pet", "screen.pet_screen", "command.register_pet_command")
@@ -70,7 +75,7 @@ func TestBuild_LowersCompleteModelIntoCanonicalIR(t *testing.T) {
 }
 
 func TestBuild_LowersTableAndScreenImageBlocks(t *testing.T) {
-	source := []byte(`state_change "register_pet" {
+	source := withBoard(`state_change "register_pet" {
   screen "pet_screen" {}
   command "register_pet" {}
 

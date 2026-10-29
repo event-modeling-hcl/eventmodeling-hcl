@@ -31,6 +31,7 @@ __STYLES_SLIDES__</style>
     </div>
     <div class="seg" id="f-view"><span class="fkey">View</span></div>
     <a class="toolbtn" id="t-contextmap" href="#contextmap" title="Bounded contexts of the whole model">Context Map</a>
+    <a class="toolbtn" id="t-offboard" href="#offboard" title="Workflows the board does not list" hidden>Off-board</a>
     <div class="seg" id="f-zoom"><span class="fkey">Zoom</span><button class="btn" id="z-out" title="Zoom out (-)" aria-label="Zoom out">−</button><button class="btn zoom-level" id="z-reset" title="Reset zoom to 100% (0)" aria-label="Reset zoom">100%</button><button class="btn" id="z-in" title="Zoom in (+)" aria-label="Zoom in">+</button><button class="btn" id="z-fit" title="Fit width (F)" aria-label="Fit to width">Fit</button></div>
     <details class="popover filters" id="f-filters">
       <summary class="toolbtn">Filters<span class="filters-count" id="filters-count" hidden></span><span class="cv" aria-hidden="true">▾</span></summary>
@@ -49,6 +50,7 @@ __STYLES_SLIDES__</style>
 
 <div class="workspace">
   <main class="chapter-overview-scroll" id="board-chapters" aria-label="Chapter overview" hidden></main>
+  <main class="chapter-overview-scroll offboard-scroll" id="board-offboard" aria-label="Off-board workflows" hidden></main>
   <main class="slides" id="board-slides" aria-label="Slides" hidden></main>
   <div class="canvas-scroll">
     <div class="board show-fields" id="board" aria-label="Event model canvas">

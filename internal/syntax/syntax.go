@@ -7,7 +7,9 @@
 package syntax
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclparse"
@@ -34,24 +36,25 @@ func Parse(filename string, source []byte) (*Document, hcl.Diagnostics) {
 	return ParseFiles([]File{{Name: filename, Source: source}})
 }
 
-// ParseFiles parses every file as HCL, in the given order. File names must be
-// unique, because the HCL parser caches by name and would silently reuse the
-// first file's content. When a name repeats, ParseFiles parses nothing and
-// returns a nil Document with one error diagnostic per repeated name. The
-// diagnostic has the summary "Duplicate file name" and no source range.
-// Otherwise every file is parsed even after an error, so the diagnostics report
-// the syntax errors of all files. On any syntax error it returns a nil Document
-// along with the diagnostics; callers must not call methods on a nil Document.
-// On success it returns a Document wrapping the parsed files and no error
-// diagnostics.
+// ParseFiles parses every file as HCL, in byte order of file names, whatever
+// the order of files. File names must be unique, because the HCL parser caches
+// by name and would silently reuse the first file's content. When a name
+// repeats, ParseFiles parses nothing and returns a nil Document with one error
+// diagnostic per repeated name. The diagnostic has the summary "Duplicate file
+// name" and no source range. Otherwise every file is parsed even after an
+// error, so the diagnostics report the syntax errors of all files. On any
+// syntax error it returns a nil Document along with the diagnostics; callers
+// must not call methods on a nil Document. On success it returns a Document
+// wrapping the parsed files and no error diagnostics.
 func ParseFiles(files []File) (*Document, hcl.Diagnostics) {
 	if diagnostics := duplicateNames(files); len(diagnostics) > 0 {
 		return nil, diagnostics
 	}
+	sorted := slices.SortedFunc(slices.Values(files), func(a, b File) int { return cmp.Compare(a.Name, b.Name) })
 	parser := hclparse.NewParser()
-	document := &Document{files: make([]*hcl.File, 0, len(files)), bytes: make(map[string][]byte, len(files))}
+	document := &Document{files: make([]*hcl.File, 0, len(sorted)), bytes: make(map[string][]byte, len(sorted))}
 	var diagnostics hcl.Diagnostics
-	for _, file := range files {
+	for _, file := range sorted {
 		parsed, fileDiagnostics := parser.ParseHCL(file.Source, file.Name)
 		diagnostics = append(diagnostics, fileDiagnostics...)
 		document.files = append(document.files, parsed)
@@ -85,7 +88,7 @@ func duplicateNames(files []File) hcl.Diagnostics {
 
 // Body returns the document's root HCL body — the body decoded against
 // ModelSchema. For several files it is their merged body: blocks come back
-// file by file, in the order the files were given.
+// file by file, in byte order of file names.
 func (d *Document) Body() hcl.Body {
 	if len(d.files) == 1 {
 		return d.files[0].Body
@@ -93,9 +96,15 @@ func (d *Document) Body() hcl.Body {
 	return hcl.MergeFiles(d.files)
 }
 
-// FileCount returns the number of files the document was parsed from.
-func (d *Document) FileCount() int {
-	return len(d.files)
+// Start returns the empty range at the start of the byte-first member file,
+// the subject of diagnostics about something the model lacks as a whole. A
+// document of no files has no start and returns the zero range.
+func (d *Document) Start() hcl.Range {
+	if len(d.files) == 0 {
+		return hcl.Range{}
+	}
+	start := hcl.Pos{Line: 1, Column: 1}
+	return hcl.Range{Filename: d.files[0].Body.MissingItemRange().Filename, Start: start, End: start}
 }
 
 // SourceOf returns the exact bytes of the file named by rng.Filename, or nil
@@ -126,6 +135,7 @@ func PartialContent(body hcl.Body, schema hcl.BodySchema) (*hcl.BodyContent, hcl
 // ModelSchema is the root schema of an Event Modeling document.
 func ModelSchema() hcl.BodySchema {
 	return hcl.BodySchema{Blocks: []hcl.BlockHeaderSchema{
+		{Type: "board"},
 		{Type: "bounded_context", LabelNames: []string{"id"}},
 		{Type: "actor", LabelNames: []string{"id"}},
 		{Type: "team", LabelNames: []string{"id"}},
@@ -135,8 +145,12 @@ func ModelSchema() hcl.BodySchema {
 		{Type: "state_change", LabelNames: []string{"id"}},
 		{Type: "state_view", LabelNames: []string{"id"}},
 		{Type: "automation", LabelNames: []string{"id"}},
-		{Type: "translation", LabelNames: []string{"id"}},
 	}}
+}
+
+// BoardSchema is the schema of the board block's body.
+func BoardSchema() hcl.BodySchema {
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "workflows", Required: true}}}
 }
 
 // BoundedContextSchema is the schema of a bounded_context block's body.
@@ -168,8 +182,8 @@ func EventSchema() hcl.BodySchema {
 	}
 }
 
-// WorkflowSchema is the schema of a state_change/state_view/automation/
-// translation block's body.
+// WorkflowSchema is the schema of a state_change/state_view/automation
+// block's body.
 func WorkflowSchema() hcl.BodySchema {
 	return hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "status"}, {Name: "description"}, {Name: "owner"}},

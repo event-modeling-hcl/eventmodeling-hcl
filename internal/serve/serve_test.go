@@ -175,6 +175,67 @@ func TestMux_DiagramServesReadableDiagnosticsPageForAnInvalidModel(t *testing.T)
 			t.Errorf("diagnostics page missing summary %q", diagnostic.Summary)
 		}
 	}
+	root := httptest.NewRecorder()
+	newMux(s).ServeHTTP(root, httptest.NewRequest("GET", "/", nil))
+	if strings.Contains(root.Body.String(), `class="policy"`) {
+		t.Error("shell page shows a policy banner for a model with core errors")
+	}
+}
+
+// policyRejectedResult renders the minimal example plus an open hotspot under
+// the strict profile, which makes the EM406 judgment signal an error.
+func policyRejectedResult(t *testing.T) app.RenderResult {
+	t.Helper()
+	path := filepath.Join("..", "..", "examples", "minimal.em.hcl")
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read example: %v", err)
+	}
+	source = append(source, []byte(`
+hotspot "pet_id_source" {
+  status   = "open"
+  question = "Who assigns the pet ID?"
+  on       = command.add_pet.add_pet_command
+}
+`)...)
+	return app.Render(path, source, app.Strict)
+}
+
+func TestMux_PolicyRejectionServesTheDiagramAndItsDiagnostics(t *testing.T) {
+	result := policyRejectedResult(t)
+	if result.HTML == "" || result.Diagnostics.HasCoreErrors() || !result.Diagnostics.HasErrors() {
+		t.Fatalf("fixture = HTML %d bytes, diagnostics %#v; want HTML and only policy errors", len(result.HTML), result.Diagnostics)
+	}
+	s := &state{}
+	s.update(result)
+	mux := newMux(s)
+
+	diagram := httptest.NewRecorder()
+	mux.ServeHTTP(diagram, httptest.NewRequest("GET", "/diagram", nil))
+	if diagram.Body.String() != result.HTML {
+		t.Error("/diagram does not serve the rendered diagram for a policy rejection")
+	}
+
+	root := httptest.NewRecorder()
+	mux.ServeHTTP(root, httptest.NewRequest("GET", "/", nil))
+	body := root.Body.String()
+	if !strings.Contains(body, `<iframe src="/diagram">`) {
+		t.Error("shell page missing the diagram iframe")
+	}
+	if !strings.Contains(body, `class="policy"`) || !strings.Contains(body, "Error EM406") {
+		t.Errorf("shell page = %q, want a policy banner listing the EM406 error", body)
+	}
+}
+
+func TestMux_RootShowsNoPolicyBannerForAnAcceptedModel(t *testing.T) {
+	s := &state{}
+	s.update(validResult(t))
+
+	rec := httptest.NewRecorder()
+	newMux(s).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if strings.Contains(rec.Body.String(), `class="policy"`) {
+		t.Error("shell page shows a policy banner for an accepted model")
+	}
 }
 
 func TestMux_HashReturnsTheCurrentHash(t *testing.T) {

@@ -1,7 +1,14 @@
+board {
+  workflows = [
+    workflow.example,
+  ]
+}
+
 bounded_context "example" {
   title = "Example"
 
   aggregate "pet" {
+    title = "Pet"
   }
 
   field_type "pet_id" {

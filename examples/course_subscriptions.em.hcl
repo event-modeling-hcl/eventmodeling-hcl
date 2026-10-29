@@ -1,3 +1,16 @@
+board {
+  workflows = [
+    workflow.register_student,
+    workflow.register_course,
+    workflow.course_catalog,
+    workflow.available_courses,
+    workflow.change_course_capacity,
+    workflow.confirm_subscription,
+    workflow.my_subscribed_courses,
+    workflow.unsubscribe_student,
+  ]
+}
+
 bounded_context "registrar" {
   title    = "Registrar"
   external = true
@@ -87,12 +100,15 @@ bounded_context "course_subscriptions" {
     aggregate = aggregate.enrollment
 
     field "student_id" {
+      type = field_type.course_subscriptions.student_id
     }
 
     field "name" {
+      type = field_type.course_subscriptions.name
     }
 
     field "course_limit" {
+      type = field_type.course_subscriptions.course_limit
     }
   }
 
@@ -101,12 +117,15 @@ bounded_context "course_subscriptions" {
     aggregate = aggregate.course
 
     field "course_id" {
+      type = field_type.course_subscriptions.course_id
     }
 
     field "title" {
+      type = field_type.course_subscriptions.title
     }
 
     field "capacity" {
+      type = field_type.course_subscriptions.capacity
     }
   }
 
@@ -115,9 +134,11 @@ bounded_context "course_subscriptions" {
     aggregate = aggregate.course
 
     field "course_id" {
+      type = field_type.course_subscriptions.course_id
     }
 
     field "capacity" {
+      type = field_type.course_subscriptions.capacity
     }
   }
 
@@ -126,9 +147,11 @@ bounded_context "course_subscriptions" {
     aggregate = aggregate.enrollment
 
     field "course_id" {
+      type = field_type.course_subscriptions.course_id
     }
 
     field "student_id" {
+      type = field_type.course_subscriptions.student_id
     }
   }
 
@@ -137,14 +160,16 @@ bounded_context "course_subscriptions" {
     aggregate = aggregate.enrollment
 
     field "course_id" {
+      type = field_type.course_subscriptions.course_id
     }
 
     field "student_id" {
+      type = field_type.course_subscriptions.student_id
     }
   }
 }
 
-translation "register_student" {
+automation "register_student" {
   title = "Register Student"
 
   readmodel "student_to_register" {
@@ -154,12 +179,15 @@ translation "register_student" {
     to       = [processor.register_student]
 
     field "student_id" {
+      type = field_type.course_subscriptions.student_id
     }
 
     field "name" {
+      type = field_type.course_subscriptions.name
     }
 
     field "course_limit" {
+      type = field_type.course_subscriptions.course_limit
     }
   }
 
@@ -173,12 +201,15 @@ translation "register_student" {
     to    = [event.course_subscriptions.student_registered]
 
     field "student_id" {
+      type = field_type.course_subscriptions.student_id
     }
 
     field "name" {
+      type = field_type.course_subscriptions.name
     }
 
     field "course_limit" {
+      type = field_type.course_subscriptions.course_limit
     }
   }
 
@@ -232,12 +263,15 @@ state_change "register_course" {
     to                = [event.course_subscriptions.course_registered]
 
     field "course_id" {
+      type = field_type.course_subscriptions.course_id
     }
 
     field "title" {
+      type = field_type.course_subscriptions.title
     }
 
     field "capacity" {
+      type = field_type.course_subscriptions.capacity
     }
   }
 
@@ -290,15 +324,19 @@ state_view "course_catalog" {
     to = [screen.course_catalog]
 
     field "course_id" {
+      type = field_type.course_subscriptions.course_id
     }
 
     field "title" {
+      type = field_type.course_subscriptions.title
     }
 
     field "capacity" {
+      type = field_type.course_subscriptions.capacity
     }
 
     field "number_of_subscriptions" {
+      type = field_type.course_subscriptions.number_of_subscriptions
     }
   }
 
@@ -383,15 +421,19 @@ state_view "available_courses" {
     to = [screen.available_courses]
 
     field "course_id" {
+      type = field_type.course_subscriptions.course_id
     }
 
     field "title" {
+      type = field_type.course_subscriptions.title
     }
 
     field "capacity" {
+      type = field_type.course_subscriptions.capacity
     }
 
     field "number_of_subscriptions" {
+      type = field_type.course_subscriptions.number_of_subscriptions
     }
   }
 
@@ -476,9 +518,11 @@ state_change "change_course_capacity" {
     to        = [event.course_subscriptions.course_capacity_changed]
 
     field "course_id" {
+      type = field_type.course_subscriptions.course_id
     }
 
     field "capacity" {
+      type = field_type.course_subscriptions.capacity
     }
   }
 
@@ -562,9 +606,11 @@ state_change "confirm_subscription" {
     to        = [event.course_subscriptions.student_subscribed]
 
     field "course_id" {
+      type = field_type.course_subscriptions.course_id
     }
 
     field "student_id" {
+      type = field_type.course_subscriptions.student_id
     }
   }
 
@@ -671,12 +717,15 @@ state_view "my_subscribed_courses" {
     to = [screen.my_subscribed_courses]
 
     field "student_id" {
+      type = field_type.course_subscriptions.student_id
     }
 
     field "subscription_count" {
+      type = field_type.course_subscriptions.subscription_count
     }
 
     field "course_limit" {
+      type = field_type.course_subscriptions.course_limit
     }
 
     field "courses" {
@@ -773,9 +822,11 @@ state_change "unsubscribe_student" {
     to        = [event.course_subscriptions.student_unsubscribed]
 
     field "course_id" {
+      type = field_type.course_subscriptions.course_id
     }
 
     field "student_id" {
+      type = field_type.course_subscriptions.student_id
     }
   }
 

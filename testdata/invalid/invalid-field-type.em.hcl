@@ -5,3 +5,7 @@ bounded_context "example" {
     type = "Text"
   }
 }
+
+board {
+  workflows = []
+}

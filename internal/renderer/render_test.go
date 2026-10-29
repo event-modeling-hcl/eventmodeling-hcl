@@ -12,7 +12,7 @@ import (
 func TestRenderHTML_InjectsEscapedModelIntoSelfContainedPage(t *testing.T) {
 	view := &ViewModel{
 		Title:    `</script><script>alert("x")</script>`,
-		Version:  specVersion,
+		Version:  version.Spec,
 		Actors:   map[string]Actor{},
 		Contexts: map[string]Context{},
 		Slices:   []Slice{{ID: "example", Type: "state_change", Title: "Example"}},
@@ -51,7 +51,7 @@ func TestRenderHTML_SpecVersionCommentDerivesFromVersionPackage(t *testing.T) {
 
 	view := &ViewModel{
 		Title:    "Example",
-		Version:  specVersion,
+		Version:  version.Spec,
 		Actors:   map[string]Actor{},
 		Contexts: map[string]Context{},
 	}
@@ -130,7 +130,7 @@ func TestRender_EmbedsScreenFields(t *testing.T) {
 func TestRenderHTML_IncludesAdaptiveTimelineLayout(t *testing.T) {
 	view := &ViewModel{
 		Title:    "Layout",
-		Version:  specVersion,
+		Version:  version.Spec,
 		Actors:   map[string]Actor{"operator": {Title: "Operator"}},
 		Contexts: map[string]Context{"partner": {Title: "Partner", External: true}},
 		Slices: []Slice{{
@@ -160,7 +160,7 @@ func TestRenderHTML_IncludesAdaptiveTimelineLayout(t *testing.T) {
 func TestRenderHTML_InlinesActorsWithScreens(t *testing.T) {
 	view := &ViewModel{
 		Title:    "Actors",
-		Version:  specVersion,
+		Version:  version.Spec,
 		Actors:   map[string]Actor{"student": {Title: "Student"}},
 		Contexts: map[string]Context{},
 		Slices: []Slice{{
@@ -187,7 +187,7 @@ func TestRenderHTML_InlinesActorsWithScreens(t *testing.T) {
 
 func TestRenderHTML_UsesDottedIdleBackwardArrows(t *testing.T) {
 	html, err := RenderHTML(&ViewModel{
-		Title: "Backward", Version: specVersion, Actors: map[string]Actor{}, Contexts: map[string]Context{},
+		Title: "Backward", Version: version.Spec, Actors: map[string]Actor{}, Contexts: map[string]Context{},
 	})
 	if err != nil {
 		t.Fatalf("render HTML: %v", err)
@@ -206,7 +206,7 @@ func TestRenderHTML_UsesDottedIdleBackwardArrows(t *testing.T) {
 func TestRenderHTML_GroupsEventsByContextAggregate(t *testing.T) {
 	view := &ViewModel{
 		Title:    "Lanes",
-		Version:  specVersion,
+		Version:  version.Spec,
 		Actors:   map[string]Actor{},
 		Contexts: map[string]Context{"catalogue": {Title: "Catalogue"}, "lending": {Title: "Lending"}},
 		Slices: []Slice{{
@@ -229,5 +229,29 @@ func TestRenderHTML_GroupsEventsByContextAggregate(t *testing.T) {
 	}
 	if strings.Contains(html, `{key:"events"`) {
 		t.Error("HTML still declares the flat Events swimlane band")
+	}
+}
+
+func TestRenderHTML_ListsOffBoardWorkflowsOnTheirOwnPage(t *testing.T) {
+	html, err := RenderHTML(&ViewModel{
+		Title: "Off-board", Version: version.Spec, Actors: map[string]Actor{}, Contexts: map[string]Context{},
+		Slices:   []Slice{{ID: "story", Type: "state_change", Title: "Story"}},
+		OffBoard: []Slice{{ID: "aside", Type: "state_change", Title: "Aside"}},
+	})
+	if err != nil {
+		t.Fatalf("render HTML: %v", err)
+	}
+	for _, expected := range []string{
+		`"offBoard":[{"id":"aside"`,
+		`id="board-offboard"`,
+		`id="t-offboard" href="#offboard"`,
+		"function renderOffBoard",
+	} {
+		if !strings.Contains(html, expected) {
+			t.Errorf("HTML missing off-board hook %q", expected)
+		}
+	}
+	if strings.Contains(html, "titleize") {
+		t.Error("viewer still derives labels by title-casing IDs")
 	}
 }

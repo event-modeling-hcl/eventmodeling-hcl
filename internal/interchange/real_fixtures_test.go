@@ -22,10 +22,10 @@ func TestImport_RealMartinDilgerDocuments(t *testing.T) {
 		kinds     map[model.WorkflowKind]int
 	}{
 		{"config-pet-management-detailed.json", 7, 4, 11, map[model.WorkflowKind]int{model.StateChange: 4, model.StateView: 3}},
-		{"axoniq-vsa-sample-news.json", 5, 6, 1, map[model.WorkflowKind]int{model.Automation: 3, model.Translation: 1, model.StateView: 1}},
-		{"implmeneting-event-sourcing.json", 11, 11, 6, map[model.WorkflowKind]int{model.StateChange: 4, model.StateView: 2, model.Automation: 3, model.Translation: 2}},
+		{"axoniq-vsa-sample-news.json", 5, 6, 1, map[model.WorkflowKind]int{model.Automation: 4, model.StateView: 1}},
+		{"implmeneting-event-sourcing.json", 11, 11, 6, map[model.WorkflowKind]int{model.StateChange: 4, model.StateView: 2, model.Automation: 5}},
 		{"todolist.json", 6, 4, 0, map[model.WorkflowKind]int{model.StateChange: 4, model.StateView: 2}},
-		{"understanding-event-sourcing.json", 11, 11, 7, map[model.WorkflowKind]int{model.StateChange: 4, model.StateView: 2, model.Automation: 3, model.Translation: 2}},
+		{"understanding-event-sourcing.json", 11, 11, 7, map[model.WorkflowKind]int{model.StateChange: 4, model.StateView: 2, model.Automation: 5}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -189,7 +189,10 @@ func TestImport_ExamplesPreserveTypedValuesAndDiscloseUnrepresentableSamples(t *
 }
 
 func TestExport_PrototypeObjectAndStepTagsSurviveNativeLowering(t *testing.T) {
-	input := []byte(`bounded_context "orders" {
+	input := []byte(`board {
+  workflows = [workflow.save]
+}
+bounded_context "orders" {
   event "saved" { prototype = { topic = "saved", nested = { enabled = false }, items = [1, null] } }
 }
 state_change "save" {
@@ -294,7 +297,10 @@ func assertJSONValue(t *testing.T, got, want json.RawMessage) {
 }
 
 func TestExport_FieldTypeFalseAndEmptyOverridesWin(t *testing.T) {
-	source := []byte(`bounded_context "orders" {
+	source := []byte(`board {
+  workflows = [workflow.save]
+}
+bounded_context "orders" {
   field_type "identifier" {
     type = "String"
     optional = true
@@ -414,9 +420,14 @@ func TestImport_RealPetContractPreservesNestedExamplesAndAuthentication(t *testi
 	if len(built.Actors) != 1 || built.Actors[0].ID != "clinic_staff" || built.Actors[0].AuthRequired {
 		t.Fatalf("authRequired=false changed: %+v", built.Actors)
 	}
-	readModel := built.Workflows[1].Elements[1]
-	if readModel.Kind != model.ReadModel || readModel.Title != "Owner with Pets" {
-		t.Fatalf("read model changed: %+v", readModel)
+	var readModel model.Element
+	for _, element := range built.Workflows[1].Elements {
+		if element.Kind == model.ReadModel && element.Title == "Owner with Pets" {
+			readModel = element
+		}
+	}
+	if readModel.ID == "" {
+		t.Fatalf("read model Owner with Pets missing: %+v", built.Workflows[1].Elements)
 	}
 	pets := readModel.Fields[6]
 	if pets.Name != "pets" || pets.Type != "Custom" || pets.Cardinality != "List" {
@@ -523,7 +534,8 @@ func TestImport_IDLessAndRepeatedPresentationIDsRetainEachInstance(t *testing.T)
 }
 
 func TestExportImport_ContextFreeWorkflowDoesNotInventAContext(t *testing.T) {
-	source := []byte(`state_change "save" {
+	source := []byte(`board { workflows = [workflow.save] }
+	state_change "save" {
 		command "save" { api_endpoint = "POST /save" }
 	}`)
 	first := app.Export("context_free.em.hcl", source)
@@ -703,7 +715,7 @@ func TestRealFixturePendingWorkAndRegistrationContracts(t *testing.T) {
 			}
 			pendingCount := 0
 			for _, workflow := range built.Workflows {
-				if workflow.Kind != model.Translation {
+				if workflow.Kind != model.Automation {
 					continue
 				}
 				for _, element := range workflow.Elements {

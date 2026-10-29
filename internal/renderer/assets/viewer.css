@@ -184,6 +184,10 @@ button{font-family:inherit}
 .chapter-menu .t{overflow-wrap:anywhere}
 #t-contextmap{text-decoration:none; white-space:nowrap}
 #t-contextmap[aria-current="page"]{background:var(--accent); border-color:var(--accent); color:#fff}
+#t-offboard{text-decoration:none; white-space:nowrap}
+#t-offboard[aria-current="page"]{background:var(--accent); border-color:var(--accent); color:#fff}
+/* viewer labels (not titles from the model) read as UI text */
+.ui-label{font-style:italic; color:var(--ink-soft)}
 
 /* popovers: <details> whose panel floats under its summary */
 .popover{position:relative}
@@ -604,6 +608,18 @@ button{font-family:inherit}
 .chapter-omission [aria-hidden]{color:var(--accent);font-size:18px;line-height:.8}
 .chapter-empty,.chapter-empty-model{margin:0;padding:14px;color:var(--ink-soft);font-style:italic}
 .chapter-empty-model{max-width:1240px;margin:auto}
+.chapter-overview.ui-group{border-style:dashed}
+.chapter-link.ui-label{color:var(--ink-soft)}
+/* ----------------------- off-board workflows --------------------- */
+.offboard-intro{margin:0;color:var(--ink-soft);font-style:italic}
+.offboard-card .chapter-overview-header{align-items:center}
+.offboard-pat{width:22px;height:22px;flex:none;display:grid;place-items:center;color:var(--ink-soft)}
+.offboard-pat svg{width:16px;height:16px}
+.offboard-open{all:unset;cursor:pointer;color:var(--ink);overflow-wrap:anywhere}
+.offboard-open::after{content:"";position:absolute;inset:0;border-radius:4px}
+.offboard-card:hover .offboard-open{color:var(--accent-ink);text-decoration:underline}
+.offboard-open:focus-visible::after{outline:2px solid var(--accent);outline-offset:2px}
+.offboard-card:hover,.offboard-card:focus-within{border-color:var(--accent)}
 @media(max-width:680px){
   .chapter-overview{padding:13px}
   .chapter-preview.one-slice,.chapter-preview.two-slices,.chapter-preview.many-slices{grid-template-columns:minmax(0,1fr)}

@@ -20,7 +20,7 @@
     const slice = EMC.MODEL.slices[sliceIndex];
     const parts = [];
     const kind = element.kind === "processor" ? processorLabel(slice.type) :
-      (EMC.KIND_LABEL[element.kind] || EMC.titleize(element.kind));
+      (EMC.KIND_LABEL[element.kind] || element.kind);
     parts.push(`<div class="es-note-kind">${EMC.esc(kind)}</div>`);
     parts.push(`<div class="es-note-title">${EMC.esc(element.title)}</div>`);
     if(element.question) parts.push(`<div class="q es-note-detail">“${EMC.esc(element.question)}”</div>`);
@@ -46,7 +46,7 @@
   function aggregateFor(element, sliceIndex){
     const note = EMC.el("div", "es-note es-aggregate-note",
       `<div class="es-note-kind">Constraint / aggregate</div>`+
-      `<div class="es-note-title">${EMC.esc(EMC.aggTitle(element.agg))}</div>`);
+      `<div class="es-note-title">${EMC.esc(EMC.aggTitle(element))}</div>`);
     note.dataset.slice = sliceIndex;
     note.dataset.relatedId = element.id;
     note.dataset.for = element.id;
@@ -56,7 +56,7 @@
 
   function actorNoteFor(actorID, element, sliceIndex){
     const actor = EMC.MODEL.actors[actorID];
-    const title = actor ? actor.title : EMC.titleize(actorID);
+    const title = actor ? actor.title : actorID;
     const note = EMC.el("div", "es-note es-actor-note",
       `<div class="es-note-kind">Actor</div>`+
       `<div class="es-note-title">${EMC.ACTOR_SVG}<span>${EMC.esc(title)}</span></div>`);
@@ -268,7 +268,7 @@
         `<span class="es-slice-idx">${String(i+1).padStart(2,"0")}</span>`+
         `<span class="es-pattern" title="${EMC.esc(EMC.PATTERN_LABEL[slice.type]||slice.type)}">${EMC.PAT_SVG[slice.type]||""}</span>`+
         `<span class="es-row-title">${EMC.esc(slice.title)}</span>`+
-        `<span class="status" style="--sc:${EMC.statusVar(status)}"><span class="sd"></span>${EMC.esc(EMC.STATUS_LABEL[status]||EMC.titleize(status))}</span>`);
+        `<span class="status" style="--sc:${EMC.statusVar(status)}"><span class="sd"></span>${EMC.esc(EMC.STATUS_LABEL[status]||status)}</span>`);
       head.type = "button";
       head.dataset.slice = i;
       head.dataset.nodeId = "slice__"+slice.id;
@@ -414,7 +414,7 @@
     const placedActors = new Set(EMC.MODEL.slices.flatMap(slice=>slice.elements.map(element=>element.actor).filter(Boolean)));
     const actors = Object.entries(EMC.MODEL.actors).map(([id, actor]) =>
       `<div class="row"><span class="sw" style="--fl:var(--es-actor-fill);--cl:var(--es-actor-line)"></span><span>${EMC.esc(actor.title)}${placedActors.has(id)?"":' · <span class="mono">unassigned</span>'}</span></div>`).join("");
-    const patterns = Object.entries(EMC.PATTERN_LABEL).map(([key,label])=>`<div class="row"><span class="pg">${EMC.PAT_SVG[key]}</span>${label}</div>`).join("");
+    const patterns = Object.entries(EMC.PATTERN_LABEL).map(([key,label])=>`<div class="row"><span class="pg">${EMC.PAT_SVG[key]}</span>${label}${EMC.PATTERN_NOTE[key]?` · ${EMC.PATTERN_NOTE[key]}`:""}</div>`).join("");
     const statuses = Object.entries(EMC.STATUS_LABEL).map(([key,label])=>`<div class="row"><span class="sd" style="background:${EMC.statusVar(key)}"></span>${label}</div>`).join("");
     const other = unpinned.map(h=>`<div class="row"><span class="sw" style="--fl:var(--hot-fill);--cl:var(--hot-line)"></span><span>${EMC.esc(h.question)}${h.target?` · <span class="mono">${EMC.esc(h.target)}</span>`:""}</span></div>`).join("");
     LEGENDS.storming = `<div class="grp"><h4>Elements</h4>${elements}</div>`+

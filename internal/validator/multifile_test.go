@@ -10,7 +10,22 @@ import (
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/syntax"
 )
 
+// validateFiles validates files with a board listing every declared workflow
+// appended to the last file, for tests about rules other than the board.
 func validateFiles(t *testing.T, profile Profile, files ...syntax.File) hcl.Diagnostics {
+	t.Helper()
+	sources := make([]string, 0, len(files))
+	for _, file := range files {
+		sources = append(sources, string(file.Source))
+	}
+	withBoard := append([]syntax.File(nil), files...)
+	last := &withBoard[len(withBoard)-1]
+	last.Source = append(append([]byte(nil), last.Source...), boardFor(sources...)...)
+	return validateBoardFiles(t, profile, withBoard...)
+}
+
+// validateBoardFiles validates files exactly as given.
+func validateBoardFiles(t *testing.T, profile Profile, files ...syntax.File) hcl.Diagnostics {
 	t.Helper()
 	document, parseDiagnostics := syntax.ParseFiles(files)
 	if parseDiagnostics.HasErrors() {
@@ -106,8 +121,8 @@ func TestValidateSource_DuplicateIDNamesFirstDeclarationInSameFile(t *testing.T)
 	}
 }
 
-func TestValidateFiles_ReportsChaptersInSeveralFiles(t *testing.T) {
-	diagnostics := validateFiles(t, Valid,
+func TestValidateFiles_AcceptsChaptersInSeveralFiles(t *testing.T) {
+	diagnostics := validateFiles(t, Strict,
 		modelFile("a.em.hcl", `state_change "first" { title = "First" }
 chapter "one" {
   workflows = [workflow.first]
@@ -120,30 +135,9 @@ chapter "two" {
 `),
 	)
 
-	chapters := requireOneDiagnostic(t, diagnostics, "EM013", hcl.DiagError, "b.em.hcl")
-	if want := "all chapter blocks of a multi-file model must be in one file; first chapter file is a.em.hcl."; chapters.Detail != want {
-		t.Fatalf("EM013 detail = %q, want %q", chapters.Detail, want)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %s, want none", diagnostics.Error())
 	}
-	if chapters.Summary != "Chapters in several files" {
-		t.Fatalf("EM013 summary = %q", chapters.Summary)
-	}
-}
-
-func TestValidateFiles_AcceptsChaptersInOneFile(t *testing.T) {
-	diagnostics := validateFiles(t, Valid,
-		modelFile("a.em.hcl", `state_change "first" { title = "First" }
-`),
-		modelFile("b.em.hcl", `state_change "second" { title = "Second" }
-chapter "one" {
-  workflows = [workflow.first, workflow.second]
-}
-chapter "two" {
-  workflows = [workflow.second]
-}
-`),
-	)
-
-	requireNoDiagnosticWithCode(t, diagnostics, "EM013")
 }
 
 func TestValidateFiles_ReportsWorkflowInSeveralChapters(t *testing.T) {
@@ -171,52 +165,56 @@ chapter "two" {
 	}
 }
 
-func TestValidateFiles_ReportsUnchapteredWorkflowPerProfile(t *testing.T) {
+func TestValidateSource_ReportsWorkflowInSeveralChaptersInOneFileModel(t *testing.T) {
+	model := `state_change "first" { title = "First" }
+chapter "one" {
+  workflows = [workflow.first]
+}
+chapter "two" {
+  workflows = [workflow.first]
+}
+`
+
+	several := requireOneDiagnostic(t, validateModel(t, model), "EM014", hcl.DiagError, "model.em.hcl")
+	if several.Subject.Start.Line != 6 {
+		t.Fatalf("EM014 subject line = %d, want 6 (the later chapter)", several.Subject.Start.Line)
+	}
+}
+
+func TestValidateSource_ReportsRepeatedChapterEntry(t *testing.T) {
+	model := `state_change "first" { title = "First" }
+chapter "one" {
+  workflows = [workflow.first, workflow.first]
+}
+`
+
+	diagnostics := validateModel(t, model)
+
+	repeated := requireOneDiagnostic(t, diagnostics, "EM002", hcl.DiagError, "model.em.hcl")
+	if want := "workflow.first is listed more than once in chapter.one."; repeated.Detail != want {
+		t.Fatalf("EM002 detail = %q, want %q", repeated.Detail, want)
+	}
+	if repeated.Subject.Start.Column != 32 {
+		t.Fatalf("EM002 subject column = %d, want 32 (the repeated entry)", repeated.Subject.Start.Column)
+	}
+	requireNoDiagnosticWithCode(t, diagnostics, "EM014")
+}
+
+func TestValidateFiles_UnchapteredWorkflowsHaveNoDiagnosticInAnyProfile(t *testing.T) {
 	files := []syntax.File{
 		modelFile("a.em.hcl", `state_change "first" { title = "First" }
 chapter "one" {
   workflows = [workflow.first]
 }
 `),
-		modelFile("b.em.hcl", `state_change "second" { title = "Second" }
-`),
+		modelFile("b.em.hcl", "state_view \"second\" { title = \"Second\" }\n"),
 	}
-	tests := []struct {
-		profile Profile
-		want    hcl.DiagnosticSeverity
-	}{
-		{Workshop, hcl.DiagInvalid},
-		{Valid, hcl.DiagWarning},
-		{Strict, hcl.DiagError},
-	}
-	for _, test := range tests {
-		t.Run(test.profile.String(), func(t *testing.T) {
-			unchaptered := requireOneDiagnostic(t, validateFiles(t, test.profile, files...), "EM407", test.want, "b.em.hcl")
-			want := "workflow.second is in no chapter; it is placed after chaptered workflows in file name order. Add it to a chapter."
-			if unchaptered.Detail != want {
-				t.Fatalf("EM407 detail = %q, want %q", unchaptered.Detail, want)
-			}
-			if unchaptered.Summary != "Workflow outside every chapter" {
-				t.Fatalf("EM407 summary = %q", unchaptered.Summary)
+	for _, profile := range []Profile{Workshop, Valid, Strict} {
+		t.Run(profile.String(), func(t *testing.T) {
+			if diagnostics := validateFiles(t, profile, files...); len(diagnostics) != 0 {
+				t.Fatalf("diagnostics = %s, want none", diagnostics.Error())
 			}
 		})
-	}
-}
-
-func TestValidateFiles_ReportsEveryWorkflowWhenModelHasNoChapters(t *testing.T) {
-	diagnostics := validateFiles(t, Valid,
-		modelFile("a.em.hcl", "state_change \"first\" { title = \"First\" }\n"),
-		modelFile("b.em.hcl", "state_view \"second\" { title = \"Second\" }\n"),
-	)
-
-	matches := diagnosticsWithCode(diagnostics, "EM407")
-	if len(matches) != 2 {
-		t.Fatalf("EM407 diagnostics = %#v, want 2", matches)
-	}
-	for index, filename := range []string{"a.em.hcl", "b.em.hcl"} {
-		if matches[index].Subject.Filename != filename || matches[index].Severity != hcl.DiagWarning {
-			t.Fatalf("EM407[%d] = %v severity %v, want warning in %s", index, matches[index].Subject, matches[index].Severity, filename)
-		}
 	}
 }
 
@@ -224,54 +222,17 @@ func TestValidateFiles_UnresolvedChapterReferenceDoesNotChapterAWorkflow(t *test
 	diagnostics := validateFiles(t, Valid,
 		modelFile("a.em.hcl", `state_change "first" { title = "First" }
 chapter "one" {
+  workflows = [workflow.missing, workflow.first]
+}
+chapter "two" {
   workflows = [workflow.missing]
 }
 `),
 		modelFile("b.em.hcl", "state_change \"second\" { title = \"Second\" }\n"),
 	)
 
-	requireOneDiagnostic(t, diagnostics, "EM102", hcl.DiagError, "a.em.hcl")
-	if matches := diagnosticsWithCode(diagnostics, "EM407"); len(matches) != 2 {
-		t.Fatalf("EM407 diagnostics = %#v, want both workflows reported", matches)
+	if matches := diagnosticsWithCode(diagnostics, "EM102"); len(matches) != 2 {
+		t.Fatalf("EM102 diagnostics = %#v, want one per unresolved entry", matches)
 	}
 	requireNoDiagnosticWithCode(t, diagnostics, "EM014")
-}
-
-const outOfOrderChapter = `state_change "first" { title = "First" }
-state_change "second" { title = "Second" }
-state_change "third" { title = "Third" }
-chapter "one" {
-  workflows = [workflow.third, workflow.first]
-}
-`
-
-func TestValidateFiles_SkipsContiguousChapterCheckForMultiFileModels(t *testing.T) {
-	diagnostics := validateFiles(t, Valid,
-		modelFile("a.em.hcl", outOfOrderChapter),
-		modelFile("b.em.hcl", "state_change \"fourth\" { title = \"Fourth\" }\n"),
-	)
-
-	requireNoDiagnosticWithCode(t, diagnostics, "EM006")
-}
-
-func TestValidateFiles_KeepsContiguousChapterCheckForOneFile(t *testing.T) {
-	diagnostics := validateFiles(t, Valid, modelFile("a.em.hcl", outOfOrderChapter))
-
-	requireOneDiagnostic(t, diagnostics, "EM006", hcl.DiagError, "a.em.hcl")
-}
-
-func TestValidateFiles_OneFileModelHasNoCompositionDiagnostics(t *testing.T) {
-	diagnostics := validateFiles(t, Strict, modelFile("a.em.hcl", `state_change "first" { title = "First" }
-state_change "second" { title = "Second" }
-chapter "one" {
-  workflows = [workflow.first]
-}
-chapter "two" {
-  workflows = [workflow.first]
-}
-`))
-
-	for _, code := range []string{"EM013", "EM014", "EM407"} {
-		requireNoDiagnosticWithCode(t, diagnostics, code)
-	}
 }

@@ -47,12 +47,16 @@ func diagnosticsToJS(diagnostics []app.Diagnostic) []interface{} {
 			"line":     diagnostic.Line,
 			"column":   diagnostic.Column,
 			"file":     diagnostic.Filename,
+			"judgment": diagnostic.Judgment,
 		}
 	}
 	return items
 }
 
 // render implements eventModelingRender(input, profile?) -> {html, diagnostics}.
+// html is present whenever the model has no core error, so a policy rejection
+// (error-severity judgment signals only) returns the diagram together with the
+// diagnostics that reject it; each diagnostic carries "judgment".
 //
 // input is either a string — one source rendered under the name
 // "playground.em.hcl" — or an array of {name, source} objects, which the

@@ -46,7 +46,7 @@ func TestExportProducerlessEventsAreNotCopies(t *testing.T) {
 }
 
 func TestExportSpecificationLinksSliceAndDisclosesLosses(t *testing.T) {
-	m := &model.Model{Contexts: []model.Context{{ID: "unused", Title: "unused", TitleExplicit: true}, {ID: "c", Title: "c", TitleExplicit: true}}, Workflows: []model.Workflow{{ID: "w", Owner: "bounded_context.c", Kind: model.StateChange, Scenarios: []model.Scenario{{ID: "s", Steps: []model.Step{{Kind: model.When, Target: "command", Ref: "command.c"}, {Kind: model.Then, Target: "error", Title: "Separate title", Error: "Failure"}}}}}}}
+	m := &model.Model{Contexts: []model.Context{{ID: "unused", Title: "unused"}, {ID: "c", Title: "c"}}, Workflows: []model.Workflow{{ID: "w", Owner: "bounded_context.c", Kind: model.StateChange, Scenarios: []model.Scenario{{ID: "s", Steps: []model.Step{{Kind: model.When, Target: "command", Ref: "command.c"}, {Kind: model.Then, Target: "error", Title: "Separate title", Error: "Failure"}}}}}}}
 	doc, warnings, err := interchange.Export(m)
 	if err != nil {
 		t.Fatal(err)

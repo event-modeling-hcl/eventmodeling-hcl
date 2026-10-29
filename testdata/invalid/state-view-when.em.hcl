@@ -13,3 +13,7 @@ state_view "view_pets" {
     then { readmodel = readmodel.pets }
   }
 }
+
+board {
+  workflows = [workflow.view_pets]
+}

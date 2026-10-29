@@ -46,10 +46,30 @@ func (v *modelValidator) validateChapter(block *hcl.Block) hcl.Diagnostics {
 	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, chapterRule)...)
 	if workflows := content.Attributes["workflows"]; workflows != nil {
 		diagnostics = append(diagnostics, v.validateReferenceList(workflows, "workflow", "")...)
-		diagnostics = append(diagnostics, v.validateChapterRange(workflows)...)
+		diagnostics = append(diagnostics, v.collectChapterWorkflows(block.Labels[0], workflows)...)
 		if references, referenceDiagnostics := hcl.ExprList(workflows.Expr); !referenceDiagnostics.HasErrors() && len(references) == 0 {
 			diagnostics = append(diagnostics, errorDiagnostic(codeInvalidChapter, workflows.Expr.Range(), "Invalid chapter", "chapter must contain at least one workflow."))
 		}
+	}
+	return diagnostics
+}
+
+// validateBoard checks one board block: its body, and that every entry of
+// workflows names a declared workflow at most once.
+func (v *modelValidator) validateBoard(block *hcl.Block) hcl.Diagnostics {
+	content, diagnostics := syntax.Content(block.Body, syntax.BoardSchema())
+	workflows := content.Attributes["workflows"]
+	if workflows == nil {
+		return diagnostics
+	}
+	diagnostics = append(diagnostics, v.validateReferenceList(workflows, "workflow", "")...)
+	listed := map[string]bool{}
+	for _, entry := range v.declaredWorkflowEntries(workflows) {
+		if listed[entry.id] {
+			diagnostics = append(diagnostics, errorDiagnostic(codeBoardRepeatsWorkflow, entry.subject, "Workflow repeated on board", fmt.Sprintf("workflow.%s is already on the board.", entry.id)))
+			continue
+		}
+		listed[entry.id] = true
 	}
 	return diagnostics
 }
@@ -62,7 +82,7 @@ func (v *modelValidator) validateHotspot(block *hcl.Block) hcl.Diagnostics {
 		diagnostics = append(diagnostics, v.validateGlobalReference(on)...)
 	}
 	if status, ok := literalString(content.Attributes["status"]); !ok || status != "resolved" {
-		diagnostics = append(diagnostics, warningDiagnostic(codeOpenHotspot, block.DefRange, "Open hotspot", fmt.Sprintf("hotspot %q is unresolved.", block.Labels[0])))
+		diagnostics = append(diagnostics, judgmentSignal(codeOpenHotspot, block.DefRange, "Open hotspot", fmt.Sprintf("hotspot %q is unresolved.", block.Labels[0])))
 	}
 	return diagnostics
 }
@@ -90,7 +110,7 @@ func (v *modelValidator) validateWorkflow(block *hcl.Block) hcl.Diagnostics {
 			diagnostics = append(diagnostics, v.validateScenario(block.Type, block.Labels[0], child)...)
 		}
 	}
-	diagnostics = append(diagnostics, v.workflowSmells(block.Type, block.DefRange, content.Blocks)...)
+	diagnostics = append(diagnostics, v.workflowSmells(content.Blocks)...)
 	return diagnostics
 }
 
@@ -106,7 +126,7 @@ func workflowAllows(workflowType, childType string) bool {
 		return childType == "screen" || childType == "command"
 	case "state_view":
 		return childType == "readmodel" || childType == "screen"
-	case "automation", "translation":
+	case "automation":
 		return childType == "readmodel" || childType == "processor" || childType == "command"
 	default:
 		return false
@@ -219,15 +239,10 @@ func (v *contextValidator) validateField(block *hcl.Block, fieldTypeDeclaration 
 	typeAttribute := content.Attributes["type"]
 	if typeAttribute == nil {
 		if fieldTypeDeclaration {
-			return append(diagnostics, errorDiagnostic(codeInvalidFieldType, block.DefRange, "Invalid field type", "a field_type declaration must set an explicit built-in type."))
+			diagnostics = append(diagnostics, errorDiagnostic(codeInvalidFieldType, block.DefRange, "Invalid field type", "a field_type declaration must set an explicit built-in type."))
+			return diagnostics
 		}
-		address, inferenceDiagnostics := v.inferredFieldTypeAddress(block.Labels[0], block.DefRange)
-		diagnostics = append(diagnostics, inferenceDiagnostics...)
-		if !inferenceDiagnostics.HasErrors() {
-			if reference, exists := v.model.index.fieldTypes[address]; exists {
-				diagnostics = append(diagnostics, validateReferencedExample(content.Attributes, reference)...)
-			}
-		}
+		diagnostics = append(diagnostics, errorDiagnostic(codeInvalidFieldType, block.DefRange, "Missing field type", fmt.Sprintf("%s %q must set type to a built-in type string or a field_type.<context>.<id> reference.", block.Type, block.Labels[0])))
 		return append(diagnostics, v.validateFields(content.Blocks, map[string]bool{})...)
 	}
 	if fieldTypeDeclaration {

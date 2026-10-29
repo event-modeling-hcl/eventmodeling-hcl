@@ -15,7 +15,7 @@ import (
 )
 
 func usageMessage(name string) string {
-	return "usage: " + name + " <validate [--profile workshop|valid|strict] | diagram | serve | export> <model.em.hcl | folder> | fmt [-w] <model.em.hcl> | import <model.json> [diagram/export/import: -o <file>] [serve: --addr <host> --port <n> --profile <p>]"
+	return "usage: " + name + " <validate [--profile workshop|valid|strict] | diagram | serve | export> <model.em.hcl | folder> | fmt [-w] <model.em.hcl> | migrate [-w] <model.em.hcl | folder> | import <model.json> [diagram/export/import: -o <file>] [serve: --addr <host> --port <n> --profile <p>]"
 }
 
 // defaultServeAddr and defaultServePort are serve's defaults when a
@@ -39,6 +39,7 @@ const (
 	exportCommand
 	importCommand
 	versionCommand
+	migrateCommand
 )
 
 // cliCommand is one fully parsed command-line invocation, ready to be
@@ -82,6 +83,9 @@ func Run(name, toolVersion string, args []string, stdout, stderr io.Writer) int 
 	if command.kind == serveCommand {
 		return serveFile(command, stderr)
 	}
+	if command.kind == migrateCommand {
+		return migrateModel(command, stdout, stderr)
+	}
 	diagnostics := app.ValidatePath(command.path, command.profile)
 	if len(diagnostics) > 0 {
 		writeDiagnostics(stderr, diagnostics)
@@ -116,6 +120,12 @@ func parseCommand(name string, args []string) (cliCommand, error) {
 	}
 	if len(args) == 3 && args[0] == "fmt" && args[1] == "-w" {
 		return formatCLICommand(args[2], true)
+	}
+	if len(args) == 2 && args[0] == "migrate" {
+		return migrateCLICommand(args[1], false)
+	}
+	if len(args) == 3 && args[0] == "migrate" && args[1] == "-w" {
+		return migrateCLICommand(args[2], true)
 	}
 	if len(args) >= 1 && args[0] == "diagram" {
 		return outputCLICommand(diagramCommand, args[1:], usage)
@@ -163,6 +173,13 @@ func formatCLICommand(path string, write bool) (cliCommand, error) {
 		return cliCommand{}, errors.New("model file must use the .em.hcl extension")
 	}
 	return cliCommand{kind: formatCommand, path: path, write: write}, nil
+}
+
+func migrateCLICommand(path string, write bool) (cliCommand, error) {
+	if !isModelPath(path) {
+		return cliCommand{}, errors.New(modelPathError)
+	}
+	return cliCommand{kind: migrateCommand, path: path, write: write}, nil
 }
 
 // outputCLICommand parses "<path> [-o <file>]" in either order for the
@@ -320,6 +337,50 @@ func formatFile(command cliCommand, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// migrateModel rewrites the v0.4.0 model at command.path for the current
+// language. Report lines go to stderr. Without -w the migrated source goes to
+// stdout, each folder member preceded by a "# ==> <path> <==" line; with -w
+// only members whose content changed are overwritten. Any error writes
+// nothing.
+func migrateModel(command cliCommand, stdout, stderr io.Writer) int {
+	result, diagnostics := app.MigratePath(command.path)
+	if len(diagnostics) > 0 {
+		writeDiagnostics(stderr, diagnostics)
+	}
+	if diagnostics.HasErrors() {
+		return 1
+	}
+	for _, line := range result.Report {
+		fmt.Fprintln(stderr, line)
+	}
+	if !command.write {
+		folder := isDirectory(command.path)
+		for _, file := range result.Files {
+			if folder {
+				fmt.Fprintf(stdout, "# ==> %s <==\n", file.Name)
+			}
+			_, _ = stdout.Write(file.Source)
+		}
+		return 0
+	}
+	for _, file := range result.Files {
+		current, err := os.ReadFile(file.Name)
+		if err == nil && string(current) == string(file.Source) {
+			continue
+		}
+		info, err := os.Stat(file.Name)
+		if err != nil {
+			fmt.Fprintf(stderr, "failed to stat %s: %v\n", file.Name, err)
+			return 1
+		}
+		if err := os.WriteFile(file.Name, file.Source, info.Mode().Perm()); err != nil {
+			fmt.Fprintf(stderr, "failed to write %s: %v\n", file.Name, err)
+			return 1
+		}
+	}
+	return 0
+}
+
 // serveFile runs a local live-reload server for command.path until it is
 // interrupted (Ctrl-C) or fails to start. All behavior — rendering,
 // file-watching, HTTP, browser-opening — is internal/serve's; this is
@@ -334,27 +395,43 @@ func serveFile(command cliCommand, stderr io.Writer) int {
 	return 0
 }
 
+// diagramFile writes the diagram unless the model has core errors. A policy
+// rejection still writes it, and the exit status reports the rejection.
 func diagramFile(command cliCommand, stdout, stderr io.Writer) int {
 	result := app.RenderPath(command.path, app.Valid)
 	if len(result.Diagnostics) > 0 {
 		writeDiagnostics(stderr, result.Diagnostics)
 	}
+	if result.Diagnostics.HasCoreErrors() {
+		return 1
+	}
+	if code := writeOutput(command.output, result.HTML, stdout, stderr); code != 0 {
+		return code
+	}
 	if result.Diagnostics.HasErrors() {
 		return 1
 	}
-	return writeOutput(command.output, result.HTML, stdout, stderr)
+	return 0
 }
 
+// exportFile writes the JSON unless the model has core errors. A policy
+// rejection still writes it, and the exit status reports the rejection.
 func exportFile(command cliCommand, stdout, stderr io.Writer) int {
 	result := app.ExportPath(command.path)
 	if len(result.Diagnostics) > 0 {
 		writeDiagnostics(stderr, result.Diagnostics)
 	}
-	if result.Diagnostics.HasErrors() {
+	if result.Diagnostics.HasCoreErrors() {
 		return 1
 	}
 	writeWarnings(stderr, result.Warnings)
-	return writeOutput(command.output, result.JSON, stdout, stderr)
+	if code := writeOutput(command.output, result.JSON, stdout, stderr); code != 0 {
+		return code
+	}
+	if result.Diagnostics.HasErrors() {
+		return 1
+	}
+	return 0
 }
 
 // importFile writes the converted model even when validating it reports

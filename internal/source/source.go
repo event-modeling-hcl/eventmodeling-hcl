@@ -12,53 +12,20 @@ import (
 // Document is the source-order-preserving representation shared by the
 // semantic stages of the language pipeline.
 type Document struct {
-	parsed            *syntax.Document
-	fieldTypeContexts map[string][]string
+	parsed *syntax.Document
 }
 
-// Decode extracts document-wide source facts without applying semantic
-// validation. The parsed HCL document remains the single owner of source ranges.
+// Decode wraps a parsed document for the semantic stages without applying
+// semantic validation. The parsed HCL document remains the single owner of
+// source ranges.
 func Decode(parsed *syntax.Document) *Document {
-	contexts := map[string][]string{}
-	content, _, _ := syntax.PartialContent(parsed.Body(), syntax.ModelSchema())
-	for _, block := range content.Blocks {
-		if block.Type != "bounded_context" || len(block.Labels) == 0 {
-			continue
-		}
-		contextContent, _, _ := syntax.PartialContent(block.Body, syntax.BoundedContextSchema())
-		for _, child := range contextContent.Blocks {
-			if child.Type == "field_type" && len(child.Labels) > 0 {
-				contexts[child.Labels[0]] = append(contexts[child.Labels[0]], block.Labels[0])
-			}
-		}
-	}
-	return &Document{parsed: parsed, fieldTypeContexts: contexts}
+	return &Document{parsed: parsed}
 }
 
 // Parsed returns the immutable parsed HCL document underlying this source
 // document.
 func (d *Document) Parsed() *syntax.Document {
 	return d.parsed
-}
-
-// FieldTypeContexts returns bounded-context IDs declaring name, in source
-// order. The returned slice is a copy and can be changed by the caller.
-func (d *Document) FieldTypeContexts(name string) []string {
-	return append([]string(nil), d.fieldTypeContexts[name]...)
-}
-
-// InferFieldType returns the canonical reference inferred for a typeless field.
-// Context-owned fields resolve locally; workflow fields resolve only a unique
-// document-wide declaration.
-func (d *Document) InferFieldType(contextID, name string) string {
-	if contextID != "" {
-		return "field_type." + contextID + "." + name
-	}
-	contexts := d.fieldTypeContexts[name]
-	if len(contexts) != 1 {
-		return ""
-	}
-	return "field_type." + contexts[0] + "." + name
 }
 
 // CanonicalFieldTypeReference expands a context-local field_type reference.

@@ -1,3 +1,12 @@
+board {
+  workflows = [
+    workflow.register_pet,
+    workflow.pet_directory,
+    workflow.notify_owner,
+    workflow.import_partner_pet,
+  ]
+}
+
 team "clinic_team" {
   title = "Clinic team"
 }
@@ -119,12 +128,15 @@ bounded_context "clinic" {
   }
 
   event "external_pet_imported" {
+    title = "External Pet Imported"
+
     field "pet_id" {
       type = field_type.pet_id
     }
   }
 
   event "owner_registered" {
+    title = "Owner Registered"
   }
 }
 

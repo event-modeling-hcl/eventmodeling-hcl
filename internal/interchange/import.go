@@ -18,8 +18,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
-
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/model"
 )
 
 // Import converts an interchange document into unformatted Event Modeling
@@ -285,7 +283,7 @@ func (im *importer) namedContext(title string, external bool) *importedContext {
 	label := contextLabel(title, external, im.internalContextNames)
 	context := im.context(im.unique("bounded_context", label))
 	// A name equal to the label is an identifier, not a display title.
-	if title != context.id && title != model.Humanize(context.id) {
+	if title != context.id {
 		context.title = title
 	}
 	im.contextNames[key] = context.id
@@ -432,7 +430,7 @@ func (im *importer) collectEvent(slice *Slice, event *Element) {
 		// An exported event's context name restores the context title when
 		// that name is the one Export derives for this label.
 		name := firstNonEmpty(event.ModelContext, event.Domain)
-		if context.title == "" && name != context.id && name != model.Humanize(context.id) && contextLabel(name, event.Context == "EXTERNAL", im.internalContextNames) == context.id {
+		if context.title == "" && name != context.id && contextLabel(name, event.Context == "EXTERNAL", im.internalContextNames) == context.id {
 			context.title = name
 		}
 		// Later events that name this context share it instead of creating a
@@ -623,7 +621,7 @@ func allowedFlowRoots(workflowType, ownerKind, direction string) []string {
 		case ownerKind == "readmodel" && direction == "to":
 			return []string{"screen"}
 		}
-	case "automation", "translation":
+	case "automation":
 		switch {
 		case ownerKind == "readmodel" && direction == "from":
 			return []string{"event"}
@@ -692,7 +690,9 @@ func (im *importer) orderByOwnerDependencies(owner ref, targets []ref) {
 	})
 }
 
-var workflowKinds = map[string]string{"STATE_CHANGE": "state_change", "STATE_VIEW": "state_view", "AUTOMATION": "automation", "TRANSLATION": "translation"}
+// workflowKinds maps upstream slice types to HCL workflow kinds. TRANSLATION
+// becomes an automation: translation is derived from consumed external events.
+var workflowKinds = map[string]string{"STATE_CHANGE": "state_change", "STATE_VIEW": "state_view", "AUTOMATION": "automation", "TRANSLATION": "automation"}
 
 func (im *importer) write(ordered []*Slice) []byte {
 	file := hclwrite.NewEmptyFile()
@@ -714,6 +714,13 @@ func (im *importer) write(ordered []*Slice) []byte {
 	for _, id := range im.contextOrder {
 		contextBlocks = append(contextBlocks, im.contextBlock(im.contexts[id]))
 	}
+	board := root.AppendNewBlock("board", nil)
+	entries := make([]hclwrite.Tokens, 0, len(ordered))
+	for _, slice := range ordered {
+		entries = append(entries, hclwrite.TokensForTraversal(traversal("workflow."+im.workflowOf[slice])))
+	}
+	board.Body().SetAttributeRaw("workflows", hclwrite.TokensForTuple(entries))
+	root.AppendNewline()
 
 	for _, actor := range im.actorOrder {
 		block := root.AppendNewBlock("actor", []string{im.actors[actor.Name]})

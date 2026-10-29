@@ -1,4 +1,5 @@
 state_change "register_pet" {
+  title       = "Register Pet"
   description = "Register a new pet for an owner."
   owner       = bounded_context.clinic
   status      = "created"
@@ -10,6 +11,7 @@ state_change "register_pet" {
     to     = [command.register_pet_command]
 
     field "pet_id" {
+      type = field_type.clinic.pet_id
     }
   }
 

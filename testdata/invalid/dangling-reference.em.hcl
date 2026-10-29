@@ -11,3 +11,7 @@ state_change "example" {
     to    = [event.missing.nonexistent_event]
   }
 }
+
+board {
+  workflows = [workflow.example]
+}

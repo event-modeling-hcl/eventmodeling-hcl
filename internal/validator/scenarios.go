@@ -78,7 +78,7 @@ func scenarioTargetAllowed(workflowType, stepType, target string) bool {
 		return stepType == "given" && target == "event" || stepType == "when" && target == "command" || stepType == "then" && (target == "event" || target == "error")
 	case "state_view":
 		return stepType == "given" && target == "event" || stepType == "then" && (target == "readmodel" || target == "error")
-	case "automation", "translation":
+	case "automation":
 		return stepType == "given" && (target == "event" || target == "readmodel") || stepType == "when" && (target == "processor" || target == "command") || stepType == "then" && (target == "event" || target == "error")
 	}
 	return false

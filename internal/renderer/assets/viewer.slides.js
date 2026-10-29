@@ -4,7 +4,7 @@
 (function(){
   const host = document.getElementById("board-slides");
   if(!host || !window.EMC) return;
-  const {esc, PAT_SVG, STATUS_LABEL, statusVar, titleize} = EMC;
+  const {esc, PAT_SVG, STATUS_LABEL, statusVar} = EMC;
 
   // What each slice pattern means, in words for a reader who does not know the method.
   const PATTERN_MEANING = {
@@ -71,7 +71,7 @@
   }
 
   function actorTitle(id){
-    return id ? ((EMC.MODEL.actors[id] && EMC.MODEL.actors[id].title) || titleize(id)) : "";
+    return id ? ((EMC.MODEL.actors[id] && EMC.MODEL.actors[id].title) || id) : "";
   }
 
   function captionHTML(title, actorID){
@@ -125,7 +125,7 @@
     const open = (EMC.MODEL.hotspots || []).filter(hotspot=>ids.has(hotspot.onId));
     if(!open.length) return "";
     return `<section class="sl-questions"><h3>Open questions</h3><ul>${open.map(hotspot=>
-      `<li>${esc(hotspot.question)}<span class="sl-question-status">${esc(titleize(hotspot.status || "open"))}</span></li>`).join("")}</ul></section>`;
+      `<li>${esc(hotspot.question)}<span class="sl-question-status">${esc(hotspot.status || "open")}</span></li>`).join("")}</ul></section>`;
   }
 
   function detailsHTML(slice){
@@ -182,7 +182,7 @@
             `</div>`+
             `<h2>${esc(slice.title)}</h2>`+
             `<p class="sl-pattern"><span class="sl-pattern-icon" aria-hidden="true">${PAT_SVG[slice.type] || ""}</span>${esc(PATTERN_MEANING[slice.type] || "")}`+
-              `<span class="status" style="--sc:${statusVar(status)}"><span class="sd"></span>${esc(STATUS_LABEL[status] || titleize(status))}</span></p>`+
+              `<span class="status" style="--sc:${statusVar(status)}"><span class="sd"></span>${esc(STATUS_LABEL[status] || status)}</span></p>`+
             (slice.description ? `<p class="sl-desc">${esc(slice.description)}</p>` : "")+
           `</header>`+
           `<div class="sl-main${scenarios.length ? "" : " no-examples"}">`+

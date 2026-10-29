@@ -1,10 +1,11 @@
-/* Chapter overview: one card per chapter, previewing its first and last slice. */
+/* Chapter overview: one card per chapter, previewing its first and last slice.
+   The group of board workflows in no chapter carries a viewer label, styled apart. */
 (function(){
   function sliceSummary(slice){
     const node = document.createElement("section");
     node.className = "chapter-slice";
     const heading = document.createElement("h3");
-    heading.textContent = slice.title || slice.id;
+    heading.textContent = slice.title;
     node.append(heading, EMC.sliceTimeline(slice));
     return node;
   }
@@ -27,17 +28,17 @@
     list.className = "chapter-list";
     records.forEach((chapter,index)=>{
       const card = document.createElement("article");
-      card.className = "chapter-overview";
+      card.className = "chapter-overview" + (chapter.ui ? " ui-group" : "");
       const sliceIDs = (chapter.slices || []).filter(id=>slices.has(id));
       const header = document.createElement("div");
       header.className = "chapter-overview-header";
       const number = document.createElement("span");
       number.className = "chapter-number mono";
-      number.textContent = String(index+1).padStart(2,"0");
+      number.textContent = chapter.ui ? "" : String(index+1).padStart(2,"0");
       const title = document.createElement("h2");
       // One link per card; CSS stretches its hit area over the whole card.
       const link = document.createElement("a");
-      link.className = "chapter-link";
+      link.className = "chapter-link" + (chapter.ui ? " ui-label" : "");
       link.href = EMC.chapterHref(chapter.id) + "/model";
       link.textContent = chapter.title;
       title.appendChild(link);

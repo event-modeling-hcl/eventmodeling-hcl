@@ -154,6 +154,58 @@ func TestValidatedModel_WarningOnlySourceProducesAModel(t *testing.T) {
 	}
 }
 
+const openHotspotModel = `board {
+  workflows = [workflow.register_pet]
+}
+
+state_change "register_pet" {}
+
+hotspot "notification_channel" {
+  question = "Which channel sends reminders?"
+  status   = "open"
+  on       = workflow.register_pet
+}
+`
+
+func TestValidatedModel_PolicyRejectionStillProducesAModel(t *testing.T) {
+	built, diagnostics := ValidatedModel("model.em.hcl", []byte(openHotspotModel), Strict)
+
+	if built == nil {
+		t.Fatalf("model is nil under a policy rejection; diagnostics = %#v", diagnostics)
+	}
+	if !diagnostics.HasErrors() {
+		t.Fatal("HasErrors() = false, want the EM406 policy rejection")
+	}
+	if diagnostics.HasCoreErrors() {
+		t.Fatalf("HasCoreErrors() = true for %#v, want false", diagnostics)
+	}
+	if len(diagnostics) != 1 || diagnostics[0].Code != "EM406" || !diagnostics[0].Judgment {
+		t.Fatalf("diagnostics = %#v, want one EM406 judgment diagnostic", diagnostics)
+	}
+}
+
+func TestRender_PolicyRejectionStillProducesHTML(t *testing.T) {
+	result := Render("model.em.hcl", []byte(openHotspotModel), Strict)
+
+	if result.HTML == "" {
+		t.Fatalf("HTML is empty under a policy rejection; diagnostics = %#v", result.Diagnostics)
+	}
+	if !result.Diagnostics.HasErrors() || result.Diagnostics.HasCoreErrors() {
+		t.Fatalf("diagnostics = %#v, want a policy rejection only", result.Diagnostics)
+	}
+}
+
+func TestDiagnostics_HasCoreErrorsIgnoresJudgmentErrors(t *testing.T) {
+	judgment := Diagnostics{{Code: "EM404", Severity: "Error", Judgment: true}, {Code: "EM102", Severity: "Warning"}}
+	if judgment.HasCoreErrors() || !judgment.HasErrors() {
+		t.Fatalf("judgment-only errors: HasCoreErrors=%v HasErrors=%v, want false and true", judgment.HasCoreErrors(), judgment.HasErrors())
+	}
+	core := append(judgment, Diagnostic{Code: "EM015", Severity: "Error"})
+	if !core.HasCoreErrors() {
+		t.Fatal("HasCoreErrors() = false with an EM015 error, want true")
+	}
+}
+
 func TestValidatePath_UnreadablePathReturnsEM001(t *testing.T) {
 	diagnostics := ValidatePath(filepath.Join(t.TempDir(), "missing.em.hcl"), Valid)
 

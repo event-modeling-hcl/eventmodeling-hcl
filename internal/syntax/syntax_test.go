@@ -168,13 +168,11 @@ func twoFileFixture() []syntax.File {
 	}
 }
 
-func TestParseFiles_MergesBlocksInFileOrder(t *testing.T) {
-	document, diagnostics := syntax.ParseFiles(twoFileFixture())
+func TestParseFiles_MergesBlocksInFileNameByteOrder(t *testing.T) {
+	fixture := twoFileFixture()
+	document, diagnostics := syntax.ParseFiles([]syntax.File{fixture[1], fixture[0]})
 	if diagnostics.HasErrors() {
 		t.Fatalf("diagnostics = %s, want no errors", diagnostics.Error())
-	}
-	if got, want := document.FileCount(), 2; got != want {
-		t.Fatalf("FileCount() = %d, want %d", got, want)
 	}
 	content, modelDiagnostics := syntax.Content(document.Body(), syntax.ModelSchema())
 	if modelDiagnostics.HasErrors() {
@@ -192,6 +190,27 @@ func TestParseFiles_MergesBlocksInFileOrder(t *testing.T) {
 	if got, want := files["third"], "model/b.em.hcl"; got != want {
 		t.Fatalf("third block file = %q, want %q", got, want)
 	}
+	start := document.Start()
+	if start.Filename != "model/a.em.hcl" || start.Start.Line != 1 || start.Start.Column != 1 {
+		t.Fatalf("Start() = %v, want model/a.em.hcl:1:1", start)
+	}
+}
+
+func TestContent_ModelSchemaAcceptsBoardAndRejectsTranslation(t *testing.T) {
+	document, diagnostics := syntax.Parse("model.em.hcl", []byte("board {\n  workflows = []\n}\ntranslation \"x\" {}\n"))
+	if diagnostics.HasErrors() {
+		t.Fatalf("parse diagnostics = %s", diagnostics.Error())
+	}
+	content, contentDiagnostics := syntax.Content(document.Body(), syntax.ModelSchema())
+	if len(contentDiagnostics) != 1 || contentDiagnostics[0].Summary != "Unsupported block type" {
+		t.Fatalf("content diagnostics = %s, want one unsupported translation block", contentDiagnostics.Error())
+	}
+	if len(content.Blocks) != 1 || content.Blocks[0].Type != "board" {
+		t.Fatalf("blocks = %#v, want the board", content.Blocks)
+	}
+	if _, boardDiagnostics := syntax.Content(content.Blocks[0].Body, syntax.BoardSchema()); boardDiagnostics.HasErrors() {
+		t.Fatalf("board diagnostics = %s", boardDiagnostics.Error())
+	}
 }
 
 func TestParse_IsOneFileDocument(t *testing.T) {
@@ -199,8 +218,8 @@ func TestParse_IsOneFileDocument(t *testing.T) {
 	if diagnostics.HasErrors() {
 		t.Fatalf("diagnostics = %s, want no errors", diagnostics.Error())
 	}
-	if got, want := document.FileCount(), 1; got != want {
-		t.Fatalf("FileCount() = %d, want %d", got, want)
+	if got, want := document.Start().Filename, "model.em.hcl"; got != want {
+		t.Fatalf("Start().Filename = %q, want %q", got, want)
 	}
 }
 

@@ -264,6 +264,10 @@ func TestRun_ValidateValidModelPrintsSuccess(t *testing.T) {
 state_change "example" {
   title = "Example"
 }
+
+board {
+  workflows = [workflow.example]
+}
 `)
 
 	// When the validate command runs.
@@ -285,7 +289,8 @@ func TestRun_ValidatePrintsWarningsWithoutFailing(t *testing.T) {
 	modelPath := writeModel(t, "warning.em.hcl", `state_change "example" {
   title = "Example"
   command "submit" { title = "Submit" }
-}`)
+}
+board { workflows = [workflow.example] }`)
 
 	result := runCLI(t, "validate", modelPath)
 
@@ -300,7 +305,8 @@ func TestRun_ValidatePrintsWarningsWithoutFailing(t *testing.T) {
 func TestRun_ValidateStrictProfileEscalatesCommandReason(t *testing.T) {
 	modelPath := writeModel(t, "warning.em.hcl", `state_change "example" {
   command "submit" {}
-}`)
+}
+board { workflows = [workflow.example] }`)
 
 	result := runCLI(t, "validate", "--profile", "strict", modelPath)
 
@@ -344,7 +350,7 @@ func TestRun_FormatWritesToStdoutOrInPlace(t *testing.T) {
 }
 
 func TestRun_DiagramWritesHTMLToStdoutOrFile(t *testing.T) {
-	modelPath := writeModel(t, "valid.em.hcl", `state_change "example" {}`)
+	modelPath := writeModel(t, "valid.em.hcl", "state_change \"example\" {}\nboard { workflows = [workflow.example] }\n")
 
 	stdoutResult := runCLI(t, "diagram", modelPath)
 	if stdoutResult.exitCode != 0 || stdoutResult.stderr != "" {
@@ -371,7 +377,8 @@ func TestRun_DiagramWritesHTMLToStdoutOrFile(t *testing.T) {
 func TestRun_DiagramRejectsInvalidModelWithoutOverwritingOutput(t *testing.T) {
 	modelPath := writeModel(t, "invalid.em.hcl", `state_change "example" {
   command "submit" { to = [event.example.missing] }
-}`)
+}
+board { workflows = [workflow.example] }`)
 	outputPath := filepath.Join(t.TempDir(), "existing.html")
 	const existing = "keep this"
 	if err := os.WriteFile(outputPath, []byte(existing), 0o600); err != nil {
@@ -394,7 +401,8 @@ func TestRun_DiagramRejectsInvalidModelWithoutOverwritingOutput(t *testing.T) {
 func TestRun_DiagramReportsWarningsAndStillRenders(t *testing.T) {
 	modelPath := writeModel(t, "warning.em.hcl", `state_change "example" {
   command "submit" {}
-}`)
+}
+board { workflows = [workflow.example] }`)
 
 	result := runCLI(t, "diagram", modelPath)
 	if result.exitCode != 0 || !strings.Contains(result.stdout, "<!doctype html>") {
@@ -473,6 +481,10 @@ func writeFolderModel(t *testing.T) string {
       type = field_type.pet_management.pet_id
     }
   }
+}
+
+board {
+  workflows = [workflow.add_pet]
 }
 `,
 	}

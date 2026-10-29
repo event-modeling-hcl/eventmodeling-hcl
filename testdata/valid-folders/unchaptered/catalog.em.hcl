@@ -1,7 +1,14 @@
+board {
+  workflows = [
+    workflow.add_pet,
+  ]
+}
+
 bounded_context "pet_management" {
   title = "Pet Management"
 
   aggregate "pet" {
+    title = "Pet"
   }
 
   field_type "pet_id" {

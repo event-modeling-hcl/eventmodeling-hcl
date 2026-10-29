@@ -44,7 +44,8 @@
     }
     diagnostics.forEach(function (diagnostic) {
       var item = document.createElement('li');
-      item.className = 'diagnostic diagnostic-' + String(diagnostic.severity || '').toLowerCase();
+      item.className = 'diagnostic diagnostic-' + String(diagnostic.severity || '').toLowerCase() +
+        (diagnostic.judgment ? ' diagnostic-judgment' : '');
 
       var head = document.createElement('code');
       head.textContent = (diagnostic.severity || '') + ' ' + (diagnostic.code || '');
@@ -92,9 +93,14 @@
     }
     renderDiagnostics(result.diagnostics);
     if (result.html) {
+      // A policy rejection (error-severity judgment signals only) still
+      // renders: show the diagram and say why the profile rejects it.
+      var rejected = (result.diagnostics || []).some(function (diagnostic) {
+        return String(diagnostic.severity) === 'Error';
+      });
       previewEl.srcdoc = result.html;
       hasRendered = true;
-      setStatus('Rendered.');
+      setStatus(rejected ? 'Rendered; the profile rejects this model — see diagnostics.' : 'Rendered.');
       document.dispatchEvent(new CustomEvent('eventmodeling:rendered', { detail: result }));
     } else {
       if (!hasRendered) {

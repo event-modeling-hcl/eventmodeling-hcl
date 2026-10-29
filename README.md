@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`emhcl` v0.11.0 implements Event Modeling HCL Specification v0.4.0. A model can
+`emhcl` v0.12.0 implements Event Modeling HCL Specification v0.5.0. A model can
 be one `.em.hcl` file or a folder of `.em.hcl` files.
 This repository provides a strict validator, canonical formatter, typed semantic model,
 normative language documentation, and executable examples. The domain reference is the upstream [Event Modeling
@@ -24,7 +24,7 @@ preserve the rules and durable artifacts of an Event Modeling session.
 Install the tagged command with Go 1.25 or newer:
 
 ```bash
-go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.11.0
+go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.12.0
 ```
 
 Go writes the executable to `GOBIN`, or to `$(go env GOPATH)/bin` when
@@ -46,7 +46,7 @@ the [GitHub Releases page](https://github.com/event-modeling-hcl/eventmodeling-h
 Verify a downloaded archive with that release's `checksums.txt`:
 
 ```bash
-archive=emhcl_0.11.0_linux_amd64.tar.gz
+archive=emhcl_0.12.0_linux_amd64.tar.gz
 grep " ${archive}$" checksums.txt | sha256sum -c -
 # macOS: grep " ${archive}$" checksums.txt | shasum -a 256 -c -
 ```
@@ -56,7 +56,7 @@ With GitHub CLI 2.49.0 or newer, verify the downloaded archive was produced by
 this repository's release workflow:
 
 ```bash
-gh attestation verify emhcl_0.11.0_linux_amd64.tar.gz \
+gh attestation verify emhcl_0.12.0_linux_amd64.tar.gz \
   --repo event-modeling-hcl/eventmodeling-hcl
 ```
 
@@ -71,9 +71,13 @@ emhcl fmt -w examples/complete.em.hcl
 ```
 
 A valid document prints `<path> valid`. Diagnostics use the form
-`file:line:column: Severity EMxxx: message`. The default `valid` profile keeps
-modeling judgment as warnings; `workshop` reports it as information and `strict`
-escalates unreasoned commands and open hotspots to errors.
+`file:line:column: Severity EMxxx: message`. Core rules are errors in every
+profile. The profile sets only the severity of modeling judgment (EM401–EM406):
+the default `valid` profile reports it as warnings, `workshop` as information,
+and `strict` makes unreasoned commands (EM404) and open hotspots (EM406)
+errors. A profile never hides the model: when there are no core errors, the
+typed model is built in every profile. A `strict` error still makes `validate`
+exit 1.
 
 Model files must use the `.em.hcl` extension. HCL is the language; the suffix
 identifies a complete Event Modeling document to this validator. Check the
@@ -88,29 +92,37 @@ emhcl diagram examples/complete.em.hcl > complete.html
 ```
 
 The `diagram` command validates with the default `valid` profile before
-rendering. Errors prevent output; modeling warnings are reported without
-blocking the diagram. The generated file embeds its CSS, JavaScript, and model
+rendering. Core errors prevent output; modeling judgment never blocks the
+diagram. The generated file embeds its CSS, JavaScript, and model
 data; nothing loads over the network except a user-supplied `screen_image`
-URL, if present.
+URL, if present. `serve --profile strict` shows the diagram with a banner that
+lists the policy errors; core errors show the diagnostics page.
+
+The `board` block sets the story order. The Model, Compact, Storming, and Slides
+views follow the board. Off-board workflows (workflows that the board does not
+list) never enter the story; the canvas lists them separately under
+**Off-board workflows**. A construct without a `title` is shown by its ID; the
+tool never derives a title from the label.
 
 Chapters are the top-level navigation. The **Chapter** picker in the toolbar
-lists every chapter, and the ‹ › arrows step to the previous or next chapter
+lists every chapter in ID order, and the ‹ › arrows step to the previous or next chapter
 while keeping the current view. Model, Compact, Storming, and Slides always show only the
-selected chapter's slices; **Context Map** always covers the whole model. Status,
+selected chapter's slices, in board order; **Context Map** always covers the whole model. Status,
 bounded-context, and field-detail options live behind **Filters**, which shows how
 many filters are active.
 
 When a model has several chapters, the canvas opens an **All chapters** overview.
-Each card previews the chapter's first and last slice in stage order, with the
+Each card previews the chapter's first and last slice in board order, with the
 number of slices in between. Select a card to open that chapter. On the overview
 and the Context Map, **Model**, **Compact**, **Storming**, and **Slides** open the
 chapter you came from, or the first chapter.
 
 Chapter pages stay inside the same HTML file. Their URL fragments can be
 bookmarked or shared with the file, and browser Back works between them. A model
-with one chapter opens that chapter directly. Workflows outside declared chapters
-appear as an **Ungrouped** chapter; models without chapters show the whole model
-in every view. Overview previews show stage order, not causal connections between
+with one chapter opens that chapter directly. Board workflows outside every
+chapter appear on the overview in a **Not in a chapter** group; this is a UI
+label, not a chapter. Models without chapters show the whole board in every
+view. Overview previews show board order, not causal connections between
 chapters.
 
 - **Model** — content-adaptive slices, left-to-right flow stages, dedicated
@@ -122,17 +134,18 @@ chapters.
   only while hovered.
 - **Storming** — the same model laid out as tactical Event Storming: one row
   per workflow with sticky notes for screens, commands, aggregates, events,
-  automations/translations, and read models, plus an actor card beside every
+  automations, and read models, plus an actor card beside every
   screen that has one. A workflow connected to another by an edge starts to
   the right of the workflow it depends on; independent workflows run in
   parallel rows.
 - **Context Map** *(experimental)* — a bounded-context map derived from
   cross-context event consumption: one node per bounded context, with
   upstream → downstream edges labeled customer/supplier, or anti-corruption
-  when the consumer is a `translation` workflow. The derivation is heuristic
+  when the consumer is an automation that consumes an external event (a
+  translation). The derivation is heuristic
   and both the relationship labels and the layout may change in a future
   release.
-- **Compact** — the same slices and cards as Model, with one events row instead of a lane per aggregate. Within a slice, a bounded context's box always sits to the right of the command that emits its events and to the left of the read model its events feed; an automation or translation slice therefore shows the upstream (given) event's box first, left of its read model, then the box for the event the command produces. Each bounded context is a dashed, rounded rectangle with a translucent colour and its title. Colours are assigned in context order (colour 1 to the first non-external context, colour 2 to the next); they are not part of the HCL spec. External bounded contexts are always pink. Arrows go from commands to events (solid) and from events to read models, exactly as in Model. The event's aggregate (cube icon) is a sticky stuck on top of the event with no arrows of its own; an external event carries a pink external-system sticky (globe icon) in its place.
+- **Compact** — the same slices and cards as Model, with one events row instead of a lane per aggregate. Within a slice, a bounded context's box always sits to the right of the command that emits its events and to the left of the read model its events feed; an automation slice therefore shows the upstream (given) event's box first, left of its read model, then the box for the event the command produces. Each bounded context is a dashed, rounded rectangle with a translucent colour and its title (its ID when it has no title). Colours are assigned in context ID order (colour 1 to the first non-external context, colour 2 to the next); they are not part of the HCL spec. External bounded contexts are always pink. Arrows go from commands to events (solid) and from events to read models, exactly as in Model. The event's aggregate (cube icon) is a sticky stuck on top of the event with no arrows of its own; an external event carries a pink external-system sticky (globe icon) in its place.
 - **Slides** — one slice per slide, for readers who do not know Event Modeling.
   Each slide shows the slice's screen first: the `screen_image` screenshot,
   with the fields of the screen at the same stage, or a wireframe made from the
@@ -156,26 +169,50 @@ emhcl serve examples/minimal.em.hcl
 `serve` binds to `127.0.0.1:8080` by default. Use `--port 0` to request an
 available port; the actual browser URL is printed after binding.
 
-## Multi-file models
-
-Folder models follow Specification v0.4.0 (RFC 0002). Release v0.8.0 and
-earlier load one file only.
+## Board, chapters, and multi-file models
 
 A model can be one `.em.hcl` file or a folder of `.em.hcl` files. A folder
-model is one model that you write in several files. This follows Specification
-v0.4.0 (RFC 0002). Use a folder when one file becomes too large to read, or
+model is one model that you write in several files. One-file and folder models
+use the same rules: file names and the position of blocks never change the
+meaning of a model. Use a folder when one file becomes too large to read, or
 when different people own different bounded contexts or slices.
+
+### The board
+
+Every model has exactly one `board` block. Its `workflows` list is the story
+order:
+
+```hcl
+board {
+  workflows = [
+    workflow.register_pet,
+    workflow.pet_directory,
+  ]
+}
+```
+
+A missing or repeated `board` is error EM015, and a workflow listed twice is
+error EM016. The list may omit workflows. An omitted workflow is off-board: it
+is valid, gets no diagnostic in any profile, and appears in the typed model
+after the board workflows, in ID order. Add a workflow to the board when it
+belongs in the story.
+
+### Chapters
+
+A chapter is a named set of workflows. The order of its list has no meaning,
+and `chapter` blocks may live in any member file. A workflow in two chapters is
+error EM014; a workflow listed twice in one chapter is error EM002. Chapters
+never change the board, and the board never changes chapters.
 
 ### Split a file into a folder
 
 1. Make a new folder for the model.
-2. Move the catalog blocks (`bounded_context`, `actor`, `team`, `system`) into one file, for example `00-catalog.em.hcl`.
-3. Move every `chapter` block into one file, for example `01-chapters.em.hcl`.
+2. Move the `board` and the catalog blocks (`bounded_context`, `actor`, `team`, `system`) into one file, for example `00-catalog.em.hcl`.
+3. Move the `chapter` blocks into any file, for example `01-chapters.em.hcl`.
 4. Move each workflow block into its own file, for example `10-register-pet.em.hcl`.
 5. Move the other blocks, such as `hotspot`, into any file, for example `90-hotspots.em.hcl`.
 6. Move each block whole. Do not split one block over two files.
-7. Add each workflow to a chapter. A workflow that is in no chapter gives a warning.
-8. Run `emhcl validate <folder>` and fix each error that it prints.
+7. Run `emhcl validate <folder>` and fix each error that it prints.
 
 The folder `examples/pet-clinic` is `examples/complete.em.hcl` split this way:
 
@@ -191,14 +228,16 @@ examples/pet-clinic/
 ```
 
 The number prefix is not part of the language. It only keeps the files in
-reading order, because the tool sorts files by name.
+reading order for people.
 
 ### How the files join
 
 Every `.em.hcl` file directly in the folder is a member of the model. The tool
 ignores subfolders, other files, and files with a name that starts with a dot.
-It sorts the member files by name, byte by byte. Model order is the order of
-the blocks after this sort: file order first, then source order in each file.
+It reads the member files in byte order of their names; this order only fixes
+which location a diagnostic reports first. The typed model orders catalog
+items, chapters, hotspots, workflow elements, and scenarios by ID, and
+workflows by the board.
 
 The model contains all top-level blocks of all member files. A reference in
 one file can point to a block in any other member file. IDs are global across
@@ -208,23 +247,10 @@ each have a separate space, and all workflow kinds share one space. The same ID
 twice in one space is error EM002, in one file or in two. The detail of that
 error gives the location of the first declaration as `file:line:column`.
 
-### Board order and chapters
-
-A chapter is a named group of workflows. In a folder model, the chapters set
-the order of the workflows on the board. The tool places the workflows in
-chapter order, and in list order in each chapter. All `chapter` blocks must be
-in one file. Chapters in two or more files give error EM013. A workflow in two
-chapters gives error EM014.
-
-A workflow that is in no chapter gives warning EM407. The tool places it after
-all chaptered workflows, in model order. Thus, a new file name can move it on
-the board. The `strict` profile makes EM407 an error, and the `workshop`
-profile makes it information only.
-
 ### Commands
 
-The `validate`, `diagram`, `serve`, and `export` commands accept a file or a
-folder. Each diagnostic gives the member file that it points to. The `serve`
+The `validate`, `diagram`, `serve`, `export`, and `migrate` commands accept a
+file or a folder. Each diagnostic gives the member file that it points to. The `serve`
 command reloads the page when you add, remove, rename, or edit a member file.
 If no member file is left, the page shows error EM001 until a member file
 returns. The `fmt` command formats one file at a time and refuses a folder. The
@@ -237,6 +263,33 @@ emhcl serve examples/pet-clinic
 
 A folder with exactly one member file gives the same result as that file. A
 folder with no member file gives error EM001.
+
+## Migrate a v0.4.0 model
+
+Specification v0.5.0 is a breaking revision. A v0.4.0 model does not validate
+under v0.5.0 rules. `emhcl migrate` converts it without changing its meaning:
+
+```bash
+emhcl migrate old.em.hcl          # print the migrated source
+emhcl migrate -w old.em.hcl       # rewrite the file
+emhcl migrate -w old-folder       # rewrite the changed member files
+```
+
+`migrate` adds a `board` that lists every workflow in the v0.4.0 effective
+order, at the start of the file (or of the byte-first member file of a folder).
+It writes the v0.4.0 resolved type of every typeless `field` and `subfield` as
+a qualified `field_type.<context>.<id>` traversal, writes each v0.4.0 derived
+title as an explicit `title`, keeps chapter lists as written, and rewrites each
+`translation` block as `automation`. Without `-w`, it prints the result; for a
+folder, a `# ==> <path> <==` line precedes each member. With `-w`, it rewrites
+only the files that change. A report on stderr gives the board placement, the
+number of types and titles written, and each rewritten translation.
+
+`migrate` validates its output under v0.5.0 rules. It stops with exit code 1,
+and writes nothing, when the input does not parse, already has a `board`, has
+a typeless field that v0.4.0 could not resolve to exactly one field type, or
+breaks the v0.4.0 translation rules. The derived titles that it writes are
+ordinary titles; delete the ones that you do not want.
 
 ## Import and export JSON
 
@@ -258,9 +311,15 @@ required properties (such as `sliceType`, element `fields`/`dependencies` or
 specification `linkedId`), values outside an enum, mistyped values and trailing
 content are import errors that name the offending JSON path.
 
-The native language remains Specification **v0.4.0**. Actors are declared at
+The native language is Specification **v0.5.0**. Actors are declared at
 the top level and referenced by screens; workflows have no actor attribute
 or actor inheritance.
+
+Import writes a `board` that lists every slice in document order. Slice type
+`TRANSLATION` imports as an `automation`. Export writes the board workflows in
+board order, then off-board workflows in ID order, with a warning that names
+them. An `automation` exports as `TRANSLATION` when at least one of its edges
+comes from an event of an external bounded context; otherwise as `AUTOMATION`.
 
 `import` writes formatted `.em.hcl` and validates it. Without `-o`, it writes
 to stdout and labels diagnostics `<stdout>`. A schema-valid document with no
@@ -348,12 +407,20 @@ language rule.
 ## Authoring
 
 Top-level `bounded_context` blocks define domain contracts. Top-level
-`state_change`, `state_view`, `automation`, and `translation` blocks define the
-four workflow patterns. Labels carry identity and use lower snake_case. Events
+`state_change`, `state_view`, and `automation` blocks define the three
+workflow patterns. An `automation` may consume internal and external events;
+an automation that consumes an event of an external bounded context is a
+translation, which tools derive from the edges rather than from a keyword.
+Labels carry identity and use lower snake_case. Events
 are declared only inside bounded contexts and participate in workflows through
-typed flow or scenario references.
+typed flow or scenario references. Each model has one `board` block that
+sets the story order.
 
 ```hcl
+board {
+  workflows = [workflow.add_pet]
+}
+
 bounded_context "pet_management" {
   title = "Pet Management"
 
@@ -396,12 +463,17 @@ state_change "add_pet" {
 }
 ```
 
-A `field` whose name matches a `field_type` may drop the `type`
-(`field "pet_id" {}`), and `fields = [field_type.pet_management.pet_id]` adds
-several typed fields at once. Screens and other workflow elements carry fields
-the same way events do.
+Every `field` and `subfield` needs a `type`: a built-in type string, or a
+`field_type` traversal. Inside a bounded context, `field_type.<id>` names that
+context's own field type; elsewhere, write `field_type.<context>.<id>`. A field
+without a type is error EM009. The tool never infers a type from a field name.
+`fields = [field_type.pet_management.pet_id]` adds several typed fields at
+once. Screens and other workflow elements carry fields the same way events do.
 
-Source position is model order. A flow edge has one canonical spelling: the
+`title` is literal text. When you omit it, the title is absent; the tool never
+derives one from the label, and views show the ID instead.
+
+Workflow order comes from the board; the order of other blocks has no meaning. A flow edge has one canonical spelling: the
 source element uses `to`, except catalog events flow through the receiver's
 `from`. References are unquoted traversals and are checked for scope, kind, and
 existence. Ordinary values are native HCL literals; variables, functions, and
@@ -489,11 +561,13 @@ exhaustiveness, vulnerability, example-validation, and release checks.
 
 ## Boundaries
 
-The supported HCL Specification v0.4.0 resolves references within a single
-document and enforces scoped identity, canonical typed flows, scenario shape,
-field examples, and workflow patterns. Folder models from Specification v0.4.0
-resolve references across all files of one folder, as the
-[Multi-file models](#multi-file-models) section describes. `internal/app`
+The supported HCL Specification v0.5.0 resolves references within one model,
+one file or one folder, and enforces scoped identity, the board, canonical
+typed flows, scenario shape, explicit field types, field examples, and workflow
+patterns, as the
+[Board, chapters, and multi-file models](#board-chapters-and-multi-file-models)
+section describes. `emhcl migrate` reads v0.4.0 models; no other command
+does. `internal/app`
 exposes the shared application operations, and `internal/model.Build`
 constructs a typed IR only from a validator-issued `ValidatedDocument`. The
 tool does not support event groups, include or import blocks, subfolders as

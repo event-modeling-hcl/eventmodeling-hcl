@@ -3,17 +3,18 @@ name: event-modeling-hcl
 description: >-
   Turn product ideas, requirements, workshop notes, user stories, domain prose,
   existing behavior, or event-driven designs into valid Event Modeling HCL
-  v0.4.0 models: one `.em.hcl` file or a folder of `.em.hcl` files. Use this
+  v0.5.0 models: one `.em.hcl` file or a folder of `.em.hcl` files. Use this
   skill whenever the user asks to create, extend, split, repair, review,
-  validate, format, import, export, or explain an Event Model or `.em.hcl`
-  file, or mentions Events, Commands, Read Models, State Change, State View,
-  Automation, Translation, Event Modeling slices, information completeness, or
-  Given/When/Then scenarios—even if they do not name HCL.
+  validate, format, migrate, import, export, or explain an Event Model or
+  `.em.hcl` file, or mentions Events, Commands, Read Models, State Change,
+  State View, Automation, Translation, the board, Event Modeling slices,
+  information completeness, or Given/When/Then scenarios—even if they do not
+  name HCL.
 compatibility: >-
-  Targets Event Modeling HCL Specification v0.4.0. For machine verification,
-  use emhcl v0.9.0 or newer. emhcl v0.8.0 and older cannot load a folder model.
+  Targets Event Modeling HCL Specification v0.5.0. For machine verification,
+  use emhcl v0.12.0 or newer; older releases implement v0.4.0.
 metadata:
-  version: "1.1.0"
+  version: "2.0.0"
   author: workspace
   specification: "https://github.com/event-modeling-hcl/spec"
 ---
@@ -31,21 +32,21 @@ the strict native HCL language.
 - Read [references/methodology.md](references/methodology.md) when discovering a
   new model, interpreting prose, choosing slice boundaries, reviewing model
   quality, honoring status locks, or recording evidence provenance.
-- Read [references/language-v0.4.md](references/language-v0.4.md) before writing
-  or repairing HCL, splitting a model into a folder, or converting JSON. It is
-  the local syntax and validation reference.
+- Read [references/language-v0.5.md](references/language-v0.5.md) before writing
+  or repairing HCL, splitting a model into a folder, migrating a v0.4.0 model,
+  or converting JSON. It is the local syntax and validation reference.
 - Read [references/patterns.md](references/patterns.md) when a pattern shape or
   scenario form is uncertain. Adapt examples to the domain; never copy their
   placeholder vocabulary into the output.
 
-For conflicts, the normative Event Modeling HCL v0.4.0 specification wins over
+For conflicts, the normative Event Modeling HCL v0.5.0 specification wins over
 examples, existing files, or general HCL knowledge.
 
 ## Rules that are not syntax
 
 Apply three layers, in this order when they conflict:
 
-1. Validator and v0.4.0 grammar. Illegal HCL is never "more faithful".
+1. Validator and v0.5.0 grammar. Illegal HCL is never "more faithful".
 2. Methodology judgment in `references/methodology.md`. A valid file can still
    be a poor model.
 3. Canvas layout (columns, lanes, stickies). It has no attributes. Encode the
@@ -63,7 +64,7 @@ complete merely because a diagram or prose explanation looks plausible.
 Unless the user asks for a workshop-only draft, the delivered model must:
 
 1. encode all supplied business behavior and every named acceptance criterion;
-2. use one workflow per pattern-sized capability. Never combine an independent state change and state view into one workflow. An automation or translation includes its own todo-list read model and command;
+2. use one workflow per pattern-sized capability. Never combine an independent state change and state view into one workflow. An automation (including one that translates external facts) includes its own todo-list read model and command;
 3. include precise fields where the input supplies them;
 4. include scenarios for supplied business rules and important success/error
    paths;
@@ -82,10 +83,15 @@ Choose the model shape:
   folder unless the user asks.
 - Write a new model as one file, unless the user asks for a folder or the
   model has many workflows or several owners.
-- In a folder model, put catalog blocks in one file, all `chapter` blocks in
-  one file, and each workflow in its own file. Name files with a number prefix
-  so that the file name order is the reading order. Put every workflow in a
-  chapter. See "Folder models" in `references/language-v0.4.md`.
+- Every model has one `board` block whose `workflows` list is the story order,
+  in business time. List every workflow that belongs in the story. A workflow
+  left off the board is valid but is not part of the story.
+- In a folder model, put the `board` and catalog blocks in one file, chapter
+  blocks in any file, and each workflow in its own file. File names have no
+  meaning to the tool; a number prefix only helps people read. See "Folder
+  models" in `references/language-v0.5.md`.
+- A v0.4.0 model (no `board`, typeless fields, or `translation` blocks) must be
+  converted first with `emhcl migrate -w <model>`; then review the result.
 
 Do not create implementation code, database schemas, brokers, APIs, retries, or
 framework architecture unless the user explicitly asks. `api_endpoint` may
@@ -114,9 +120,9 @@ thresholds and dates verbatim.
 
 When extending an existing model, preserve its valid identity vocabulary and
 business-time story. In a folder model, IDs are global across files, so search
-every member file before you add an ID. Add a new workflow to the chapter where
-it belongs. Migrate every affected reference; do not leave obsolete aliases or
-duplicate contracts.
+every member file before you add an ID. Add a new workflow to `board.workflows`
+at its business-time position, and to the chapter where it belongs. Migrate
+every affected reference; do not leave obsolete aliases or duplicate contracts.
 
 When the input is Event Modeling JSON, run `emhcl import` to get a first draft.
 Then review it with this skill as you would review any other model. Read each
@@ -152,13 +158,14 @@ One well-specified slice is better than several speculative slices.
   `Screen/API -> Command -> Event`. One screen state issues one command.
 - **State View** — existing facts answer one question:
   `Event(s) -> Read Model -> Screen`.
-- **Automation** — the system reacts to internal facts:
-  `internal Event(s) -> pending-work Read Model -> Processor -> Command -> Event`.
-- **Translation** — an external context's fact becomes the receiving context's
-  language:
-  `external Event(s) -> pending-work Read Model -> Processor -> Command -> internal Event`.
+- **Automation** — the system reacts to facts:
+  `Event(s) -> pending-work Read Model -> Processor -> Command -> Event`.
+  When the consumed facts come from an external context, the automation is a
+  **translation**: it turns the external fact into the receiving context's
+  language. Write it as an `automation`; tools derive the translation from its
+  external edges. There is no `translation` keyword.
 
-Do not invent a fifth pattern. A visual gear maps to a workflow-local
+Do not invent a fourth pattern. A visual gear maps to a workflow-local
 `processor`; `automation` is the top-level workflow kind. The validator allows
 a processor to consume events directly; the method still wants the pending-work
 read model unless the user asked for a minimal legal workflow. Record that
@@ -175,16 +182,19 @@ A command that must atomically modify several aggregates is a boundary smell:
 revisit the aggregate boundary or model eventual consistency as separate
 slices.
 
-Mark third-party systems and their bounded contexts `external = true`.
-Translation must consume at least one Event owned by an external bounded
-context; Automation must consume none.
+Mark third-party systems and their bounded contexts `external = true`. An
+automation may consume internal events, external events, or both.
 
-Prefer labels whose derived titles are correct. Add `title` only to deliberately
-override title-casing.
+Titles are optional literal text and are never derived from labels. Choose
+labels that read well, and write `title` only when the text should differ from
+the ID.
 
 ### 5. Add fields using ubiquitous language
 
-Use reusable `field_type` declarations for recurring domain concepts. Use a
+Every `field` and `subfield` needs an explicit `type`; the tool never infers it
+from the field name (`EM009`). Use reusable `field_type` declarations for
+recurring domain concepts and reference them as `field_type.<context>.<id>`
+(`field_type.<id>` inside the owning context). Use a
 plain built-in type only for one-off fields. Mark identifiers, PII, optionality,
 technical data, list cardinality, and examples only when known. Use
 `generated = true` only for system-filled values, never for user input.
@@ -228,7 +238,7 @@ Given/When/Then variants:
   more Event/Error `then`.
 - State View: one or more Event `given`, no `when`, one or more Read Model/Error
   `then`.
-- Automation/Translation: zero or more Event/Read Model `given`, exactly one
+- Automation: zero or more Event/Read Model `given`, exactly one
   Processor/Command `when`, one or more Event/Error `then`.
 
 Methodology notes that leave an automation When empty, put the issued command
@@ -268,7 +278,7 @@ model.
 ### 9. Format, validate, and repair the source
 
 Prefer a repository-local compatible binary, then a PATH-installed binary.
-Check the version with `emhcl version`. A folder model needs v0.9.0 or newer.
+Check the version with `emhcl version`. v0.5.0 models need v0.12.0 or newer.
 Do not install tooling or execute untrusted downloads without the user's
 request.
 
@@ -296,12 +306,13 @@ emhcl validate --profile strict <model.em.hcl | folder>
 Repair source errors rather than suppressing diagnostics. Stable diagnostic
 families are: `EM0xx` structure, `EM1xx` references, `EM2xx` flow, `EM3xx`
 scenarios, and `EM4xx` modeling judgment. In a folder model, each diagnostic
-names its member file. Folder-only codes are `EM013` (chapters in several
-files), `EM014` (workflow in two chapters), and `EM407` (workflow in no chapter,
-an error in `strict`).
+names its member file. Board and chapter codes: `EM015` (no `board`, or more
+than one), `EM016` (workflow listed twice on the board), `EM014` (workflow in
+two chapters), `EM005` (empty chapter). Core codes are errors in every
+profile; the profile only sets the severity of `EM401`–`EM406`.
 
 If no compatible CLI is available, perform the complete static checklist in
-`references/language-v0.4.md` and report that machine validation was not run.
+`references/language-v0.5.md` and report that machine validation was not run.
 Never claim validation from inspection alone.
 
 ### 10. Report precisely

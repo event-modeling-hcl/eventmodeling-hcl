@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -187,7 +188,6 @@ func TestValidateSource_RejectsInvalidWorkflowChild(t *testing.T) {
 		{"state change readmodel", "state_change", "readmodel \"summary\" {\n    title = \"Summary\"\n    question = \"What happened?\"\n  }"},
 		{"state view command", "state_view", `command "refresh" { title = "Refresh" }`},
 		{"automation screen", "automation", `screen "form" { title = "Form" }`},
-		{"translation screen", "translation", `screen "form" { title = "Form" }`},
 	}
 
 	for _, test := range tests {
@@ -236,7 +236,7 @@ func TestValidateSourceWithProfile_AssignsStableCodes(t *testing.T) {
   }
 }`
 
-	diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(model), Valid)
+	diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(withBoard(model)), Valid)
 
 	if got, want := diagnosticCodeOf(t, diagnostics), "EM201"; got != want {
 		t.Fatalf("diagnostic code = %q, want %q", got, want)
@@ -250,7 +250,7 @@ func TestValidateSourceWithProfile_ExplainsFlowReferenceKindMismatch(t *testing.
   }
 }`
 
-	diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(model), Valid)
+	diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(withBoard(model)), Valid)
 
 	if got, want := diagnosticDetailForCode(t, diagnostics, "EM201"), "command.to may reference: event.<context>.<id>. You referenced: readmodel.missing."; got != want {
 		t.Fatalf("flow diagnostic detail = %q, want %q", got, want)
@@ -267,7 +267,7 @@ func TestValidateSourceWithProfile_ExplainsStateViewWhen(t *testing.T) {
   }
 }`
 
-	diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(model), Valid)
+	diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(withBoard(model)), Valid)
 
 	if got, want := diagnosticDetailForCode(t, diagnostics, "EM301"), "state_view scenarios may not contain when steps. Found: when."; got != want {
 		t.Fatalf("scenario diagnostic detail = %q, want %q", got, want)
@@ -275,12 +275,12 @@ func TestValidateSourceWithProfile_ExplainsStateViewWhen(t *testing.T) {
 }
 
 func TestValidateSourceWithProfile_AppliesProfileSeverity(t *testing.T) {
-	model := `state_change "add_pet" {
+	model := withBoard(`state_change "add_pet" {
   command "add_pet" {}
 }
 hotspot "missing_rule" {
   question = "Which rule is missing?"
-}`
+}`)
 
 	valid := ValidateSourceWithProfile("model.em.hcl", []byte(model), Valid)
 	requireSeverityForCode(t, valid, "EM404", hcl.DiagWarning)
@@ -301,7 +301,7 @@ hotspot "missing_rule" {
 	requireSeverityForCode(t, workshop, "EM406", hcl.DiagInvalid)
 }
 
-func TestValidateSource_InfersFieldTypeForTypelessEventField(t *testing.T) {
+func TestValidateSource_RejectsTypelessEventField(t *testing.T) {
 	model := `bounded_context "clinic" {
   title = "Clinic"
   field_type "pet_id" { type = "UUID" }
@@ -310,10 +310,13 @@ func TestValidateSource_InfersFieldTypeForTypelessEventField(t *testing.T) {
   }
 }`
 
-	requireNoErrors(t, validateModel(t, model))
+	missing := requireOneDiagnostic(t, validateModel(t, model), "EM009", hcl.DiagError, "model.em.hcl")
+	if missing.Summary != "Missing field type" || missing.Subject.Start.Line != 5 {
+		t.Fatalf("EM009 = %q at line %d, want Missing field type at line 5", missing.Summary, missing.Subject.Start.Line)
+	}
 }
 
-func TestValidateSource_InfersFieldTypeForTypelessWorkflowElementField(t *testing.T) {
+func TestValidateSource_RejectsTypelessWorkflowElementField(t *testing.T) {
 	model := `bounded_context "clinic" {
   title = "Clinic"
   aggregate "pet" {}
@@ -331,7 +334,28 @@ state_change "add_pet" {
   }
 }`
 
-	requireNoErrors(t, validateModel(t, model))
+	missing := requireOneDiagnostic(t, validateModel(t, model), "EM009", hcl.DiagError, "model.em.hcl")
+	if missing.Summary != "Missing field type" || missing.Subject.Start.Line != 14 {
+		t.Fatalf("EM009 = %q at line %d, want Missing field type at line 14", missing.Summary, missing.Subject.Start.Line)
+	}
+}
+
+func TestValidateSource_RejectsTypelessNestedSubfield(t *testing.T) {
+	model := `bounded_context "clinic" {
+  title = "Clinic"
+  field_type "street" { type = "String" }
+  event "pet_added" {
+    field "address" {
+      type = "Custom"
+      subfield "street" {}
+    }
+  }
+}`
+
+	missing := requireOneDiagnostic(t, validateModel(t, model), "EM009", hcl.DiagError, "model.em.hcl")
+	if missing.Summary != "Missing field type" || missing.Subject.Start.Line != 7 {
+		t.Fatalf("EM009 = %q at line %d, want Missing field type at line 7", missing.Summary, missing.Subject.Start.Line)
+	}
 }
 
 func TestValidateSource_AcceptsScreenFieldsWithShorthand(t *testing.T) {
@@ -347,7 +371,7 @@ state_change "add_pet" {
     title  = "Add pet form"
     fields = [field_type.clinic.pet_name]
 
-    field "pet_id" {}
+    field "pet_id" { type = field_type.clinic.pet_id }
   }
   command "add_pet" {
     title            = "Add Pet"
@@ -356,40 +380,6 @@ state_change "add_pet" {
 }`
 
 	requireNoErrors(t, validateModel(t, model))
-}
-
-func TestValidateSource_RejectsAmbiguousInferredFieldType(t *testing.T) {
-	model := `bounded_context "a" {
-  title = "A"
-  field_type "shared_id" { type = "UUID" }
-}
-bounded_context "b" {
-  title = "B"
-  field_type "shared_id" { type = "UUID" }
-}
-state_change "do_it" {
-  title = "Do It"
-  command "do_it" {
-    title            = "Do It"
-    external_trigger = true
-    field "shared_id" {}
-  }
-}`
-
-	requireDiagnostic(t, validateModel(t, model), "declared in multiple bounded_contexts")
-}
-
-func TestValidateSource_RejectsUnresolvedInferredFieldType(t *testing.T) {
-	model := `state_change "do_it" {
-  title = "Do It"
-  command "do_it" {
-    title            = "Do It"
-    external_trigger = true
-    field "mystery_id" {}
-  }
-}`
-
-	requireDiagnostic(t, validateModel(t, model), "no field_type")
 }
 
 func TestValidateSource_RejectsFieldTypeDeclarationWithoutType(t *testing.T) {
@@ -421,7 +411,7 @@ func TestValidateSource_RejectsDuplicateNameBetweenListAndBlockFields(t *testing
   event "pet_added" {
     fields = [field_type.pet_id]
 
-    field "pet_id" {}
+    field "pet_id" { type = field_type.pet_id }
   }
 }`
 
@@ -430,7 +420,29 @@ func TestValidateSource_RejectsDuplicateNameBetweenListAndBlockFields(t *testing
 
 func validateModel(t *testing.T, model string) hcl.Diagnostics {
 	t.Helper()
-	return ValidateSource("model.em.hcl", []byte(model))
+	return ValidateSource("model.em.hcl", []byte(withBoard(model)))
+}
+
+var workflowDeclaration = regexp.MustCompile(`(?m)^\s*(?:state_change|state_view|automation)\s+"([a-z][a-z0-9_]*)"`)
+
+// withBoard appends to model a board that lists every workflow it declares,
+// for tests about rules other than the board.
+func withBoard(model string) string {
+	return model + boardFor(model)
+}
+
+// boardFor returns a board block listing each workflow the sources declare
+// once, in declaration order.
+func boardFor(sources ...string) string {
+	var entries []string
+	for _, source := range sources {
+		for _, match := range workflowDeclaration.FindAllStringSubmatch(source, -1) {
+			if entry := "workflow." + match[1]; !slices.Contains(entries, entry) {
+				entries = append(entries, entry)
+			}
+		}
+	}
+	return "\nboard {\n  workflows = [" + strings.Join(entries, ", ") + "]\n}\n"
 }
 
 func requireDiagnostic(t *testing.T, diagnostics hcl.Diagnostics, want string) {

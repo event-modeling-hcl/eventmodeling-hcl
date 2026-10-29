@@ -19,7 +19,7 @@ func workflowAllows(kind, child string) bool {
 		return child == "screen" || child == "command" || child == "screen_image"
 	case "state_view":
 		return child == "screen" || child == "readmodel" || child == "screen_image"
-	case "automation", "translation":
+	case "automation":
 		return child == "processor" || child == "readmodel" || child == "command"
 	}
 	return false
@@ -31,7 +31,7 @@ func scenarioAllows(kind, phase, target string) bool {
 		return phase == "given" && target == "event" || phase == "when" && target == "command" || phase == "then" && (target == "event" || target == "error")
 	case "state_view":
 		return phase == "given" && target == "event" || phase == "then" && (target == "readmodel" || target == "error")
-	case "automation", "translation":
+	case "automation":
 		return phase == "given" && (target == "event" || target == "readmodel") || phase == "when" && (target == "command" || target == "processor") || phase == "then" && (target == "event" || target == "error")
 	}
 	return false

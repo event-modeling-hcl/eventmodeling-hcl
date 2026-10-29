@@ -15,3 +15,7 @@ bounded_context "shared" {
     aggregate = aggregate.item
   }
 }
+
+board {
+  workflows = [workflow.create_item]
+}

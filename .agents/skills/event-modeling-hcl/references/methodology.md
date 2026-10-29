@@ -1,7 +1,7 @@
 # Event Modeling methodology
 
 Use this reference to turn incomplete domain input into a coherent business-time
-model, then encode it with the blocks in `language-v0.4.md`. It is not a second
+model, then encode it with the blocks in `language-v0.5.md`. It is not a second
 syntax manual.
 
 Authoritative source:
@@ -10,7 +10,7 @@ Where that guide's sources disagree, its Appendix C states the tension and the
 operative rule. Follow Appendix C over a conflicting worked example. HCL
 grammar still wins over both when the operative rule is not legal syntax.
 
-The canvas method is technology-agnostic. HCL v0.4.0 is the encoding. When they
+The canvas method is technology-agnostic. HCL v0.5.0 is the encoding. When they
 disagree, write legal HCL and keep the methodology rule as judgment, a
 `description`, a scenario `comment`, or a `hotspot`. Never invent an attribute
 to close the gap.
@@ -58,7 +58,7 @@ These methodology words are not HCL attributes or block kinds. Do not add them.
 | Storyline / beats | Several `scenario` blocks, or one scenario with ordered `given` events | `storyline { }` |
 | Field lineage expressions | Same `field_type` / field name across the connected edge; `generated = true` when the system fills the value; prose in `description`, `comment`, or `hotspot` | `mapping = "session:…"`, `latest:`, `derived:`, `aggregate:`, or any other mapping DSL |
 | Invisible signal / timer | A real `event` that opens work, then a `processor` | `triggers = ["daily"]` as the only cause; a pseudo-screen for a scheduler |
-| Role catalog | `actor` / `system` / `team` plus `description` of can and cannot | `roles = […]` (not in v0.4.0) |
+| Role catalog | `actor` / `system` / `team` plus `description` of can and cannot | `roles = […]` (not in v0.5.0) |
 | Notes lane | `chapter.description`, element `description`, scenario `comment`, `hotspot` | `note` blocks |
 | Spec lane wiring | Scenarios are nested in the workflow and have no `from` / `to` | Edges into scenarios |
 | Query / When-query | State view has no `when` | `query`, a `Get…` command |
@@ -122,13 +122,13 @@ Information flow:
 screen or processor -> command -> event -> read model -> screen or processor
 ```
 
-A story starts with a state view, or with an automation/translation reacting to
+A story starts with a state view, or with an automation (worker or translation) reacting to
 an event that already happened. It does not start with an unmotivated command.
 
 HCL already encodes a slice as one workflow of one pattern. Do not combine an
 independent state change and state view into one workflow. The validator
 rejects that child mix: a `state_change` cannot contain a read model, and a
-`state_view` cannot contain a command. An `automation` or `translation` does
+`state_view` cannot contain a command. An `automation` does
 contain its own todo-list read model and the command that processor issues.
 Do not split the issuing screen away from its command into a second workflow.
 The view of the result is a separate `state_view`.
@@ -137,13 +137,14 @@ The view of the result is a separate `state_view`.
 | --- | --- | --- |
 | State change | `state_change` | `screen.to -> command.to -> event`. API: `api_endpoint` on the command, no fake screen. |
 | State view | `state_view` | `readmodel.from = [event…]`, `readmodel.to -> screen`. No command. |
-| Automation | `automation` | Internal events only. Recommended: todo-list `readmodel` -> `processor` -> `command` -> internal event. |
-| Translation | `translation` | At least one event from an external bounded context. Same shape as automation, emitting this domain's language. |
+| Automation (worker) | `automation` | Internal events. Recommended: todo-list `readmodel` -> `processor` -> `command` -> internal event. |
+| Translation | `automation` | At least one event from an external bounded context. Same shape as a worker, emitting this domain's language. Tools derive "translation" from the external edge; there is no `translation` keyword. |
 
 Validator, not merely advice:
 
-- `automation` that consumes an external event is `EM012`. Use `translation`.
-- `translation` with no external event is `EM011`.
+- The validator accepts internal and external events in any `automation`.
+  Keeping workers internal-only and translating external facts first is
+  methodology judgment (see "Translation"); the validator does not check it.
 - Reverse edges (`command.from`, `screen.from`, `processor.from = [readmodel…]`,
   `command.from = [processor…]`) are `EM201`.
 - A command with no incoming canonical flow, no `api_endpoint`, and no
@@ -186,8 +187,8 @@ better than several speculative ones.
    different story is a new chapter; a branch that only changes how this story
    ends stays here.
 3. Order facts in business time. Show failures and cancellations, not only the
-   happy path. Source order is that order. `chapter.workflows` must be a
-   contiguous range.
+   happy path. The `board` lists the story workflows in that order; source and
+   file order carry no meaning. Chapters are membership sets with no order.
 4. Screens for human decisions; processors where no person acts. Deadlines and
    "submissions closed" are processors fed by events, not screens.
 5. Commands: one per screen state, specific actor, preconditions as prior
@@ -226,7 +227,7 @@ HCL checks that references resolve. It does not check lineage. You check it:
 - Reuse one realistic example value along a chain (`jane@example.com` stays
   that email). Do not overwrite a non-empty example. No `foo` / `test`.
 - Prefer `Decimal` for money. Map prose types onto the built-ins in
-  `language-v0.4.md` (`Date` vs `DateTime`, `Int` / `Long` / `Double` /
+  `language-v0.5.md` (`Date` vs `DateTime`, `Int` / `Long` / `Double` /
   `Decimal`). There is no `Text` or `Number` type.
 - Identity is `id_attribute = true`. Two identity fields are a compound
   identity. Do not invent a compound-key block.
@@ -246,12 +247,12 @@ user confirms the locked part.
 Author scenarios with the HCL grammar. The canvas sources use a different
 Given/When/Then for automations and errors. Do not copy those forms.
 
-| | Methodology sources | HCL v0.4.0 (required) |
+| | Methodology sources | HCL v0.5.0 (required) |
 | --- | --- | --- |
 | State change | Given events; When at most one command; Then events or an "empty" error flag | Zero or more `given` events; **exactly one** `when` command; one or more `then` events **or** `then { error = "…" }` |
 | State view | Given events; **empty When**; Then **exactly one** read model | One or more `given` events; **no `when`**; one or more `then` read models or errors. Zero givens is `EM301`. |
-| Automation / translation | Given events (setup, trigger last); **empty When**; Then the **command issued, or nothing** | Zero or more `given` events or read models; **exactly one** `when` processor or command; one or more `then` events or errors. A Then command is illegal. There is no "dispatch nothing" target. |
-| Prose given ("customer exists") | Used in some workshop notes | Illegal. The given target is an `event` (or a `readmodel` in automation/translation). Put prose in `description` or `comment`. |
+| Automation (worker or translation) | Given events (setup, trigger last); **empty When**; Then the **command issued, or nothing** | Zero or more `given` events or read models; **exactly one** `when` processor or command; one or more `then` events or errors. A Then command is illegal. There is no "dispatch nothing" target. |
+| Prose given ("customer exists") | Used in some workshop notes | Illegal. The given target is an `event` (or a `readmodel` in an automation). Put prose in `description` or `comment`. |
 | Storyline beats | Ordered lifecycle across elements | No `storyline` block. Use several scenarios, or ordered `given` steps in one scenario. |
 | Cross-chapter empty Given | Allowed, with a title note | Illegal on a state view. Reference the real catalog event in `given` even when another chapter produced it. Do not copy the event block. |
 
@@ -294,7 +295,7 @@ exemption. The validator still allows `processor.from = [event…]` with no read
 model. Prefer the todo list. Omit it only when the user asked for a minimal
 legal workflow, and say so in a hotspot or description.
 
-Recommended shape, in one `automation` or `translation` workflow:
+Recommended shape, in one `automation` workflow (worker or translation):
 
 ```text
 event(s) -> readmodel.from
@@ -373,13 +374,13 @@ than one event. Neither warning is an automatic split. Remove edges no field
 uses. If one field really needs the whole lifecycle, say which field and why
 in `description`. A wide field does not justify unrelated fields riding along.
 
-Place the producing events in source order before the view workflow when the
+Place the view workflow after its producing workflows on the `board` when the
 story is one chapter. HCL does not enforce column position. Do not bunch every
-read model at the end of the file if the narrative uses them earlier.
-`chapter.workflows` order is the build/story order.
+read model at the end of the board if the narrative uses them earlier.
+`board.workflows` order is the build/story order.
 
 A read model with no consumer is an orphan. In HCL the consumer is `to` a
-screen or, in an automation/translation, `to` a processor.
+screen or, in an automation, `to` a processor.
 
 ## Aggregates
 
@@ -400,12 +401,13 @@ an unclear boundary.
 
 System shape follows who owns the facts. Each bounded context owns its events.
 Cross-context facts are consumed by translation (other team or external
-system), not by an automation that reaches into foreign events. The validator
-only checks `external = true` on the event's context, not "different team".
+system), not by a worker that reaches into foreign events. The validator does
+not check this; it only marks edges from an `external = true` context as
+external, which is how tools recognize a translation.
 A same-model internal context that another team owns should still be
 translated if the user described an ownership boundary; mark that context
 `external = true` only when it is outside the modeled system. If it stays
-internal, an `automation` may consume its events — and you should still
+internal, a worker may consume its events — and you should still
 hotspot a team boundary the validator cannot see.
 
 No circular "team A waits on team B waits on team A" without an explicit
@@ -494,7 +496,7 @@ Validator-clean is necessary and not sufficient.
 - Every command has one issuer. No screen issues two commands.
 - No state change follows another without a new issuer.
 - External facts are translated; workers consume internal events only.
-- Every automation/translation the user asked to model fully has a pending-work
+- Every automation (worker or translation) the user asked to model fully has a pending-work
   read model, unless a recorded exception says otherwise.
 - Every supplied field has a visible source. No new `mapping` DSL.
 - Scenarios use HCL grammar. Rejections and recorded failures are not confused.
@@ -526,7 +528,7 @@ Do not "resolve" these by adding syntax. The operative rule is already above.
   not invent a separate slice block.
 - One command per screen **state**. Several actions mean several screens.
 - Chapter-at-a-time (documents) vs all-timelines-then-detail (workshops) is a
-  process choice. Model order still reads as business time. In a folder model,
-  the chapter lists set that order.
+  process choice. The `board` still reads as business time; chapters only
+  group workflows.
 - Planning numbers in the sources are illustrations. Estimate in workflows if
   asked; do not invent velocity.

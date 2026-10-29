@@ -1,4 +1,13 @@
-# Appointment scheduling with state change, state view, automation, and translation workflows.
+# Appointment scheduling with state change, state view, and automation workflows, including an automation that translates external facts.
+
+board {
+  workflows = [
+    workflow.schedule_appointment,
+    workflow.view_calendar,
+    workflow.add_weather_forecast,
+    workflow.translate_weather_change,
+  ]
+}
 
 actor "scheduler" {
   title         = "Scheduler"
@@ -19,6 +28,7 @@ bounded_context "appointments" {
   title = "Appointments"
 
   aggregate "appointment" {
+    title = "Appointment"
   }
 
   field_type "appointment_id" {
@@ -48,6 +58,7 @@ bounded_context "weather" {
   title = "Weather"
 
   aggregate "weather_forecast" {
+    title = "Weather Forecast"
   }
 
   field_type "forecast" {
@@ -298,7 +309,7 @@ automation "add_weather_forecast" {
   }
 }
 
-translation "translate_weather_change" {
+automation "translate_weather_change" {
   title = "Translate Changed Weather"
 
   readmodel "changed_predictions" {

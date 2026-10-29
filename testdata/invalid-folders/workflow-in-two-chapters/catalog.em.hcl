@@ -15,3 +15,7 @@ bounded_context "order" {
     aggregate = aggregate.order
   }
 }
+
+board {
+  workflows = [workflow.place_order]
+}

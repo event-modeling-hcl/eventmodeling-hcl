@@ -6,7 +6,12 @@ import (
 	"strings"
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/model"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/version"
 )
+
+// translationPattern is the view pattern of an automation that consumes an
+// external event. It is derived; the language has no translation kind.
+const translationPattern = "translation"
 
 type fieldTypeEntry struct {
 	typeName    string
@@ -21,61 +26,97 @@ type eventEntry struct {
 	external  bool
 }
 
+// eventPlacement names the slice that shows an event: an index into the board
+// slices, or into the off-board slices when offBoard is set.
 type eventPlacement struct {
+	offBoard   bool
 	sliceIndex int
 	given      bool
 }
 
 type adapter struct {
-	model      *model.Model
-	fieldTypes map[string]fieldTypeEntry
-	events     map[string]eventEntry
-	titles     map[string]string
-	owners     map[string]string
+	model        *model.Model
+	fieldTypes   map[string]fieldTypeEntry
+	events       map[string]eventEntry
+	titles       map[string]string
+	owners       map[string]string
+	aggregates   map[string]string
+	offBoard     map[string]bool
+	translations map[string]bool
 }
 
 func BuildViewModel(filename string, source *model.Model) *ViewModel {
 	a := newAdapter(source)
 	view := &ViewModel{
-		Title:    humanizeFilename(filename),
-		Version:  specVersion,
+		Title:    modelName(filename),
+		Version:  version.Spec,
 		Actors:   map[string]Actor{},
 		Contexts: map[string]Context{},
+		Slices:   []Slice{},
+		OffBoard: []Slice{},
 	}
 	for _, actor := range source.Actors {
-		view.Actors[actor.ID] = Actor{Title: actor.Title, AuthRequired: actor.AuthRequired}
+		view.Actors[actor.ID] = Actor{Title: label(actor.Title, actor.ID), AuthRequired: actor.AuthRequired}
 	}
 	for _, context := range source.Contexts {
-		view.Contexts[context.ID] = Context{Title: context.Title, External: context.External}
+		view.Contexts[context.ID] = Context{Title: label(context.Title, context.ID), External: context.External}
 	}
 	for _, workflow := range source.Workflows {
-		view.Slices = append(view.Slices, a.adaptWorkflow(workflow))
+		if a.offBoard[workflow.ID] {
+			view.OffBoard = append(view.OffBoard, a.adaptWorkflow(workflow))
+		} else {
+			view.Slices = append(view.Slices, a.adaptWorkflow(workflow))
+		}
 	}
 	view.Edges = a.adaptEdges()
 	a.placeEvents(view)
-	a.assignLayout(view)
-	view.Chapters = adaptChapters(source.Chapters)
+	assignLayout(view.Slices, view.Edges)
+	assignLayout(view.OffBoard, view.Edges)
+	view.Chapters = a.adaptChapters(source.Chapters)
 	view.ContextMap = a.buildContextMap()
 	view.Hotspots = a.adaptHotspots(source.Hotspots)
 	return view
 }
 
+// label is the display text of a construct: its title, or its raw ID when the
+// source states no title.
+func label(title, id string) string {
+	if title == "" {
+		return id
+	}
+	return title
+}
+
 func newAdapter(source *model.Model) *adapter {
 	a := &adapter{
-		model:      source,
-		fieldTypes: map[string]fieldTypeEntry{},
-		events:     map[string]eventEntry{},
-		titles:     map[string]string{},
-		owners:     map[string]string{},
+		model:        source,
+		fieldTypes:   map[string]fieldTypeEntry{},
+		events:       map[string]eventEntry{},
+		titles:       map[string]string{},
+		owners:       map[string]string{},
+		aggregates:   map[string]string{},
+		offBoard:     make(map[string]bool, len(source.OffBoard)),
+		translations: map[string]bool{},
+	}
+	for _, id := range source.OffBoard {
+		a.offBoard[id] = true
+	}
+	for _, edge := range source.Edges {
+		if edge.External {
+			a.translations[edge.WorkflowID] = true
+		}
 	}
 	for _, actor := range source.Actors {
-		a.owners["actor."+actor.ID] = actor.Title
+		a.owners["actor."+actor.ID] = label(actor.Title, actor.ID)
 	}
 	for _, owner := range source.Owners {
-		a.owners[owner.Kind+"."+owner.ID] = owner.Title
+		a.owners[owner.Kind+"."+owner.ID] = label(owner.Title, owner.ID)
 	}
 	for _, context := range source.Contexts {
-		a.owners["bounded_context."+context.ID] = context.Title
+		a.owners["bounded_context."+context.ID] = label(context.Title, context.ID)
+		for _, aggregate := range context.Aggregates {
+			a.aggregates["aggregate."+context.ID+"."+aggregate.ID] = label(aggregate.Title, aggregate.ID)
+		}
 		for _, fieldType := range context.FieldTypes {
 			a.fieldTypes[context.ID+"."+fieldType.ID] = fieldTypeEntry{
 				typeName: fieldType.Type, cardinality: fieldType.Cardinality,
@@ -85,22 +126,32 @@ func newAdapter(source *model.Model) *adapter {
 		for _, event := range context.Events {
 			address := context.ID + "." + event.ID
 			a.events[address] = eventEntry{contextID: context.ID, event: event, external: context.External}
-			a.titles["event."+address] = event.Title
+			a.titles["event."+address] = label(event.Title, event.ID)
 		}
 	}
 	for _, workflow := range source.Workflows {
-		a.titles["workflow."+workflow.ID] = workflow.Title
+		a.titles["workflow."+workflow.ID] = label(workflow.Title, workflow.ID)
 		for _, element := range workflow.Elements {
-			a.titles[string(element.Kind)+"."+workflow.ID+"."+element.ID] = element.Title
-			a.titles[workflow.ID+"::"+string(element.Kind)+"."+element.ID] = element.Title
+			elementLabel := label(element.Title, element.ID)
+			a.titles[string(element.Kind)+"."+workflow.ID+"."+element.ID] = elementLabel
+			a.titles[workflow.ID+"::"+string(element.Kind)+"."+element.ID] = elementLabel
 		}
 	}
 	return a
 }
 
+// pattern is the view pattern of a workflow: its kind, or the derived
+// translation pattern for an automation with an external edge.
+func (a *adapter) pattern(workflow model.Workflow) string {
+	if workflow.Kind == model.Automation && a.translations[workflow.ID] {
+		return translationPattern
+	}
+	return string(workflow.Kind)
+}
+
 func (a *adapter) adaptWorkflow(workflow model.Workflow) Slice {
 	slice := Slice{
-		ID: workflow.ID, Type: string(workflow.Kind), Title: workflow.Title,
+		ID: workflow.ID, Type: a.pattern(workflow), Title: label(workflow.Title, workflow.ID),
 		Status: workflow.Status, Owner: a.ownerTitle(workflow.Owner), Description: workflow.Description,
 		Elements: []Element{}, Scenarios: []Scenario{},
 	}
@@ -113,9 +164,9 @@ func (a *adapter) adaptWorkflow(workflow model.Workflow) Slice {
 	return slice
 }
 
-func (a *adapter) assignLayout(view *ViewModel) {
-	for sliceIndex := range view.Slices {
-		slice := &view.Slices[sliceIndex]
+func assignLayout(slices []Slice, edges []Edge) {
+	for sliceIndex := range slices {
+		slice := &slices[sliceIndex]
 		stages := make(map[string]int, len(slice.Elements))
 		local := make(map[string]bool, len(slice.Elements))
 		for _, element := range slice.Elements {
@@ -124,7 +175,7 @@ func (a *adapter) assignLayout(view *ViewModel) {
 		}
 		for range slice.Elements {
 			changed := false
-			for _, edge := range view.Edges {
+			for _, edge := range edges {
 				if !local[edge.From] || !local[edge.To] || stages[edge.To] > stages[edge.From] {
 					continue
 				}
@@ -147,8 +198,9 @@ func (a *adapter) assignLayout(view *ViewModel) {
 	}
 }
 
-func naturalStage(workflowType string, element Element) int {
-	switch workflowType {
+// naturalStage places an element by the slice's view pattern.
+func naturalStage(pattern string, element Element) int {
+	switch pattern {
 	case string(model.StateChange):
 		switch element.Kind {
 		case "screen", "screen_image":
@@ -167,7 +219,7 @@ func naturalStage(workflowType string, element Element) int {
 		case "screen", "screen_image":
 			return 2
 		}
-	case string(model.Automation), string(model.Translation):
+	case string(model.Automation), translationPattern:
 		switch element.Kind {
 		case "event":
 			if element.Given {
@@ -236,10 +288,11 @@ func (a *adapter) adaptElement(workflowID string, source model.Element) Element 
 	return Element{
 		ID:       elementNodeID(workflowID, string(source.Kind), source.ID),
 		Kind:     string(source.Kind),
-		Title:    source.Title,
+		Title:    label(source.Title, source.ID),
 		Actor:    lastPart(source.Semantic.Actor),
 		ImageURL: source.Presentation.URL,
 		Agg:      lastPart(source.Semantic.Aggregate),
+		AggTitle: a.aggregateTitle(source.Semantic.Aggregate),
 		API:      source.Semantic.APIEndpoint,
 		Question: source.Semantic.Question,
 		Tags:     source.Presentation.Tags,
@@ -271,7 +324,7 @@ func (a *adapter) adaptFields(source []model.Field, contextID string) []Field {
 }
 
 func (a *adapter) adaptScenario(workflowID string, source model.Scenario) Scenario {
-	scenario := Scenario{Title: source.Title, Comments: append([]string(nil), source.Comments...)}
+	scenario := Scenario{Title: label(source.Title, source.ID), Comments: append([]string(nil), source.Comments...)}
 	for _, sourceStep := range source.Steps {
 		step := a.adaptStep(workflowID, sourceStep)
 		switch sourceStep.Kind {
@@ -306,6 +359,8 @@ func (a *adapter) adaptStep(workflowID string, source model.Step) Step {
 	}
 }
 
+// referenceTitle is the label of a referenced construct, or the reference's
+// raw ID when it names nothing in the model.
 func (a *adapter) referenceTitle(workflowID, reference string) string {
 	if reference == "" {
 		return ""
@@ -313,7 +368,22 @@ func (a *adapter) referenceTitle(workflowID, reference string) string {
 	if title, ok := a.titles[reference]; ok {
 		return title
 	}
-	return a.titles[workflowID+"::"+reference]
+	if title, ok := a.titles[workflowID+"::"+reference]; ok {
+		return title
+	}
+	return lastPart(reference)
+}
+
+// aggregateTitle is the label of an aggregate reference, or "" when there is
+// no reference.
+func (a *adapter) aggregateTitle(reference string) string {
+	if reference == "" {
+		return ""
+	}
+	if title, ok := a.aggregates[reference]; ok {
+		return title
+	}
+	return lastPart(reference)
 }
 
 func (a *adapter) buildContextMap() ContextMap {
@@ -323,7 +393,7 @@ func (a *adapter) buildContextMap() ContextMap {
 	}
 	for _, context := range a.model.Contexts {
 		contextMap.Nodes = append(contextMap.Nodes, ContextNode{
-			ID: context.ID, Title: context.Title, External: context.External,
+			ID: context.ID, Title: label(context.Title, context.ID), External: context.External,
 			Team: a.ownerTitle(context.Owner), Events: len(context.Events), Aggregates: len(context.Aggregates),
 		})
 	}
@@ -394,7 +464,7 @@ func (a *adapter) buildContextMap() ContextMap {
 				edges[key] = edge
 				workflows[key] = map[string]bool{}
 			}
-			if workflow.Kind == model.Translation {
+			if a.translations[workflow.ID] {
 				edge.Pattern = "anticorruption"
 			}
 			workflows[key][workflow.ID] = true
@@ -435,19 +505,42 @@ func (a *adapter) adaptEdges() []Edge {
 	return edges
 }
 
+// placeEvents shows each catalog event once. A board slice wins over an
+// off-board one, so an event that the story touches stays in the story: the
+// last board producer, else the first board consumer (as upstream input).
+// Events that only off-board workflows touch go to an off-board slice by the
+// same rule.
 func (a *adapter) placeEvents(view *ViewModel) {
-	producers := map[string][]int{}
-	consumers := map[string][]int{}
-	workflowIndex := map[string]int{}
-	for index, workflow := range a.model.Workflows {
-		workflowIndex[workflow.ID] = index
+	positions := make(map[string]eventPlacement, len(view.Slices)+len(view.OffBoard))
+	for index, slice := range view.Slices {
+		positions[slice.ID] = eventPlacement{sliceIndex: index}
+	}
+	for index, slice := range view.OffBoard {
+		positions[slice.ID] = eventPlacement{offBoard: true, sliceIndex: index}
+	}
+	boardProducers, boardConsumers := map[string][]int{}, map[string][]int{}
+	offProducers, offConsumers := map[string][]int{}, map[string][]int{}
+	record := func(workflowID, reference string, produced bool) {
+		position, ok := positions[workflowID]
+		if !ok {
+			return
+		}
+		switch {
+		case position.offBoard && produced:
+			recordEventReference(reference, position.sliceIndex, offProducers)
+		case position.offBoard:
+			recordEventReference(reference, position.sliceIndex, offConsumers)
+		case produced:
+			recordEventReference(reference, position.sliceIndex, boardProducers)
+		default:
+			recordEventReference(reference, position.sliceIndex, boardConsumers)
+		}
 	}
 	for _, edge := range a.model.Edges {
-		index := workflowIndex[edge.WorkflowID]
-		recordEventReference(edge.To, index, producers)
-		recordEventReference(edge.From, index, consumers)
+		record(edge.WorkflowID, edge.To, true)
+		record(edge.WorkflowID, edge.From, false)
 	}
-	for index, workflow := range a.model.Workflows {
+	for _, workflow := range a.model.Workflows {
 		for _, scenario := range workflow.Scenarios {
 			for _, step := range scenario.Steps {
 				if step.Target != "event" {
@@ -455,9 +548,9 @@ func (a *adapter) placeEvents(view *ViewModel) {
 				}
 				switch step.Kind {
 				case model.Given:
-					recordEventReference(step.Ref, index, consumers)
+					record(workflow.ID, step.Ref, false)
 				case model.Then:
-					recordEventReference(step.Ref, index, producers)
+					record(workflow.ID, step.Ref, true)
 				case model.When:
 				}
 			}
@@ -466,10 +559,15 @@ func (a *adapter) placeEvents(view *ViewModel) {
 
 	placements := map[string]eventPlacement{}
 	for address := range a.events {
-		if indices := producers[address]; len(indices) > 0 {
-			placements[address] = eventPlacement{sliceIndex: maxIndex(indices)}
-		} else if indices := consumers[address]; len(indices) > 0 {
-			placements[address] = eventPlacement{sliceIndex: minIndex(indices), given: true}
+		switch {
+		case len(boardProducers[address]) > 0:
+			placements[address] = eventPlacement{sliceIndex: maxIndex(boardProducers[address])}
+		case len(boardConsumers[address]) > 0:
+			placements[address] = eventPlacement{sliceIndex: minIndex(boardConsumers[address]), given: true}
+		case len(offProducers[address]) > 0:
+			placements[address] = eventPlacement{offBoard: true, sliceIndex: maxIndex(offProducers[address])}
+		case len(offConsumers[address]) > 0:
+			placements[address] = eventPlacement{offBoard: true, sliceIndex: minIndex(offConsumers[address]), given: true}
 		}
 	}
 	addresses := make([]string, 0, len(placements))
@@ -480,11 +578,16 @@ func (a *adapter) placeEvents(view *ViewModel) {
 	for _, address := range addresses {
 		placement := placements[address]
 		entry := a.events[address]
-		view.Slices[placement.sliceIndex].Elements = append(view.Slices[placement.sliceIndex].Elements, Element{
+		slices := view.Slices
+		if placement.offBoard {
+			slices = view.OffBoard
+		}
+		slices[placement.sliceIndex].Elements = append(slices[placement.sliceIndex].Elements, Element{
 			ID:       eventNodeID(address),
 			Kind:     "event",
-			Title:    entry.event.Title,
+			Title:    label(entry.event.Title, entry.event.ID),
 			Agg:      lastPart(entry.event.Semantic.Aggregate),
+			AggTitle: a.aggregateTitle(entry.event.Semantic.Aggregate),
 			Ctx:      entry.contextID,
 			External: entry.external,
 			Given:    placement.given,
@@ -505,14 +608,22 @@ func (a *adapter) adaptHotspots(source []model.Hotspot) []Hotspot {
 	return hotspots
 }
 
-func adaptChapters(source []model.Chapter) []Chapter {
+// adaptChapters keeps the model's chapter order (by ID) and lists each
+// chapter's board workflows in board order.
+func (a *adapter) adaptChapters(source []model.Chapter) []Chapter {
 	chapters := make([]Chapter, 0, len(source))
 	for _, chapter := range source {
-		workflows := make([]string, 0, len(chapter.Workflows))
+		members := make(map[string]bool, len(chapter.Workflows))
 		for _, workflow := range chapter.Workflows {
-			workflows = append(workflows, lastPart(workflow))
+			members[lastPart(workflow)] = true
 		}
-		chapters = append(chapters, Chapter{ID: chapter.ID, Title: chapter.Title, Slices: workflows})
+		slices := make([]string, 0, len(chapter.Workflows))
+		for _, workflow := range a.model.Workflows {
+			if members[workflow.ID] && !a.offBoard[workflow.ID] {
+				slices = append(slices, workflow.ID)
+			}
+		}
+		chapters = append(chapters, Chapter{ID: chapter.ID, Title: label(chapter.Title, chapter.ID), Slices: slices})
 	}
 	return chapters
 }
@@ -603,29 +714,20 @@ func maxIndex(indices []int) int {
 	return maximum
 }
 
-// humanizeFilename turns a model path into a title. A file path uses its file
+// modelName names the model by its path, unchanged: a file path gives its file
 // name without the .em.hcl suffix. A path without that suffix is a folder
-// model and uses the folder's own name, resolving "." and "/" through the
+// model and gives the folder's own name, resolving "." and "/" through the
 // absolute path.
-func humanizeFilename(filename string) string {
+func modelName(filename string) string {
 	base := filepath.Base(filename)
 	if strings.HasSuffix(base, ".em.hcl") {
-		base = strings.TrimSuffix(base, ".em.hcl")
-	} else {
-		base = filepath.Base(filepath.Clean(filename))
-		if base == "." || base == string(filepath.Separator) {
-			if absolute, err := filepath.Abs(filename); err == nil {
-				base = filepath.Base(absolute)
-			}
+		return strings.TrimSuffix(base, ".em.hcl")
+	}
+	base = filepath.Base(filepath.Clean(filename))
+	if base == "." || base == string(filepath.Separator) {
+		if absolute, err := filepath.Abs(filename); err == nil {
+			base = filepath.Base(absolute)
 		}
 	}
-	words := strings.FieldsFunc(base, func(character rune) bool {
-		return character == '_' || character == '-'
-	})
-	for index, word := range words {
-		if word != "" {
-			words[index] = strings.ToUpper(word[:1]) + word[1:]
-		}
-	}
-	return strings.Join(words, " ")
+	return base
 }

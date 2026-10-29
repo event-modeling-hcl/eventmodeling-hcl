@@ -3,6 +3,8 @@
 package validator
 
 import (
+	"fmt"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 
@@ -46,14 +48,17 @@ func ValidateDocument(doc *syntax.Document, profile Profile) hcl.Diagnostics {
 	return diagnostics
 }
 
-// ValidateDecodedDocument validates decoded source and returns a construction
-// capability only when the selected profile contains no error diagnostics.
+// ValidateDecodedDocument validates decoded source. It returns a construction
+// capability iff the core rules report no error. The profile only assigns the
+// severity of judgment signals; it never decides whether the capability
+// exists, so a policy rejection still yields a ValidatedDocument.
 func ValidateDecodedDocument(doc *source.Document, profile Profile) (*ValidatedDocument, hcl.Diagnostics) {
-	diagnostics := applyProfile(validateBody(doc), profile)
-	if diagnostics.HasErrors() {
-		return nil, diagnostics
+	diagnostics := validateBody(doc)
+	var validated *ValidatedDocument
+	if !hasCoreErrors(diagnostics) {
+		validated = &ValidatedDocument{source: doc}
 	}
-	return &ValidatedDocument{source: doc}, diagnostics
+	return validated, applyProfile(diagnostics, profile)
 }
 
 type fieldTypeRef struct {
@@ -76,16 +81,15 @@ type modelIndex struct {
 	systems          map[string]bool
 	teams            map[string]bool
 	workflows        map[string]workflowIndex
-	workflowOrder    []string
 	scenarioCounts   map[string]int
 	definitionRanges map[string]hcl.Range
 	declarations     map[string]hcl.Range
-	externalContexts map[string]bool
 }
 
 type modelValidator struct {
-	index    modelIndex
-	document *source.Document
+	index modelIndex
+	// chaptered maps each workflow listed by a chapter to that chapter's id.
+	chaptered map[string]string
 }
 
 type contextValidator struct {
@@ -96,15 +100,19 @@ type contextValidator struct {
 // validateBody runs every validation pass over a parsed document body: it
 // builds the symbol index (index.go), then the structural/block-eligibility
 // checks per top-level block (structure.go, which in turn covers scenarios
-// in scenarios.go and per-workflow smells in smells.go), and finally the
-// whole-model shelf-anti-pattern smell check.
+// in scenarios.go and per-workflow smells in smells.go), the one-board rule,
+// and finally the whole-model shelf-anti-pattern smell check.
 func validateBody(document *source.Document) hcl.Diagnostics {
 	index, diagnostics := buildIndex(document)
-	validator := &modelValidator{index: index, document: document}
+	validator := &modelValidator{index: index, chaptered: map[string]string{}}
 	content, contentDiagnostics := syntax.Content(document.Parsed().Body(), syntax.ModelSchema())
 	diagnostics = append(diagnostics, contentDiagnostics...)
+	var boards hcl.Blocks
 	for _, block := range content.Blocks {
 		switch block.Type {
+		case "board":
+			boards = append(boards, block)
+			diagnostics = append(diagnostics, validator.validateBoard(block)...)
 		case "bounded_context":
 			diagnostics = append(diagnostics, validator.validateBoundedContext(block)...)
 		case "actor":
@@ -115,14 +123,27 @@ func validateBody(document *source.Document) hcl.Diagnostics {
 			diagnostics = append(diagnostics, validator.validateChapter(block)...)
 		case "hotspot":
 			diagnostics = append(diagnostics, validator.validateHotspot(block)...)
-		case "state_change", "state_view", "automation", "translation":
+		case "state_change", "state_view", "automation":
 			diagnostics = append(diagnostics, validator.validateWorkflow(block)...)
 		}
 	}
-	if document.Parsed().FileCount() > 1 {
-		diagnostics = append(diagnostics, validator.validateComposition(content.Blocks)...)
-	}
+	diagnostics = append(diagnostics, boardCountDiagnostics(document.Parsed().Start(), boards)...)
 	diagnostics = append(diagnostics, validator.validateShelfSmell()...)
+	return diagnostics
+}
+
+// boardCountDiagnostics enforces exactly one board block. A missing board is
+// reported at start, the start of the first member file; each repeated board
+// is reported at its own definition.
+func boardCountDiagnostics(start hcl.Range, boards hcl.Blocks) hcl.Diagnostics {
+	if len(boards) == 0 {
+		return hcl.Diagnostics{errorDiagnostic(codeInvalidBoard, start, "Missing board", "a model must declare exactly one board block.")}
+	}
+	var diagnostics hcl.Diagnostics
+	first := boards[0].DefRange
+	for _, board := range boards[1:] {
+		diagnostics = append(diagnostics, errorDiagnostic(codeInvalidBoard, board.DefRange, "Repeated board", fmt.Sprintf("a model must declare exactly one board block; first declared at %s:%d:%d.", first.Filename, first.Start.Line, first.Start.Column)))
+	}
 	return diagnostics
 }
 

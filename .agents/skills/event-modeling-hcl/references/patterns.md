@@ -2,14 +2,26 @@
 
 These are shape references, not vocabulary to copy. Each snippet assumes the
 referenced catalog declarations exist in the same model, in the same file or in
-another member file of the same folder.
+another member file of the same folder, and that the model's single `board`
+lists each workflow at its business-time position:
 
+```hcl
+board {
+  workflows = [
+    workflow.place_order,
+    workflow.view_order,
+    workflow.request_order_confirmation,
+    workflow.confirm_paid_order,
+  ]
+}
+```
 
 Shapes below are legal HCL. Methodology additions (todo-list read models, one
 command per screen, translation before domain work) are judgment: follow them
 unless the user asked for a minimal legal workflow. Do not add `linked_copy`,
 `storyline`, or `mapping` attributes. Scenario grammar here is HCL, not the
 canvas automation form (empty When, Then command, or "nothing dispatched").
+Every `field` carries an explicit `type`.
 
 ## State Change
 
@@ -30,7 +42,7 @@ bounded_context "orders" {
 
   event "order_placed" {
     aggregate = aggregate.order
-    field "order_id" {}
+    field "order_id" { type = field_type.order_id }
   }
 }
 
@@ -38,13 +50,13 @@ state_change "place_order" {
   screen "checkout" {
     actor = actor.customer
     to    = [command.place_order]
-    field "order_id" {}
+    field "order_id" { type = field_type.orders.order_id }
   }
 
   command "place_order" {
     aggregate = aggregate.orders.order
     to        = [event.orders.order_placed]
-    field "order_id" {}
+    field "order_id" { type = field_type.orders.order_id }
   }
 
   scenario "order_is_placed" {
@@ -78,7 +90,7 @@ state_view "view_order" {
     question = "What is the current status of this order?"
     from     = [event.orders.order_placed]
     to       = [screen.order_summary]
-    field "order_id" {}
+    field "order_id" { type = field_type.orders.order_id }
   }
 
   screen "order_summary" {
@@ -126,11 +138,12 @@ automation "request_order_confirmation" {
 
 The read model is a queue of pending items, not a status flag on the entity.
 A completion event is added to that read model's `from` list; do not reverse
-an edge, and do not invent a closer attribute. Automation consumes only
-internal events. `when` is the processor or the command it issues. `then` is
+an edge, and do not invent a closer attribute. This automation consumes only
+internal events; one that consumes external events is a translation (below).
+`when` is the processor or the command it issues. `then` is
 an event or an error, never the command, and never empty.
 
-## Translation
+## Translation (an automation over external events)
 
 ```hcl
 system "payment_provider" {
@@ -148,7 +161,7 @@ bounded_context "orders" {
   event "order_confirmed" {}
 }
 
-translation "confirm_paid_order" {
+automation "confirm_paid_order" {
   readmodel "payments_to_record" {
     question = "Which captured payment facts need translation into order facts?"
     from     = [event.payment_provider.payment_captured]
@@ -171,8 +184,10 @@ translation "confirm_paid_order" {
 }
 ```
 
-Translation consumes at least one event from a bounded context marked
-`external = true` and emits the receiving domain's language. The internal
+A translation is an `automation` that consumes at least one event from a
+bounded context marked `external = true` and emits the receiving domain's
+language. There is no `translation` keyword; tools derive the translation from
+the external edge. The internal
 event is a new fact, not a linked copy of the external one. Do not rename the
 external fact and leak it as the internal event. Do not add the internal event
 to the translation read model's `from` list as a "closer". The list is a relay

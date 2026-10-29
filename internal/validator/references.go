@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/hcl/v2"
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/source"
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/syntax"
 )
 
 func (v *modelValidator) validateOwnerReference(attribute *hcl.Attribute) hcl.Diagnostics {
@@ -76,83 +75,22 @@ func (v *modelValidator) validateReferenceList(attribute *hcl.Attribute, expecte
 	return diagnostics
 }
 
-// validateChapterRange enforces the contiguous source-order chapter rule of a
-// one-file model. A multi-file model orders workflows by its chapters instead,
-// so the rule does not apply there.
-func (v *modelValidator) validateChapterRange(attribute *hcl.Attribute) hcl.Diagnostics {
+// workflowEntry is one entry of a workflows list that names a declared
+// workflow.
+type workflowEntry struct {
+	id      string
+	subject hcl.Range
+}
+
+// declaredWorkflowEntries returns the entries of a workflows list that name a
+// declared workflow, in list order. validateReferenceList reports malformed and
+// unresolved entries; they take no part in membership or board checks.
+func (v *modelValidator) declaredWorkflowEntries(attribute *hcl.Attribute) []workflowEntry {
 	expressions, diagnostics := hcl.ExprList(attribute.Expr)
-	if diagnostics.HasErrors() || len(expressions) < 2 || v.document.Parsed().FileCount() > 1 {
-		return diagnostics
-	}
-	positions := make(map[string]int, len(v.index.workflowOrder))
-	for index, workflow := range v.index.workflowOrder {
-		positions[workflow] = index
-	}
-	previous := -1
-	for _, expression := range expressions {
-		traversal, traversalDiagnostics := hcl.AbsTraversalForExpr(expression)
-		if traversalDiagnostics.HasErrors() {
-			continue
-		}
-		parts, ok := traversalParts(traversal)
-		if !ok || len(parts) != 2 || parts[0] != "workflow" {
-			continue
-		}
-		position, exists := positions[parts[1]]
-		if !exists {
-			continue
-		}
-		if previous >= 0 && position != previous+1 {
-			return hcl.Diagnostics{errorDiagnostic(codeInvalidChapterRange, attribute.Expr.Range(), "Invalid chapter range", "chapter workflows must be contiguous and listed in source order.")}
-		}
-		previous = position
-	}
-	return nil
-}
-
-// validateComposition checks the rules that only apply to a model made of
-// several files: chapters live in one file, no workflow is in two chapters,
-// and every workflow is in a chapter. References that do not resolve are
-// already reported as EM102 and take no part in these checks.
-func (v *modelValidator) validateComposition(blocks hcl.Blocks) hcl.Diagnostics {
-	var diagnostics hcl.Diagnostics
-	chapterFile := ""
-	chaptered := map[string]string{}
-	for _, block := range blocks {
-		if block.Type != "chapter" || len(block.Labels) == 0 {
-			continue
-		}
-		if chapterFile == "" {
-			chapterFile = block.DefRange.Filename
-		}
-		if block.DefRange.Filename != chapterFile {
-			diagnostics = append(diagnostics, errorDiagnostic(codeChaptersInSeveralFiles, block.DefRange, "Chapters in several files", fmt.Sprintf("all chapter blocks of a multi-file model must be in one file; first chapter file is %s.", chapterFile)))
-		}
-		diagnostics = append(diagnostics, v.collectChapterWorkflows(block, chaptered)...)
-	}
-	for _, workflow := range v.index.workflowOrder {
-		if _, ok := chaptered[workflow]; !ok {
-			diagnostics = append(diagnostics, warningDiagnostic(codeUnchapteredWorkflow, v.index.definitionRanges[workflow], "Workflow outside every chapter", fmt.Sprintf("workflow.%s is in no chapter; it is placed after chaptered workflows in file name order. Add it to a chapter.", workflow)))
-		}
-	}
-	return diagnostics
-}
-
-// collectChapterWorkflows records each declared workflow listed by a chapter in
-// chaptered, mapping it to that chapter's id. A workflow already recorded for
-// an earlier chapter block is reported as EM014 on the later list item.
-func (v *modelValidator) collectChapterWorkflows(chapter *hcl.Block, chaptered map[string]string) hcl.Diagnostics {
-	content, _, _ := syntax.PartialContent(chapter.Body, syntax.ChapterSchema())
-	attribute := content.Attributes["workflows"]
-	if attribute == nil {
+	if diagnostics.HasErrors() {
 		return nil
 	}
-	expressions, listDiagnostics := hcl.ExprList(attribute.Expr)
-	if listDiagnostics.HasErrors() {
-		return nil
-	}
-	var diagnostics hcl.Diagnostics
-	listed := map[string]bool{}
+	entries := make([]workflowEntry, 0, len(expressions))
 	for _, expression := range expressions {
 		traversal, traversalDiagnostics := hcl.AbsTraversalForExpr(expression)
 		if traversalDiagnostics.HasErrors() {
@@ -165,12 +103,28 @@ func (v *modelValidator) collectChapterWorkflows(chapter *hcl.Block, chaptered m
 		if _, declared := v.index.workflows[parts[1]]; !declared {
 			continue
 		}
-		if owner, exists := chaptered[parts[1]]; exists && !listed[parts[1]] {
-			diagnostics = append(diagnostics, errorDiagnostic(codeWorkflowInSeveralChapters, expression.Range(), "Workflow in several chapters", fmt.Sprintf("workflow.%s is already in chapter.%s.", parts[1], owner)))
+		entries = append(entries, workflowEntry{id: parts[1], subject: expression.Range()})
+	}
+	return entries
+}
+
+// collectChapterWorkflows records each declared workflow listed by chapter in
+// v.chaptered. A workflow repeated in the same list is EM002; a workflow
+// already recorded for an earlier chapter block is EM014 on the later entry.
+func (v *modelValidator) collectChapterWorkflows(chapter string, attribute *hcl.Attribute) hcl.Diagnostics {
+	var diagnostics hcl.Diagnostics
+	listed := map[string]bool{}
+	for _, entry := range v.declaredWorkflowEntries(attribute) {
+		if listed[entry.id] {
+			diagnostics = append(diagnostics, errorDiagnostic(codeDuplicateID, entry.subject, "Duplicate chapter workflow", fmt.Sprintf("workflow.%s is listed more than once in chapter.%s.", entry.id, chapter)))
 			continue
 		}
-		chaptered[parts[1]] = chapter.Labels[0]
-		listed[parts[1]] = true
+		listed[entry.id] = true
+		if owner, exists := v.chaptered[entry.id]; exists {
+			diagnostics = append(diagnostics, errorDiagnostic(codeWorkflowInSeveralChapters, entry.subject, "Workflow in several chapters", fmt.Sprintf("workflow.%s is already in chapter.%s.", entry.id, owner)))
+			continue
+		}
+		v.chaptered[entry.id] = chapter
 	}
 	return diagnostics
 }
@@ -234,7 +188,7 @@ func allowedFlowRoots(workflowType, ownerKind, direction string) []string {
 		case ownerKind == "readmodel" && direction == "to":
 			return []string{"screen"}
 		}
-	case "automation", "translation":
+	case "automation":
 		switch {
 		case ownerKind == "readmodel" && direction == "from":
 			return []string{"event"}
@@ -346,27 +300,6 @@ func (v *contextValidator) fieldTypeAddress(attribute *hcl.Attribute) (string, h
 		return address, hcl.Diagnostics{unresolvedReference(attribute, parts)}
 	}
 	return address, nil
-}
-
-// inferredFieldTypeAddress resolves the field_type a typeless field block infers
-// from its own name. A field owned by a bounded_context (event or subfield)
-// resolves against that context; a workflow-element field resolves the unique
-// document-wide field_type of the same name and errors on absence or ambiguity.
-func (v *contextValidator) inferredFieldTypeAddress(name string, subject hcl.Range) (string, hcl.Diagnostics) {
-	if address := v.model.document.InferFieldType(v.contextID, name); address != "" {
-		address = strings.TrimPrefix(address, "field_type.")
-		if _, exists := v.model.index.fieldTypes[address]; !exists {
-			return "", hcl.Diagnostics{errorDiagnostic(codeInvalidFieldType, subject, "Unresolved field type", fmt.Sprintf("field %q has no type and bounded_context %q declares no field_type %q.", name, v.contextID, name))}
-		}
-		return address, nil
-	}
-	contexts := v.model.document.FieldTypeContexts(name)
-	switch len(contexts) {
-	case 0:
-		return "", hcl.Diagnostics{errorDiagnostic(codeInvalidFieldType, subject, "Unresolved field type", fmt.Sprintf("field %q has no type and no field_type %q is declared in any bounded_context.", name, name))}
-	default:
-		return "", hcl.Diagnostics{errorDiagnostic(codeInvalidFieldType, subject, "Ambiguous field type", fmt.Sprintf("field %q has no type and field_type %q is declared in multiple bounded_contexts (%s); add an explicit type.", name, name, strings.Join(contexts, ", ")))}
-	}
 }
 
 func absoluteTraversal(attribute *hcl.Attribute) (hcl.Traversal, hcl.Diagnostics) {

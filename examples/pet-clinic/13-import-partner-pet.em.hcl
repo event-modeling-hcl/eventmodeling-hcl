@@ -1,4 +1,4 @@
-translation "import_partner_pet" {
+automation "import_partner_pet" {
   title       = "Import partner pet"
   description = "Translate the partner contract into the clinic language."
 

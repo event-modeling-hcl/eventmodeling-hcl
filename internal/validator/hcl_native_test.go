@@ -42,9 +42,9 @@ state_change "add_pet" {
 	requireNoErrors(t, diagnostics)
 }
 
-func TestValidateSource_AcceptsExplicitTranslationWorkflow(t *testing.T) {
+func TestValidateSource_AcceptsAutomationConsumingExternalEvent(t *testing.T) {
 	model := nativeCatalog() + `
-translation "import_pet" {
+automation "import_pet" {
   title = "Import Pet"
 
   processor "translate_pet" {
@@ -538,50 +538,43 @@ state_change "add_pet" {
 	requireNoWarning(t, diagnostics, "Every command has a reason")
 }
 
-func TestValidateSource_RejectsTranslationWithoutExternalInput(t *testing.T) {
+func TestValidateSource_AcceptsAutomationConsumingInternalAndExternalEvents(t *testing.T) {
+	model := nativeCatalog() + `
+automation "sync_pet" {
+  title = "Sync Pet"
+  processor "syncer" {
+    title = "Syncer"
+    from  = [event.pet_management.pet_added, event.partner.pet_received]
+  }
+}
+`
+
+	requireNoErrors(t, validateModel(t, model))
+}
+
+func TestValidateSource_RejectsTranslationKeyword(t *testing.T) {
 	model := nativeCatalog() + `
 translation "translate_pet" {
   title = "Translate Pet"
-  processor "translator" {
-    title = "Translator"
-    from  = [event.pet_management.pet_added]
-  }
 }
 `
 
-	diagnostics := validateModel(t, model)
-
-	requireDiagnostic(t, diagnostics, "translation must consume at least one event from an external bounded_context")
+	unsupported := requireOneDiagnostic(t, validateModel(t, model), "EM000", hcl.DiagError, "model.em.hcl")
+	if unsupported.Summary != "Unsupported block type" {
+		t.Fatalf("translation diagnostic summary = %q, want Unsupported block type", unsupported.Summary)
+	}
 }
 
-func TestValidateSource_RejectsAutomationWithExternalInput(t *testing.T) {
-	model := nativeCatalog() + `
-automation "translate_pet" {
-  title = "Translate Pet"
-  processor "translator" {
-    title = "Translator"
-    from  = [event.partner.pet_received]
-  }
-}
-`
-
-	diagnostics := validateModel(t, model)
-
-	requireDiagnostic(t, diagnostics, "use a translation workflow")
-}
-
-func TestValidateSource_RejectsChapterWhoseWorkflowsAreNotContiguous(t *testing.T) {
+func TestValidateSource_AcceptsChapterListInAnyOrder(t *testing.T) {
 	model := `state_change "first" { title = "First" }
 state_change "middle" { title = "Middle" }
 state_change "last" { title = "Last" }
 chapter "disconnected" {
   title     = "Disconnected"
-  workflows = [workflow.first, workflow.last]
+  workflows = [workflow.last, workflow.first]
 }`
 
-	diagnostics := validateModel(t, model)
-
-	requireDiagnostic(t, diagnostics, "chapter workflows must be contiguous")
+	requireNoErrors(t, validateModel(t, model))
 }
 
 func TestValidateSource_RejectsEmptyChapter(t *testing.T) {

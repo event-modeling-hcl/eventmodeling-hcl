@@ -92,12 +92,12 @@ func TestImport_ForeignDocumentProducesValidModel(t *testing.T) {
 		t.Fatalf("external context = %#v, want an external context holding Inventory Changed", external)
 	}
 
-	readModel := built.Workflows[1].Elements[0]
+	readModel := elementOfKind(t, built.Workflows[1], model.ReadModel)
 	if want := []string{"event.cart.item_added", "event.external.inventory_changed"}; !reflect.DeepEqual(readModel.From, want) {
 		t.Fatalf("readmodel from = %v, want %v (copy resolved through linkedId)", readModel.From, want)
 	}
 
-	command := built.Workflows[0].Elements[1]
+	command := elementOfKind(t, built.Workflows[0], model.Command)
 	examples := map[string]string{}
 	types := map[string]string{}
 	for _, field := range command.Fields {
@@ -115,6 +115,19 @@ func TestImport_ForeignDocumentProducesValidModel(t *testing.T) {
 	if last := steps[len(steps)-1]; last.Target != "error" || last.Error != "Cart is full" {
 		t.Fatalf("last step = %#v, want SPEC_ERROR imported as an error step", last)
 	}
+}
+
+// elementOfKind returns the workflow's single element of kind; elements are
+// ID-sorted, so tests find them by kind rather than position.
+func elementOfKind(t *testing.T, workflow model.Workflow, kind model.ElementKind) model.Element {
+	t.Helper()
+	for _, element := range workflow.Elements {
+		if element.Kind == kind {
+			return element
+		}
+	}
+	t.Fatalf("workflow.%s has no %s", workflow.ID, kind)
+	return model.Element{}
 }
 
 // conformingSlice is the smallest schema-valid slice; schema-violation cases
@@ -267,7 +280,11 @@ func TestExport_DisclosesCatalogDeclarationsWithoutASchemaHome(t *testing.T) {
 // identity of bounded contexts, including an external context that shares the
 // display name of an internal one.
 func TestExportImport_PreservesFlowOrderAndContextIdentity(t *testing.T) {
-	source := []byte(`bounded_context "orders" {
+	source := []byte(`board {
+  workflows = [workflow.place, workflow.quotes, workflow.accept_quote]
+}
+bounded_context "orders" {
+  title = "Orders"
   event "placed" {}
   event "rejected" {}
 }
@@ -290,7 +307,7 @@ state_view "quotes" {
     from     = [event.orders_external.quoted, event.orders.rejected]
   }
 }
-translation "accept_quote" {
+automation "accept_quote" {
   owner = bounded_context.orders_external
   processor "accept" {
     from = [event.orders_external.quoted]
@@ -338,5 +355,161 @@ translation "accept_quote" {
 	}
 	if got, want := contexts(again), contexts(original); !reflect.DeepEqual(got, want) {
 		t.Fatalf("contexts = %+v, want %+v", got, want)
+	}
+}
+
+// TRANSLATION is a derived view: import writes an automation, the model marks
+// its consumed external event edge, and export derives TRANSLATION again.
+func TestImportExport_TranslationRoundTripsThroughAutomation(t *testing.T) {
+	input := []byte(`{"slices":[{"id":"workflow.accept","title":"Accept","context":"orders","sliceType":"TRANSLATION",
+		"events":[
+			{"id":"event.partner.quoted","title":"Quoted","type":"EVENT","modelContext":"partner","context":"EXTERNAL","fields":[],"dependencies":[{"id":"processor.accept.accept","type":"OUTBOUND","title":"Accept","elementType":"AUTOMATION"}]},
+			{"id":"event.orders.accepted","title":"Accepted","type":"EVENT","modelContext":"orders","context":"INTERNAL","fields":[],"dependencies":[{"id":"command.accept.accept","type":"INBOUND","title":"Accept","elementType":"COMMAND"}]}],
+		"processors":[{"id":"processor.accept.accept","title":"Accept","type":"AUTOMATION","fields":[],"dependencies":[{"id":"event.partner.quoted","type":"INBOUND","title":"Quoted","elementType":"EVENT"},{"id":"command.accept.accept","type":"OUTBOUND","title":"Accept","elementType":"COMMAND"}]}],
+		"commands":[{"id":"command.accept.accept","title":"Accept","type":"COMMAND","fields":[],"dependencies":[{"id":"processor.accept.accept","type":"INBOUND","title":"Accept","elementType":"AUTOMATION"},{"id":"event.orders.accepted","type":"OUTBOUND","title":"Accepted","elementType":"EVENT"}]}],
+		"readmodels":[],"screens":[],"tables":[],"specifications":[]}]}`)
+	imported := app.Import("translation.json", input, "translation.em.hcl")
+	if imported.Diagnostics.HasErrors() {
+		t.Fatalf("import diagnostics: %+v\n%s", imported.Diagnostics, imported.Source)
+	}
+	if !strings.Contains(imported.Source, `automation "accept"`) || strings.Contains(imported.Source, "translation") {
+		t.Fatalf("TRANSLATION slice not imported as an automation:\n%s", imported.Source)
+	}
+	built, diagnostics := app.ValidatedModel("translation.em.hcl", []byte(imported.Source), app.Valid)
+	if diagnostics.HasErrors() {
+		t.Fatalf("model diagnostics: %+v", diagnostics)
+	}
+	external := false
+	for _, edge := range built.Edges {
+		external = external || edge.WorkflowID == "accept" && edge.External && edge.From == "event.partner.quoted"
+	}
+	if built.Workflows[0].Kind != model.Automation || !external {
+		t.Fatalf("automation does not consume the external event: %+v %+v", built.Workflows[0], built.Edges)
+	}
+	exported := app.Export("translation.em.hcl", []byte(imported.Source))
+	if exported.Diagnostics.HasErrors() {
+		t.Fatalf("export diagnostics: %+v", exported.Diagnostics)
+	}
+	if got := parsed(t, exported.JSON).Slices[0].SliceType; got != "TRANSLATION" {
+		t.Fatalf("sliceType = %q, want TRANSLATION", got)
+	}
+}
+
+func TestExport_AutomationWithoutExternalEventIsAutomation(t *testing.T) {
+	source := []byte(`board { workflows = [workflow.react] }
+bounded_context "orders" {
+  event "placed" {}
+  event "confirmed" {}
+}
+automation "react" {
+  processor "confirm" {
+    from = [event.orders.placed]
+    to   = [command.confirm]
+  }
+  command "confirm" {
+    to = [event.orders.confirmed]
+  }
+}`)
+	exported := app.Export("react.em.hcl", source)
+	if exported.Diagnostics.HasErrors() {
+		t.Fatalf("export diagnostics: %+v", exported.Diagnostics)
+	}
+	if got := parsed(t, exported.JSON).Slices[0].SliceType; got != "AUTOMATION" {
+		t.Fatalf("sliceType = %q, want AUTOMATION", got)
+	}
+}
+
+func TestExport_OffBoardWorkflowsFollowTheBoardInIDOrder(t *testing.T) {
+	source := []byte(`board { workflows = [workflow.middle] }
+state_change "zeta" {
+  command "zeta" { api_endpoint = "POST /zeta" }
+}
+state_change "middle" {
+  command "middle" { api_endpoint = "POST /middle" }
+}
+state_change "alpha" {
+  command "alpha" { api_endpoint = "POST /alpha" }
+}`)
+	exported := app.Export("offboard.em.hcl", source)
+	if exported.Diagnostics.HasErrors() {
+		t.Fatalf("export diagnostics: %+v", exported.Diagnostics)
+	}
+	var order []string
+	for index, slice := range parsed(t, exported.JSON).Slices {
+		if slice.Index == nil || *slice.Index != float64(index) {
+			t.Fatalf("slice %s index = %v, want %d", slice.ID, slice.Index, index)
+		}
+		order = append(order, slice.ID)
+	}
+	if want := []string{"workflow.middle", "workflow.alpha", "workflow.zeta"}; !reflect.DeepEqual(order, want) {
+		t.Fatalf("slice order = %v, want %v", order, want)
+	}
+	var offBoard []string
+	for _, warning := range exported.Warnings {
+		if strings.Contains(warning, "off-board") {
+			offBoard = append(offBoard, warning)
+		}
+	}
+	if len(offBoard) != 1 || !strings.Contains(offBoard[0], "workflow.alpha, workflow.zeta") || strings.Contains(offBoard[0], "workflow.middle") {
+		t.Fatalf("off-board warnings = %v, want one naming workflow.alpha and workflow.zeta", offBoard)
+	}
+}
+
+func TestImport_WritesABoardInSliceIndexOrder(t *testing.T) {
+	slice := func(id string, index int) string {
+		return fmt.Sprintf(`{"id":"workflow.%s","title":"%s","index":%d,"sliceType":"STATE_CHANGE","commands":[{"id":"command.%s.%s","title":"Do","type":"COMMAND","fields":[],"dependencies":[]}],"events":[],"readmodels":[],"screens":[],"processors":[],"tables":[],"specifications":[]}`, id, id, index, id, id)
+	}
+	input := []byte(`{"slices":[` + slice("second", 1) + `,` + slice("first", 0) + `,` + slice("third", 2) + `]}`)
+	imported := app.Import("board.json", input, "board.em.hcl")
+	if imported.Diagnostics.HasErrors() {
+		t.Fatalf("import diagnostics: %+v\n%s", imported.Diagnostics, imported.Source)
+	}
+	if !strings.HasPrefix(imported.Source, "board {\n  workflows = [workflow.first, workflow.second, workflow.third]\n}\n") {
+		t.Fatalf("board not written first in slice index order:\n%s", imported.Source)
+	}
+	built, diagnostics := app.ValidatedModel("board.em.hcl", []byte(imported.Source), app.Valid)
+	if diagnostics.HasErrors() {
+		t.Fatalf("model diagnostics: %+v", diagnostics)
+	}
+	if want := []string{"first", "second", "third"}; !reflect.DeepEqual(built.Board, want) || len(built.OffBoard) != 0 {
+		t.Fatalf("board = %v, off-board = %v, want %v", built.Board, built.OffBoard, want)
+	}
+}
+
+func TestExport_UntitledConstructsUseTheirID(t *testing.T) {
+	source := []byte(`board { workflows = [workflow.register] }
+actor "clerk" { auth_required = false }
+bounded_context "clinic" {
+  aggregate "pet" {}
+  event "pet_registered" {
+    aggregate = aggregate.pet
+  }
+}
+state_change "register" {
+  screen "form" {
+    actor = actor.clerk
+    to    = [command.register_pet]
+  }
+  command "register_pet" {
+    to = [event.clinic.pet_registered]
+  }
+  scenario "registers" {
+    when { command = command.register_pet }
+    then { event = event.clinic.pet_registered }
+  }
+}`)
+	exported := app.Export("untitled.em.hcl", source)
+	if exported.Diagnostics.HasErrors() {
+		t.Fatalf("export diagnostics: %+v", exported.Diagnostics)
+	}
+	slice := parsed(t, exported.JSON).Slices[0]
+	got := []string{slice.Title, slice.Screens[0].Title, slice.Commands[0].Title, slice.Events[0].Title, slice.Events[0].Aggregate, slice.Actors[0].Name, slice.Specifications[0].Title, slice.Specifications[0].When[0].Title}
+	if want := []string{"register", "form", "register_pet", "pet_registered", "pet", "clerk", "registers", "register_pet"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("untitled names = %v, want raw IDs %v", got, want)
+	}
+	for _, warning := range exported.Warnings {
+		if strings.Contains(warning, "actor.clerk label") {
+			t.Fatalf("untitled actor whose ID is its name warned: %s", warning)
+		}
 	}
 }

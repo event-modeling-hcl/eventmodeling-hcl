@@ -1,9 +1,17 @@
 // Package model lowers validated Event Modeling source into a canonical model.
+//
+// The model is independent of file layout: the story sequence comes only from
+// the board, and every other collection is sorted by its qualified ID in byte
+// order. Field order, scenario step order, and the order of explicit reference
+// lists (from, to, and the board) keep their source order. A Title of "" means
+// the source states no title; no title is derived from an ID.
 package model
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
+	"slices"
 	"strings"
 
 	sourcepkg "github.com/event-modeling-hcl/eventmodeling-hcl/internal/source"
@@ -22,7 +30,6 @@ const (
 	StateChange WorkflowKind = "state_change"
 	StateView   WorkflowKind = "state_view"
 	Automation  WorkflowKind = "automation"
-	Translation WorkflowKind = "translation"
 )
 
 type ElementKind string
@@ -44,10 +51,15 @@ const (
 	Then  StepKind = "then"
 )
 
+// Model is the canonical model. Workflows holds the board workflows in board
+// order, then the off-board workflows in ID byte order. Board and OffBoard name
+// the same workflows by ID.
 type Model struct {
 	Actors    []Actor    `json:"actors,omitempty"`
 	Owners    []Owner    `json:"owners,omitempty"`
 	Contexts  []Context  `json:"contexts,omitempty"`
+	Board     []string   `json:"board,omitempty"`
+	OffBoard  []string   `json:"off_board,omitempty"`
 	Workflows []Workflow `json:"workflows,omitempty"`
 	Chapters  []Chapter  `json:"chapters,omitempty"`
 	Hotspots  []Hotspot  `json:"hotspots,omitempty"`
@@ -55,39 +67,35 @@ type Model struct {
 }
 
 type Actor struct {
-	ID            string `json:"id"`
-	Title         string `json:"title"`
-	TitleExplicit bool   `json:"title_explicit"`
-	AuthRequired  bool   `json:"auth_required"`
-	Description   string `json:"description,omitempty"`
+	ID           string `json:"id"`
+	Title        string `json:"title,omitempty"`
+	AuthRequired bool   `json:"auth_required"`
+	Description  string `json:"description,omitempty"`
 }
 
 type Owner struct {
-	Kind          string `json:"kind"`
-	ID            string `json:"id"`
-	Title         string `json:"title"`
-	TitleExplicit bool   `json:"title_explicit"`
-	Description   string `json:"description,omitempty"`
-	External      bool   `json:"external,omitempty"`
+	Kind        string `json:"kind"`
+	ID          string `json:"id"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	External    bool   `json:"external,omitempty"`
 }
 
 type Context struct {
-	ID            string      `json:"id"`
-	Title         string      `json:"title"`
-	TitleExplicit bool        `json:"title_explicit"`
-	Description   string      `json:"description,omitempty"`
-	External      bool        `json:"external,omitempty"`
-	Owner         string      `json:"owner,omitempty"`
-	Aggregates    []Aggregate `json:"aggregates,omitempty"`
-	FieldTypes    []FieldType `json:"field_types,omitempty"`
-	Events        []Event     `json:"events,omitempty"`
+	ID          string      `json:"id"`
+	Title       string      `json:"title,omitempty"`
+	Description string      `json:"description,omitempty"`
+	External    bool        `json:"external,omitempty"`
+	Owner       string      `json:"owner,omitempty"`
+	Aggregates  []Aggregate `json:"aggregates,omitempty"`
+	FieldTypes  []FieldType `json:"field_types,omitempty"`
+	Events      []Event     `json:"events,omitempty"`
 }
 
 type Aggregate struct {
-	ID            string `json:"id"`
-	Title         string `json:"title"`
-	TitleExplicit bool   `json:"title_explicit"`
-	Description   string `json:"description,omitempty"`
+	ID          string `json:"id"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 type FieldType struct {
@@ -106,36 +114,33 @@ type FieldType struct {
 }
 
 type Event struct {
-	ID            string       `json:"id"`
-	Title         string       `json:"title"`
-	TitleExplicit bool         `json:"title_explicit"`
-	Semantic      Semantic     `json:"semantic"`
-	Presentation  Presentation `json:"presentation"`
-	Fields        []Field      `json:"fields,omitempty"`
+	ID           string       `json:"id"`
+	Title        string       `json:"title,omitempty"`
+	Semantic     Semantic     `json:"semantic"`
+	Presentation Presentation `json:"presentation"`
+	Fields       []Field      `json:"fields,omitempty"`
 }
 
 type Workflow struct {
-	Kind          WorkflowKind `json:"kind"`
-	ID            string       `json:"id"`
-	Title         string       `json:"title"`
-	TitleExplicit bool         `json:"title_explicit"`
-	Status        string       `json:"status,omitempty"`
-	Owner         string       `json:"owner,omitempty"`
-	Description   string       `json:"description,omitempty"`
-	Elements      []Element    `json:"elements,omitempty"`
-	Scenarios     []Scenario   `json:"scenarios,omitempty"`
+	Kind        WorkflowKind `json:"kind"`
+	ID          string       `json:"id"`
+	Title       string       `json:"title,omitempty"`
+	Status      string       `json:"status,omitempty"`
+	Owner       string       `json:"owner,omitempty"`
+	Description string       `json:"description,omitempty"`
+	Elements    []Element    `json:"elements,omitempty"`
+	Scenarios   []Scenario   `json:"scenarios,omitempty"`
 }
 
 type Element struct {
-	Kind          ElementKind  `json:"kind"`
-	ID            string       `json:"id"`
-	Title         string       `json:"title"`
-	TitleExplicit bool         `json:"title_explicit"`
-	Semantic      Semantic     `json:"semantic"`
-	Presentation  Presentation `json:"presentation"`
-	Fields        []Field      `json:"fields,omitempty"`
-	From          []string     `json:"from,omitempty"`
-	To            []string     `json:"to,omitempty"`
+	Kind         ElementKind  `json:"kind"`
+	ID           string       `json:"id"`
+	Title        string       `json:"title,omitempty"`
+	Semantic     Semantic     `json:"semantic"`
+	Presentation Presentation `json:"presentation"`
+	Fields       []Field      `json:"fields,omitempty"`
+	From         []string     `json:"from,omitempty"`
+	To           []string     `json:"to,omitempty"`
 }
 
 type Semantic struct {
@@ -181,12 +186,11 @@ type Field struct {
 }
 
 type Scenario struct {
-	ID            string   `json:"id"`
-	Title         string   `json:"title"`
-	TitleExplicit bool     `json:"title_explicit"`
-	Description   string   `json:"description,omitempty"`
-	Steps         []Step   `json:"steps,omitempty"`
-	Comments      []string `json:"comments,omitempty"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Steps       []Step   `json:"steps,omitempty"`
+	Comments    []string `json:"comments,omitempty"`
 }
 
 type Step struct {
@@ -201,12 +205,13 @@ type Step struct {
 	Fields          []Field         `json:"fields,omitempty"`
 }
 
+// Chapter is a membership set: Workflows lists workflow.<id> references sorted
+// by ID and sets no board order.
 type Chapter struct {
-	ID            string   `json:"id"`
-	Title         string   `json:"title"`
-	TitleExplicit bool     `json:"title_explicit"`
-	Description   string   `json:"description,omitempty"`
-	Workflows     []string `json:"workflows,omitempty"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Workflows   []string `json:"workflows,omitempty"`
 }
 
 type Hotspot struct {
@@ -217,19 +222,27 @@ type Hotspot struct {
 	Status      string `json:"status,omitempty"`
 }
 
+// Edge is one canonical flow edge of a workflow. External is true iff From is
+// a catalog event whose owning bounded_context sets external = true.
 type Edge struct {
 	WorkflowID string `json:"workflow_id"`
 	From       string `json:"from"`
 	To         string `json:"to"`
+	External   bool   `json:"external,omitempty"`
 }
 
 // Build lowers a validated source document into the canonical Model. It is a
-// pure transformation: parsing and validation have already succeeded.
+// pure transformation: parsing and core validation have already succeeded.
 func Build(doc *validator.ValidatedDocument) *Model {
 	sourceDocument := doc.Source()
 	content, _ := syntax.Content(sourceDocument.Parsed().Body(), syntax.ModelSchema())
 	model := &Model{}
+	var workflows []Workflow
 	for _, block := range content.Blocks {
+		if block.Type == "board" {
+			model.Board = decodeBoard(block)
+			continue
+		}
 		if len(block.Labels) == 0 {
 			continue
 		}
@@ -244,77 +257,112 @@ func Build(doc *validator.ValidatedDocument) *Model {
 			model.Chapters = append(model.Chapters, decodeChapter(block))
 		case "hotspot":
 			model.Hotspots = append(model.Hotspots, decodeHotspot(block))
-		case "state_change", "state_view", "automation", "translation":
-			workflow, edges := decodeWorkflow(block, sourceDocument)
-			model.Workflows = append(model.Workflows, workflow)
-			model.Edges = append(model.Edges, edges...)
+		case "state_change", "state_view", "automation":
+			workflows = append(workflows, decodeWorkflow(block, sourceDocument))
 		}
 	}
-	if sourceDocument.Parsed().FileCount() > 1 {
-		orderWorkflows(model)
-	}
+	slices.SortFunc(model.Actors, func(a, b Actor) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(model.Owners, func(a, b Owner) int { return cmp.Compare(a.Kind+"."+a.ID, b.Kind+"."+b.ID) })
+	slices.SortFunc(model.Contexts, func(a, b Context) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(model.Chapters, func(a, b Chapter) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(model.Hotspots, func(a, b Hotspot) int { return cmp.Compare(a.ID, b.ID) })
+	model.Workflows, model.OffBoard = orderWorkflows(workflows, model.Board)
+	model.Edges = buildEdges(model.Workflows, externalContexts(model.Contexts))
 	return model
 }
 
-// orderWorkflows applies the multi-file board order: workflows in chapter
-// order, then each chapter's workflows list order, skipping a workflow already
-// placed, followed by every remaining workflow in model order. Edges are
-// regrouped to follow the same workflow order, keeping each workflow's edges
-// in their source order.
-func orderWorkflows(model *Model) {
-	position := make(map[string]int, len(model.Workflows))
-	for index, workflow := range model.Workflows {
-		position[workflow.ID] = index
+// decodeBoard returns the IDs of the board's workflows in list order.
+func decodeBoard(block *hcl.Block) []string {
+	content, _ := syntax.Content(block.Body, syntax.BoardSchema())
+	references := traversalList(content.Attributes["workflows"])
+	ids := make([]string, 0, len(references))
+	for _, reference := range references {
+		ids = append(ids, strings.TrimPrefix(reference, "workflow."))
 	}
-	placed := make(map[string]bool, len(model.Workflows))
-	ordered := make([]Workflow, 0, len(model.Workflows))
-	place := func(id string) {
-		index, known := position[id]
-		if !known || placed[id] {
-			return
-		}
-		placed[id] = true
-		ordered = append(ordered, model.Workflows[index])
-	}
-	for _, chapter := range model.Chapters {
-		for _, reference := range chapter.Workflows {
-			place(strings.TrimPrefix(reference, "workflow."))
-		}
-	}
-	for _, workflow := range model.Workflows {
-		place(workflow.ID)
-	}
-	model.Workflows = ordered
+	return ids
+}
 
-	edgesByWorkflow := make(map[string][]Edge, len(ordered))
-	for _, edge := range model.Edges {
-		edgesByWorkflow[edge.WorkflowID] = append(edgesByWorkflow[edge.WorkflowID], edge)
+// orderWorkflows returns the workflows in story order — board workflows in
+// board order, then the off-board workflows in ID byte order — and the IDs of
+// the off-board workflows.
+func orderWorkflows(workflows []Workflow, board []string) ([]Workflow, []string) {
+	byID := make(map[string]Workflow, len(workflows))
+	for _, workflow := range workflows {
+		byID[workflow.ID] = workflow
 	}
-	model.Edges = nil
-	for _, workflow := range ordered {
-		model.Edges = append(model.Edges, edgesByWorkflow[workflow.ID]...)
+	ordered := make([]Workflow, 0, len(workflows))
+	for _, id := range board {
+		ordered = append(ordered, byID[id])
+		delete(byID, id)
 	}
+	var offBoard []string
+	for _, workflow := range workflows {
+		if _, unlisted := byID[workflow.ID]; unlisted {
+			offBoard = append(offBoard, workflow.ID)
+		}
+	}
+	slices.Sort(offBoard)
+	for _, id := range offBoard {
+		ordered = append(ordered, byID[id])
+	}
+	return ordered, offBoard
+}
+
+// externalContexts returns the IDs of the bounded contexts that set
+// external = true.
+func externalContexts(contexts []Context) map[string]bool {
+	external := map[string]bool{}
+	for _, context := range contexts {
+		if context.External {
+			external[context.ID] = true
+		}
+	}
+	return external
+}
+
+// buildEdges lists the canonical edges of every workflow: workflows in story
+// order, each workflow's elements in their order, and each element's to
+// targets, then its from sources, in list order. An edge from a catalog event
+// of an external context is marked External.
+func buildEdges(workflows []Workflow, external map[string]bool) []Edge {
+	var edges []Edge
+	for _, workflow := range workflows {
+		for _, element := range workflow.Elements {
+			owner := string(element.Kind) + "." + element.ID
+			for _, target := range element.To {
+				edges = append(edges, Edge{WorkflowID: workflow.ID, From: owner, To: target})
+			}
+			for _, source := range element.From {
+				edges = append(edges, Edge{WorkflowID: workflow.ID, From: source, To: owner, External: fromExternalContext(source, external)})
+			}
+		}
+	}
+	return edges
+}
+
+// fromExternalContext reports whether reference is event.<context>.<id> of a
+// context in external.
+func fromExternalContext(reference string, external map[string]bool) bool {
+	parts := strings.Split(reference, ".")
+	return len(parts) == 3 && parts[0] == "event" && external[parts[1]]
 }
 
 func decodeActor(block *hcl.Block) Actor {
 	content, _ := syntax.Content(block.Body, syntax.ActorSchema())
-	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
 	authRequired, _ := boolValue(content.Attributes["auth_required"])
-	return Actor{ID: block.Labels[0], Title: title, TitleExplicit: explicit, AuthRequired: authRequired, Description: stringValue(content.Attributes["description"])}
+	return Actor{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), AuthRequired: authRequired, Description: stringValue(content.Attributes["description"])}
 }
 
 func decodeOwner(block *hcl.Block) Owner {
 	content, _ := syntax.Content(block.Body, syntax.OwnerSchema(block.Type))
-	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
 	external, _ := boolValue(content.Attributes["external"])
-	return Owner{Kind: block.Type, ID: block.Labels[0], Title: title, TitleExplicit: explicit, Description: stringValue(content.Attributes["description"]), External: external}
+	return Owner{Kind: block.Type, ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), Description: stringValue(content.Attributes["description"]), External: external}
 }
 
 func decodeContext(block *hcl.Block, document *sourcepkg.Document) Context {
 	content, _ := syntax.Content(block.Body, syntax.BoundedContextSchema())
-	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
 	external, _ := boolValue(content.Attributes["external"])
-	context := Context{ID: block.Labels[0], Title: title, TitleExplicit: explicit, Description: stringValue(content.Attributes["description"]), External: external, Owner: traversalValue(content.Attributes["owner"])}
+	context := Context{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), Description: stringValue(content.Attributes["description"]), External: external, Owner: traversalValue(content.Attributes["owner"])}
 	fc := fieldContext{contextID: block.Labels[0], document: document}
 	for _, child := range content.Blocks {
 		switch child.Type {
@@ -326,13 +374,15 @@ func decodeContext(block *hcl.Block, document *sourcepkg.Document) Context {
 			context.Events = append(context.Events, decodeEvent(child, fc))
 		}
 	}
+	slices.SortFunc(context.Aggregates, func(a, b Aggregate) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(context.FieldTypes, func(a, b FieldType) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(context.Events, func(a, b Event) int { return cmp.Compare(a.ID, b.ID) })
 	return context
 }
 
 func decodeAggregate(block *hcl.Block) Aggregate {
 	content, _ := syntax.Content(block.Body, syntax.AggregateSchema())
-	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
-	return Aggregate{ID: block.Labels[0], Title: title, TitleExplicit: explicit, Description: stringValue(content.Attributes["description"])}
+	return Aggregate{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), Description: stringValue(content.Attributes["description"])}
 }
 
 func decodeFieldType(block *hcl.Block, fc fieldContext) FieldType {
@@ -347,49 +397,35 @@ func decodeFieldType(block *hcl.Block, fc fieldContext) FieldType {
 
 func decodeEvent(block *hcl.Block, fc fieldContext) Event {
 	content, _ := syntax.Content(block.Body, syntax.EventSchema())
-	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
-	return Event{ID: block.Labels[0], Title: title, TitleExplicit: explicit, Semantic: semanticFrom(content.Attributes), Presentation: presentationFrom(content.Attributes, fc.document.Parsed()), Fields: decodeElementFields(content, fc)}
+	return Event{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), Semantic: semanticFrom(content.Attributes), Presentation: presentationFrom(content.Attributes, fc.document.Parsed()), Fields: decodeElementFields(content, fc)}
 }
 
-func decodeWorkflow(block *hcl.Block, document *sourcepkg.Document) (Workflow, []Edge) {
+func decodeWorkflow(block *hcl.Block, document *sourcepkg.Document) Workflow {
 	content, _ := syntax.Content(block.Body, syntax.WorkflowSchema())
-	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
-	workflow := Workflow{Kind: mustWorkflowKind(block.Type), ID: block.Labels[0], Title: title, TitleExplicit: explicit, Status: stringValue(content.Attributes["status"]), Owner: traversalValue(content.Attributes["owner"]), Description: stringValue(content.Attributes["description"])}
-	var edges []Edge
+	workflow := Workflow{Kind: mustWorkflowKind(block.Type), ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), Status: stringValue(content.Attributes["status"]), Owner: traversalValue(content.Attributes["owner"]), Description: stringValue(content.Attributes["description"])}
 	for _, child := range content.Blocks {
 		switch child.Type {
 		case "command", "readmodel", "screen", "processor", "screen_image", "table":
-			element, elementEdges := decodeElement(workflow.ID, child, document)
-			workflow.Elements = append(workflow.Elements, element)
-			edges = append(edges, elementEdges...)
+			workflow.Elements = append(workflow.Elements, decodeElement(child, document))
 		case "scenario":
 			workflow.Scenarios = append(workflow.Scenarios, decodeScenario(child, document))
 		}
 	}
-	return workflow, edges
+	slices.SortFunc(workflow.Elements, func(a, b Element) int {
+		return cmp.Compare(string(a.Kind)+"."+a.ID, string(b.Kind)+"."+b.ID)
+	})
+	slices.SortFunc(workflow.Scenarios, func(a, b Scenario) int { return cmp.Compare(a.ID, b.ID) })
+	return workflow
 }
 
-func decodeElement(workflowID string, block *hcl.Block, document *sourcepkg.Document) (Element, []Edge) {
+func decodeElement(block *hcl.Block, document *sourcepkg.Document) Element {
 	content, _ := syntax.Content(block.Body, elementSchemaFor(block.Type))
-	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
-	from := traversalList(content.Attributes["from"])
-	to := traversalList(content.Attributes["to"])
-	element := Element{Kind: mustElementKind(block.Type), ID: block.Labels[0], Title: title, TitleExplicit: explicit, Semantic: semanticFrom(content.Attributes), Presentation: presentationFrom(content.Attributes, document.Parsed()), Fields: decodeElementFields(content, fieldContext{document: document}), From: from, To: to}
-	owner := block.Type + "." + block.Labels[0]
-	edges := make([]Edge, 0, len(from)+len(to))
-	for _, target := range to {
-		edges = append(edges, Edge{WorkflowID: workflowID, From: owner, To: target})
-	}
-	for _, source := range from {
-		edges = append(edges, Edge{WorkflowID: workflowID, From: source, To: owner})
-	}
-	return element, edges
+	return Element{Kind: mustElementKind(block.Type), ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), Semantic: semanticFrom(content.Attributes), Presentation: presentationFrom(content.Attributes, document.Parsed()), Fields: decodeElementFields(content, fieldContext{document: document}), From: traversalList(content.Attributes["from"]), To: traversalList(content.Attributes["to"])}
 }
 
 func decodeScenario(block *hcl.Block, document *sourcepkg.Document) Scenario {
 	content, _ := syntax.Content(block.Body, syntax.ScenarioSchema())
-	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
-	scenario := Scenario{ID: block.Labels[0], Title: title, TitleExplicit: explicit, Description: stringValue(content.Attributes["description"])}
+	scenario := Scenario{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), Description: stringValue(content.Attributes["description"])}
 	for _, child := range content.Blocks {
 		if child.Type == "comment" {
 			comment, _ := syntax.Content(child.Body, syntax.CommentSchema())
@@ -569,8 +605,9 @@ func literalTemplateText(template *hclsyntax.TemplateExpr, parsed *syntax.Docume
 
 func decodeChapter(block *hcl.Block) Chapter {
 	content, _ := syntax.Content(block.Body, syntax.ChapterSchema())
-	title, explicit := effectiveTitle(block.Labels[0], content.Attributes["title"])
-	return Chapter{ID: block.Labels[0], Title: title, TitleExplicit: explicit, Description: stringValue(content.Attributes["description"]), Workflows: traversalList(content.Attributes["workflows"])}
+	workflows := traversalList(content.Attributes["workflows"])
+	slices.Sort(workflows)
+	return Chapter{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), Description: stringValue(content.Attributes["description"]), Workflows: workflows}
 }
 
 func decodeHotspot(block *hcl.Block) Hotspot {
@@ -590,19 +627,12 @@ func presentationFrom(attributes hcl.Attributes, parsed *syntax.Document) Presen
 	return Presentation{GroupID: stringValue(attributes["group_id"]), Tags: stringList(attributes["tags"]), Sketched: sketch, Prototype: attributes["prototype"] != nil, PrototypeData: jsonValue(attributes["prototype"], parsed), ListElement: listElement, URL: stringValue(attributes["url"])}
 }
 
-// fieldContext carries the information a typeless field block needs to infer its
-// field_type. contextID is the owning bounded_context for event and subfield
-// fields and empty for workflow-element fields, which resolve by unique name.
+// fieldContext carries what field decoding needs: contextID is the owning
+// bounded_context for event and subfield fields, which may use context-local
+// field_type references, and empty for workflow-element fields.
 type fieldContext struct {
 	contextID string
 	document  *sourcepkg.Document
-}
-
-// inferredType synthesizes the canonical field_type reference a typeless field
-// block infers from its name, matching the string an explicit type decodes to.
-// Load runs only on validated source, so resolution always succeeds here.
-func (fc fieldContext) inferredType(name string) string {
-	return fc.document.InferFieldType(fc.contextID, name)
 }
 
 // canonicalRef expands a two-part context-local field_type reference used in a
@@ -641,9 +671,6 @@ func decodeFields(blocks hcl.Blocks, fc fieldContext) []Field {
 		idAttribute, _ := boolValue(content.Attributes["id_attribute"])
 		pii, _ := boolValue(content.Attributes["pii"])
 		fieldType := typeValue(content.Attributes["type"])
-		if content.Attributes["type"] == nil {
-			fieldType = fc.inferredType(block.Labels[0])
-		}
 		var overrides []string
 		if strings.HasPrefix(fieldType, "field_type.") {
 			for _, name := range []string{"mapping", "schema", "optional", "technical_attribute", "generated", "id_attribute", "pii"} {
@@ -655,26 +682,6 @@ func decodeFields(blocks hcl.Blocks, fc fieldContext) []Field {
 		fields = append(fields, Field{Name: block.Labels[0], Type: fieldType, Cardinality: stringValue(content.Attributes["cardinality"]), Mapping: stringValue(content.Attributes["mapping"]), Optional: optional, TechnicalAttribute: technical, Generated: generated, IDAttribute: idAttribute, PII: pii, Schema: stringValue(content.Attributes["schema"]), Example: jsonValue(content.Attributes["example"], fc.document.Parsed()), Fields: decodeFields(content.Blocks, fc), Overrides: overrides})
 	}
 	return fields
-}
-
-func effectiveTitle(label string, attribute *hcl.Attribute) (string, bool) {
-	if title, ok := stringValueOK(attribute); ok {
-		return title, true
-	}
-	return Humanize(label), false
-}
-
-// Humanize derives the default title of a label: words split on underscores,
-// each capitalised ("todo_list" becomes "Todo List").
-func Humanize(label string) string {
-	words := strings.Split(label, "_")
-	for index, word := range words {
-		if word == "" {
-			continue
-		}
-		words[index] = strings.ToUpper(word[:1]) + word[1:]
-	}
-	return strings.Join(words, " ")
 }
 
 func stringValue(attribute *hcl.Attribute) string {
@@ -757,8 +764,6 @@ func mustWorkflowKind(value string) WorkflowKind {
 		return StateView
 	case "automation":
 		return Automation
-	case "translation":
-		return Translation
 	}
 	return ""
 }

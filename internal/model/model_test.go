@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	sourcepkg "github.com/event-modeling-hcl/eventmodeling-hcl/internal/source"
@@ -11,6 +13,18 @@ import (
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/validator"
 	"github.com/hashicorp/hcl/v2"
 )
+
+var workflowDeclaration = regexp.MustCompile(`(?m)^(?:state_change|state_view|automation)\s+"([a-z][a-z0-9_]*)"`)
+
+// withBoard appends to source a board that lists every workflow it declares,
+// in declaration order, for tests about anything but the board.
+func withBoard(source string) []byte {
+	var entries []string
+	for _, match := range workflowDeclaration.FindAllStringSubmatch(source, -1) {
+		entries = append(entries, "workflow."+match[1])
+	}
+	return []byte(source + "\nboard {\n  workflows = [" + strings.Join(entries, ", ") + "]\n}\n")
+}
 
 // loadTestModel follows the production parse, decode, validate, and build
 // sequence while keeping model assertions inside this package.
@@ -54,8 +68,8 @@ func TestBuild_DecodesCompleteModelIntoCanonicalIR(t *testing.T) {
 	if got := workflowByID(t, loaded, "notify_owner").Kind; got != Automation {
 		t.Fatalf("notify_owner kind = %q, want %q", got, Automation)
 	}
-	if got := workflowByID(t, loaded, "import_partner_pet").Kind; got != Translation {
-		t.Fatalf("import_partner_pet kind = %q, want %q", got, Translation)
+	if got := workflowByID(t, loaded, "import_partner_pet").Kind; got != Automation {
+		t.Fatalf("import_partner_pet kind = %q, want %q", got, Automation)
 	}
 
 	requireEdge(t, loaded, "register_pet", "screen.pet_screen", "command.register_pet_command")
@@ -88,12 +102,24 @@ func TestBuild_DecodesCompleteModelIntoCanonicalIR(t *testing.T) {
 	}
 }
 
-func TestBuild_DerivesTitlesWithoutChangingExplicitTitles(t *testing.T) {
-	source := []byte(`state_change "register_pet" {
+func TestBuild_KeepsAbsentTitlesEmpty(t *testing.T) {
+	source := withBoard(`actor "front_desk" { auth_required = true }
+bounded_context "clinic" {
+  aggregate "pet" {}
+  event "pet_registered" {}
+}
+state_change "register_pet" {
   command "register_pet" {}
+  scenario "registers" {
+    when { command = command.register_pet }
+    then { event = event.clinic.pet_registered }
+  }
 }
 state_change "explicit_title" {
   title = "A custom title"
+}
+chapter "registration" {
+  workflows = [workflow.register_pet]
 }`)
 
 	loaded, diagnostics := loadTestModel(t, "model.em.hcl", source)
@@ -101,22 +127,29 @@ state_change "explicit_title" {
 	if diagnostics.HasErrors() {
 		t.Fatalf("diagnostics = %s", diagnostics.Error())
 	}
-	derived := workflowByID(t, loaded, "register_pet")
-	if derived.Title != "Register Pet" || derived.TitleExplicit {
-		t.Fatalf("derived workflow = %#v, want derived Register Pet", derived)
+	workflow := workflowByID(t, loaded, "register_pet")
+	context := contextByID(t, loaded, "clinic")
+	for name, title := range map[string]string{
+		"actor":     loaded.Actors[0].Title,
+		"context":   context.Title,
+		"aggregate": context.Aggregates[0].Title,
+		"event":     context.Events[0].Title,
+		"workflow":  workflow.Title,
+		"command":   elementByID(t, workflow, "register_pet").Title,
+		"scenario":  workflow.Scenarios[0].Title,
+		"chapter":   loaded.Chapters[0].Title,
+	} {
+		if title != "" {
+			t.Errorf("%s title = %q, want absent", name, title)
+		}
 	}
-	command := elementByID(t, derived, "register_pet")
-	if command.Title != "Register Pet" || command.TitleExplicit {
-		t.Fatalf("derived command = %#v, want derived Register Pet", command)
-	}
-	explicit := workflowByID(t, loaded, "explicit_title")
-	if explicit.Title != "A custom title" || !explicit.TitleExplicit {
-		t.Fatalf("explicit workflow = %#v, want explicit title", explicit)
+	if got := workflowByID(t, loaded, "explicit_title").Title; got != "A custom title" {
+		t.Fatalf("explicit workflow title = %q, want A custom title", got)
 	}
 }
 
 func TestBuild_PreservesFieldTypeBadgesAndScenarioExamples(t *testing.T) {
-	source := []byte(`bounded_context "clinic" {
+	source := withBoard(`bounded_context "clinic" {
   field_type "pet_id" {
     type         = "UUID"
     id_attribute = true
@@ -218,14 +251,14 @@ func TestAppointmentWeatherPatternsModel_SpecifiesEveryWorkflowPattern(t *testin
 }
 
 func TestBuild_ResolvesFieldShorthands(t *testing.T) {
-	source := []byte(`bounded_context "clinic" {
+	source := withBoard(`bounded_context "clinic" {
   field_type "pet_id" { type = "UUID" }
   field_type "pet_name" { type = "String" }
 
   event "pet_added" {
     fields = [field_type.pet_name]
 
-    field "pet_id" {}
+    field "pet_id" { type = field_type.clinic.pet_id }
   }
 }
 
@@ -233,7 +266,7 @@ state_change "add_pet" {
   screen "add_pet_form" {
     fields = [field_type.clinic.pet_name]
 
-    field "pet_id" {}
+    field "pet_id" { type = field_type.clinic.pet_id }
   }
   command "add_pet" {
     external_trigger = true
@@ -254,7 +287,7 @@ state_change "add_pet" {
 		t.Fatalf("list field type = %q, want %q", got, want)
 	}
 	if got, want := event.Fields[1].Type, "field_type.clinic.pet_id"; got != want {
-		t.Fatalf("inferred event field type = %q, want %q", got, want)
+		t.Fatalf("explicit event field type = %q, want %q", got, want)
 	}
 
 	screen := elementByID(t, workflowByID(t, loaded, "add_pet"), "add_pet_form")
@@ -262,7 +295,7 @@ state_change "add_pet" {
 		t.Fatalf("screen field order = %#v, want [pet_name pet_id]", got)
 	}
 	if got, want := screen.Fields[1].Type, "field_type.clinic.pet_id"; got != want {
-		t.Fatalf("inferred screen field type = %q, want %q", got, want)
+		t.Fatalf("explicit screen field type = %q, want %q", got, want)
 	}
 }
 

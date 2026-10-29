@@ -86,7 +86,6 @@ func TestValidate_InvalidFoldersProduceExpectedErrors(t *testing.T) {
 		expectedCode string
 	}{
 		{"duplicate-workflow", "EM002"},
-		{"chapters-in-two-files", "EM013"},
 		{"workflow-in-two-chapters", "EM014"},
 	}
 
@@ -111,38 +110,13 @@ func TestValidate_InvalidFoldersProduceExpectedErrors(t *testing.T) {
 	}
 }
 
-func TestValidate_UnchapteredFolderWarnsUnderValid(t *testing.T) {
-	path := filepath.Join("..", "..", "testdata", "valid-folders", "unchaptered")
-	result := ValidatePath(path, Valid)
-	if result.HasErrors() {
-		t.Fatalf("ValidatePath should not error under Valid profile, got: %#v", result)
-	}
-	foundEM407 := false
-	for _, diag := range result {
-		if diag.Code == "EM407" {
-			foundEM407 = true
-			break
-		}
-	}
-	if !foundEM407 {
-		t.Fatalf("expected EM407 warning not found in diagnostics: %#v", result)
-	}
-}
-
-func TestValidate_UnchapteredFolderErrorsUnderStrict(t *testing.T) {
-	path := filepath.Join("..", "..", "testdata", "valid-folders", "unchaptered")
-	result := ValidatePath(path, Strict)
-	if !result.HasErrors() {
-		t.Fatalf("ValidatePath should error under Strict profile, got no errors")
-	}
-	foundEM407 := false
-	for _, diag := range result {
-		if diag.Code == "EM407" {
-			foundEM407 = true
-			break
-		}
-	}
-	if !foundEM407 {
-		t.Fatalf("expected EM407 error not found in diagnostics: %#v", result)
+func TestValidate_ValidFoldersHaveNoDiagnosticsUnderStrict(t *testing.T) {
+	for _, name := range []string{"chapters-in-two-files", "unchaptered"} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join("..", "..", "testdata", "valid-folders", name)
+			if result := ValidatePath(path, Strict); len(result) != 0 {
+				t.Fatalf("ValidatePath(%s, Strict) = %#v, want no diagnostics", name, result)
+			}
+		})
 	}
 }

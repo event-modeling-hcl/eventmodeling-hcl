@@ -3,3 +3,7 @@ state_change "example" {
 
   unknown "child" {}
 }
+
+board {
+  workflows = [workflow.example]
+}

@@ -88,29 +88,46 @@ const pollScript = `<script>
 })();
 </script>`
 
-// shellPage is served at "/": a minimal page whose only job is to hold the
-// iframe that actually shows the diagram, plus the poll script that reloads
-// the whole page (and so the iframe) when the served content changes.
-func shellPage() []byte {
+// shellPage is served at "/": a page whose job is to hold the iframe that
+// actually shows the diagram, plus the poll script that reloads the whole
+// page (and so the iframe) when the served content changes. When the model
+// renders but the profile rejects it — error-severity judgment signals and no
+// core error — a banner above the diagram lists those errors, so a policy
+// rejection is neither hidden nor mistaken for a broken model.
+func shellPage(result app.RenderResult) []byte {
+	banner := ""
+	if result.HTML != "" && result.Diagnostics.HasErrors() {
+		var rejected []app.Diagnostic
+		for _, diagnostic := range result.Diagnostics {
+			if diagnostic.Severity == "Error" {
+				rejected = append(rejected, diagnostic)
+			}
+		}
+		banner = `<section class="policy" role="alert">
+<strong>The profile rejects this model.</strong> The diagram still renders; these diagnostics fail the profile:
+<ul>
+` + diagnosticItems(rejected) + `</ul>
+</section>
+`
+	}
 	return []byte(`<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
 <title>emhcl serve</title>
-<style>html,body,iframe{margin:0;padding:0;border:0;width:100%;height:100%;display:block}</style>
+<style>html,body{margin:0;padding:0;width:100%;height:100%}body{display:flex;flex-direction:column}iframe{margin:0;padding:0;border:0;width:100%;flex:1;display:block}.policy{flex:none;max-height:30vh;overflow:auto;padding:8px 14px;font:13px/1.4 system-ui,sans-serif;background:#fff4e5;color:#5c3b00;border-bottom:1px solid #e0b060}.policy ul{margin:4px 0 0;padding-left:20px}</style>
 </head>
 <body>
-<iframe src="/diagram"></iframe>
+` + banner + `<iframe src="/diagram"></iframe>
 ` + pollScript + `
 </body>
 </html>
 `)
 }
 
-// diagnosticsPage is served at "/diagram" in place of HTML whenever the
-// current model has errors, so "nothing changed" and "the model is broken"
-// never look the same as a blank response.
-func diagnosticsPage(diagnostics []app.Diagnostic) []byte {
+// diagnosticItems renders diagnostics as HTML list items: severity, code,
+// summary, detail, and the place each one points at.
+func diagnosticItems(diagnostics []app.Diagnostic) string {
 	var items strings.Builder
 	for _, diagnostic := range diagnostics {
 		items.WriteString("<li><code>")
@@ -133,14 +150,20 @@ func diagnosticsPage(diagnostics []app.Diagnostic) []byte {
 		}
 		items.WriteString("</li>\n")
 	}
+	return items.String()
+}
 
+// diagnosticsPage is served at "/diagram" in place of HTML whenever the
+// current model has core errors, so "nothing changed" and "the model is
+// broken" never look the same as a blank response.
+func diagnosticsPage(diagnostics []app.Diagnostic) []byte {
 	return []byte(`<!doctype html>
 <html>
 <head><meta charset="utf-8"><title>emhcl: diagnostics</title></head>
 <body>
 <h1>This model does not currently render</h1>
 <ul>
-` + items.String() + `</ul>
+` + diagnosticItems(diagnostics) + `</ul>
 </body>
 </html>
 `)
@@ -153,8 +176,9 @@ func newMux(s *state) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		result, _ := s.snapshot()
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(shellPage())
+		_, _ = w.Write(shellPage(result))
 	})
 
 	mux.HandleFunc("/diagram", func(w http.ResponseWriter, r *http.Request) {

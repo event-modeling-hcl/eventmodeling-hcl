@@ -38,7 +38,7 @@ const (
 // ExportResult is the output of Export.
 type ExportResult struct {
 	// JSON is the slice-based tool interchange document, or empty when
-	// Diagnostics contains an error.
+	// Diagnostics contains a core error.
 	JSON        string      `json:"json"`
 	Warnings    []string    `json:"warnings,omitempty"`
 	Diagnostics Diagnostics `json:"diagnostics"`
@@ -58,7 +58,7 @@ func Export(filename string, source []byte) ExportResult {
 func ExportFiles(name string, files []syntax.File) ExportResult {
 	built, diagnostics := ValidatedModelFiles(name, files, Valid)
 	result := ExportResult{Diagnostics: diagnostics}
-	if diagnostics.HasErrors() {
+	if built == nil {
 		return result
 	}
 	document, warnings, err := interchange.Export(built)
@@ -142,6 +142,11 @@ type Diagnostic struct {
 	Line     int    `json:"line"`
 	Column   int    `json:"column"`
 
+	// Judgment is true for a judgment signal (EM401-EM406), whose severity
+	// the profile assigns. An error-severity judgment diagnostic is a policy
+	// rejection: it fails the command but never withholds the model.
+	Judgment bool `json:"judgment"`
+
 	// Filename is the source file the diagnostic points at. The CLI prints it
 	// as "file:line:column: ...", serve shows it on the diagnostics page, and
 	// cmd/wasm passes it to JavaScript as "file". JSON marshaling omits it
@@ -153,28 +158,29 @@ type Diagnostic struct {
 type RenderResult struct {
 	// HTML is the self-contained interactive canvas document — the same
 	// bytes `emhcl diagram` would write to a file — or empty
-	// when Diagnostics contains an error.
+	// when Diagnostics contains a core error.
 	HTML        string      `json:"html"`
 	Diagnostics Diagnostics `json:"diagnostics"`
 }
 
 // Render parses and validates one source document under profile and, if it
-// contains no errors, renders it to a self-contained interactive HTML canvas.
-// This mirrors the diagram command: a model with errors is refused and no HTML
-// is produced; modeling-smell warnings are reported but do not block
-// rendering. source is parsed exactly once, whether or not it validates.
+// contains no core errors, renders it to a self-contained interactive HTML
+// canvas. This mirrors the diagram command: a model with core errors is
+// refused and no HTML is produced. Judgment signals never block rendering,
+// even when the profile makes them errors; they are reported in Diagnostics.
+// source is parsed exactly once, whether or not it validates.
 func Render(filename string, source []byte, profile Profile) RenderResult {
 	return RenderFiles(filename, []syntax.File{{Name: filename, Source: source}}, profile)
 }
 
 // RenderFiles parses and validates the model made of files under profile and,
-// if it contains no errors, renders it to a self-contained interactive HTML
-// canvas titled from name. Refusal and warning behavior match Render. Each file
-// is parsed exactly once, whether or not the model validates.
+// if it contains no core errors, renders it to a self-contained interactive
+// HTML canvas titled from name. Refusal and judgment behavior match Render.
+// Each file is parsed exactly once, whether or not the model validates.
 func RenderFiles(name string, files []syntax.File, profile Profile) RenderResult {
 	built, diagnostics := ValidatedModelFiles(name, files, profile)
 	result := RenderResult{Diagnostics: diagnostics}
-	if diagnostics.HasErrors() {
+	if built == nil {
 		return result
 	}
 	html, err := renderer.Render(name, built)
@@ -254,10 +260,22 @@ func ValidatePath(path string, profile Profile) Diagnostics {
 // Diagnostics is an ordered collection of application diagnostics.
 type Diagnostics []Diagnostic
 
-// HasErrors reports whether at least one diagnostic has error severity.
+// HasErrors reports whether at least one diagnostic has error severity: a
+// core error or a policy rejection. Commands exit unsuccessfully on it.
 func (d Diagnostics) HasErrors() bool {
 	for _, diagnostic := range d {
 		if diagnostic.Severity == "Error" {
+			return true
+		}
+	}
+	return false
+}
+
+// HasCoreErrors reports whether at least one core (non-judgment) diagnostic
+// has error severity. The model, HTML, and JSON exist iff it is false.
+func (d Diagnostics) HasCoreErrors() bool {
+	for _, diagnostic := range d {
+		if diagnostic.Severity == "Error" && !diagnostic.Judgment {
 			return true
 		}
 	}
@@ -341,18 +359,20 @@ func readFailure(path string) Diagnostics {
 }
 
 // ValidatedModel parses, decodes, validates, and builds one source document
-// exactly once. Invalid input returns a nil model and the diagnostics that
-// rejected it.
+// exactly once. Input with core errors returns a nil model and the diagnostics
+// that rejected it.
 func ValidatedModel(filename string, input []byte, profile Profile) (*model.Model, Diagnostics) {
 	return ValidatedModelFiles(filename, []syntax.File{{Name: filename, Source: input}}, profile)
 }
 
 // ValidatedModelFiles parses, decodes, validates, and builds the model made of
-// files exactly once. files are in model order. Invalid input returns a nil
-// model and the diagnostics that rejected it.
+// files exactly once. It returns the model iff the diagnostics contain no core
+// error; profile only sets the severity of judgment signals, so a policy
+// rejection returns the model together with its error-severity judgment
+// diagnostics.
 func ValidatedModelFiles(name string, files []syntax.File, profile Profile) (*model.Model, Diagnostics) {
 	validated, diagnostics := validateFiles(files, profile)
-	if diagnostics.HasErrors() {
+	if validated == nil {
 		return nil, diagnostics
 	}
 	return model.Build(validated), diagnostics
@@ -400,6 +420,7 @@ func toDiagnostic(diagnostic *hcl.Diagnostic) Diagnostic {
 		Severity: severity,
 		Summary:  diagnostic.Summary,
 		Detail:   diagnostic.Detail,
+		Judgment: validator.IsJudgment(diagnostic),
 	}
 	if diagnostic.Subject != nil {
 		converted.Line = diagnostic.Subject.Start.Line

@@ -27,7 +27,6 @@ func buildIndex(document *source.Document) (modelIndex, hcl.Diagnostics) {
 		scenarioCounts:   map[string]int{},
 		definitionRanges: map[string]hcl.Range{},
 		declarations:     map[string]hcl.Range{},
-		externalContexts: map[string]bool{},
 	}
 	var diagnostics hcl.Diagnostics
 	content, _, _ := syntax.PartialContent(document.Parsed().Body(), syntax.ModelSchema())
@@ -49,7 +48,7 @@ func buildIndex(document *source.Document) (modelIndex, hcl.Diagnostics) {
 			diagnostics = append(diagnostics, index.addNamedSymbol(index.chapters, block, "chapter")...)
 		case "hotspot":
 			diagnostics = append(diagnostics, index.addNamedSymbol(index.hotspots, block, "hotspot")...)
-		case "state_change", "state_view", "automation", "translation":
+		case "state_change", "state_view", "automation":
 			diagnostics = append(diagnostics, index.addWorkflow(block)...)
 		}
 	}
@@ -60,9 +59,6 @@ func (i *modelIndex) addBoundedContext(block *hcl.Block) hcl.Diagnostics {
 	contextID := block.Labels[0]
 	diagnostics := i.addNamedSymbol(i.boundedContexts, block, "bounded_context")
 	content, _, _ := syntax.PartialContent(block.Body, syntax.BoundedContextSchema())
-	if external, ok := literalBool(content.Attributes["external"]); ok && external {
-		i.externalContexts[contextID] = true
-	}
 	for _, child := range content.Blocks {
 		if len(child.Labels) == 0 {
 			continue
@@ -113,7 +109,6 @@ func (i *modelIndex) addWorkflow(block *hcl.Block) hcl.Diagnostics {
 		kind[child.Labels[0]] = true
 	}
 	i.workflows[id] = workflow
-	i.workflowOrder = append(i.workflowOrder, id)
 	i.definitionRanges[id] = block.DefRange
 	return diagnostics
 }

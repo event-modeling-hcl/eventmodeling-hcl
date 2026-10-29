@@ -1,6 +1,6 @@
 # Architecture Guide
 
-This guide describes how `emhcl` is organized. It also shows how the design uses Axiomatic Design to keep changes predictable. The guide describes the current repository. The language contract is in the [Event Modeling HCL specification](https://github.com/event-modeling-hcl/spec). The tool implements Specification v0.4.0, which includes folder models.
+This guide describes how `emhcl` is organized. It also shows how the design uses Axiomatic Design to keep changes predictable. The guide describes the current repository. The language contract is in the [Event Modeling HCL specification](https://github.com/event-modeling-hcl/spec). The tool implements Specification v0.5.0: a model is one file or one folder, a `board` block sets the story order, and file layout has no meaning.
 
 ## Axiomatic Design terms
 
@@ -25,11 +25,12 @@ Information content is `I = -log2(p)`, where `p` is the probability of meeting t
 | N1: Authors receive feedback that they can trust | FR1: Parse native `.em.hcl` syntax | Syntax errors keep their HCL source locations | DP1: `internal/syntax` grammar and parser |
 | N2: Every frontend sees the same model | FR8: Load a model from a file or a folder | A path to a file or a folder gives the same ordered files every time, and each diagnostic names its own file | DP8: Model loader (`app.ReadModel`, `syntax.ParseFiles`, `syntax.Document.SourceOf`) |
 | N1 | FR2: Decode shared source facts once | One owner interprets catalogs and references | DP2: `internal/source` decoded document |
-| N1 | FR3: Enforce language and modeling rules | Invalid models produce stable diagnostics for the selected profile | DP3: `internal/validator` semantic passes |
+| N1 | FR3: Enforce language and modeling rules | Core rules give the same diagnostics in every profile; the profile sets only the severity of judgment signals | DP3: `internal/validator` core passes and policy evaluator |
 | N2: Every frontend sees the same model | FR4: Construct one canonical model | Only validated input reaches model construction | DP4: `internal/model` lowering |
 | N3: Users can consume models in useful forms | FR5: Format or render the same output for the same input | Formatting and HTML generation do no OS actions | DP5: `internal/formatter` and `internal/renderer` |
 | N5: Users exchange models with Event Modeling JSON tools | FR7: Convert between the canonical model and slice-based JSON | Each conversion gives a schema-valid document or a native model, or it fails with a stated reason | DP7: `internal/interchange` |
 | N4: The CLI, the browser, and the server agree | FR6: Compose and expose the use cases | Each entry point delegates to one application service | DP6: `internal/app` and thin runtime adapters |
+| N6: Authors move v0.4.0 models to v0.5.0 | FR9: Rewrite a v0.4.0 model without changing its meaning | The rewritten model passes the v0.5.0 core rules, or nothing is written | DP9: `internal/migrate` with `app.MigratePath` |
 
 Slice-based JSON is the document format that the [published Event Modeling JSON schema](https://github.com/dilgerma/event-modeling-spec/blob/main/eventmodeling.schema.json) defines. A slice is one JSON entry that matches one native workflow.
 
@@ -59,14 +60,29 @@ app.ReadModel
 
 `validator.ValidatedDocument` enforces this sequence. `model.Build` does not accept input that was only parsed. Formatting is a separate branch. It needs HCL that parses, but it does not need a valid model.
 
+Validation has two parts. The core passes (`validateBody`) run the language rules and report the same diagnostics in every profile. The policy evaluator (`applyProfile`) then assigns a severity to each judgment signal (EM401–EM406) for the selected profile and changes nothing else. `ValidateDecodedDocument` returns a `ValidatedDocument` if and only if the core passes report no error, so the profile never decides whether a model exists. `app.Diagnostic.Judgment` marks the judgment signals, and `Diagnostics.HasCoreErrors` tells adapters whether a model, HTML, or JSON was produced. `Diagnostics.HasErrors` still decides the exit code, so a `strict` rejection makes `validate` fail while `diagram`, `serve`, and `export` still have their output.
+
+The migration branch is separate:
+
+```text
+app.MigratePath
+  -> app.ReadModel
+  -> migrate.Migrate (v0.4.0 reading on raw HCL)
+  -> app.ValidateFiles (v0.5.0 rules, profile valid)
+```
+
+`internal/migrate` is the only package that reads v0.4.0 rules: the effective chapter and file order of workflows, typeless field resolution, derived titles, and the `translation` keyword. It works on `hclsyntax` and `hclwrite` and imports only `internal/syntax`, so no v0.4.0 rule can reach the validator, the model, or a renderer. Edited files keep their comments. `MigratePath` returns the rewritten files only when they have no core error.
+
 The important zeros go in one direction. A change to the renderer or the CLI cannot change what syntax the parser accepts. A change to the model or the renderer cannot make invalid input valid. Adapters do not define a second diagnostic policy or a second rendering policy.
 
 The DP8 column has an `X` in every row from FR8 down, and a `0` in the FR1 row. The FR8 entry is the diagonal. FR1 has a `0` because the syntax rules do not depend on which files the loader finds. The other entries are real influences:
 
 - FR2: `source.Decode` reads the merged body that DP1 and DP8 produce, so file discovery changes the facts that it decodes.
-- FR3: The validator uses `FileCount()` to turn on EM013, EM014, and EM407 and to turn off EM006, so file discovery changes validation. The sort order also changes which duplicate declaration counts as the first one.
-- FR4: The sort order changes the order of catalog items and of unchaptered workflows, and it changes which duplicate is first.
+- FR3: No rule depends on the number of files. One-file and folder models use the same rules. The byte order of member files only fixes which declaration a duplicate diagnostic reports as the first one, and where a repeated `board` is reported.
+- FR4: The model does not depend on file order. `Model.Workflows` is the board sequence, then the off-board workflows (`Model.OffBoard`) in ID byte order. Catalog items, chapters, chapter members, hotspots, workflow elements, tables, screen images, and scenarios are sorted by ID. Field order, scenario step order, and explicit reference lists (`to`, `from`, the board) keep their source order. Edges follow the workflow order, then element ID order, then list order. An edge whose source is an event of an external bounded context has `External` set. An absent title is the empty string; no title is derived.
 - FR5, FR7, and FR6: These rows depend on DP8 through DP2, DP3, and DP4, in the same way that the guide treats DP1.
+
+FR9 is outside the native pipeline, so the matrix has no row for it. DP9 reads files through DP1 and DP8 and checks its output with DP2 and DP3; no native DP reads DP9. A change to `internal/migrate` cannot change what the validator accepts.
 
 DP8 comes after DP1 in the build order because `syntax.File` and `syntax.ParseFiles` belong to the syntax package.
 
@@ -108,7 +124,9 @@ FR7 has six child requirements. The table gives each one its mechanism.
 | FR7.5: Keep at most one actor per slice | Import refuses a slice with two or more actors. Export refuses a workflow whose screens name two or more actors. | DP7.5: Actor gate | `rejectMultipleActors` in `import.go`, `slice` in `export.go` |
 | FR7.6: Disclose each loss | Each value that a conversion drops produces a warning. | DP7.6: Warnings at the point of loss | `warn` calls in `import.go`, `import_policy.go`, `export.go` |
 
-The actor gate follows from the language. Specification v0.4.0 gives a screen one optional actor and gives a workflow no actor attribute. A JSON slice lists actors without links to screens. Thus a slice with two actors has no correct native form. The gate stops the conversion instead of guessing.
+The actor gate follows from the language. Specification v0.5.0 gives a screen one optional actor and gives a workflow no actor attribute. A JSON slice lists actors without links to screens. Thus a slice with two actors has no correct native form. The gate stops the conversion instead of guessing.
+
+The native language has no translation keyword. Export writes slice type `TRANSLATION` for an `automation` that has at least one edge with `External` set, and `AUTOMATION` otherwise. Import writes `TRANSLATION` as `automation` and writes a `board` that lists the slices in document order. Export writes off-board workflows after the board workflows, in ID order, with a warning.
 
 Round-trip stability is an acceptance criterion, not a separate FR. A round trip is export, then import, then a second export. The round trip is stable when the second export is identical to the first, byte for byte. It is the result of FR7.1 to FR7.6 together, so it has no DP of its own.
 
@@ -149,7 +167,7 @@ FR5 includes the HTML diagram. `internal/renderer` writes one file that holds th
 
 | Child FR | Acceptance criterion | DP | Location |
 | --- | --- | --- | --- |
-| FR5.1: Scope each page to one chapter or to the whole model | A fragment gives the same chapter every time. Slices outside every chapter form an Ungrouped chapter. | DP5.1: Route grammar and load-time scoping | `parseHash`, `normalizeChapters`, and `MODEL` at the top of `viewer.js` |
+| FR5.1: Scope each page to one chapter or to the whole model | A fragment gives the same chapter every time. Slices follow the board. Board workflows outside every chapter appear in a "Not in a chapter" UI group, not as a chapter. Off-board workflows never enter the story and are listed separately. | DP5.1: Route grammar and load-time scoping | `parseHash`, `normalizeChapters`, and `MODEL` at the top of `viewer.js` |
 | FR5.2: Give every view the same read-only facts | Each view reads elements, edges, labels, and the slice timeline from one place | DP5.2: Shared index and helpers | `ELEMENTS`, `EDGES`, `NEIGHBORS`, and `EMC.sliceTimeline` in `viewer.js` |
 | FR5.3: Show the details of one slice on request | The drawer shows the scenarios and elements of the slice that the reader selects | DP5.3: Detail drawer | `openSlice` in `viewer.js` |
 | FR5.4: Filter the boards by status and bounded context | One filter state applies to every board. The controls offer only values on the current board. | DP5.4: Filter owner | `filterState`, `applyFilters`, and `EMC.onFilterChange` in `viewer.js` |
@@ -203,19 +221,20 @@ Some residual shared items are intentional. Each board places hotspots by its ow
 | --- | --- | --- | --- |
 | `internal/syntax` | HCL body schemas and parsing | One or more files, each with a filename and source bytes | Parsed document or HCL syntax diagnostics. Each diagnostic names its own file. |
 | `internal/source` | Shared source catalogs and reference normalization | Parsed document | Decoded source facts that do not change. No I/O and no policy. |
-| `internal/validator` | Structural, reference, scenario, and smell policy | Decoded source and a profile | Diagnostics. Without errors, also a `ValidatedDocument`. |
+| `internal/validator` | Core language rules and the judgment policy evaluator | Decoded source and a profile | Diagnostics. Without core errors, also a `ValidatedDocument`, in every profile. |
 | `internal/model` | Canonical model for renderers and interchange, with normalized edges | `ValidatedDocument` | The same `Model` for the same input. No parsing, no validation, no I/O. |
 | `internal/formatter` | Canonical HCL layout | Source bytes | Formatted bytes or parse diagnostics |
 | `internal/renderer` | Standalone HTML and the viewer scripts | Canonical `Model` | HTML, or a template or serialization error. The viewer obeys the matrix for the diagram viewer. |
 | `internal/interchange` | Schema check and conversion for slice-based JSON | JSON bytes, or a canonical `Model` | A document or unformatted HCL with warnings. A returned error means that the input has no correct conversion. No I/O. |
-| `internal/app` | Use-case sequence and plain diagnostics | Source in memory, or a model path (one file or one folder) | Results for validate, format, render, import, and export that all adapters share |
+| `internal/app` | Use-case sequence and plain diagnostics | Source in memory, or a model path (one file or one folder) | Results for validate, format, render, import, export, and migrate that all adapters share. A model, HTML, or JSON exists iff there is no core error. |
+| `internal/migrate` | v0.4.0 reading and the rewrite to v0.5.0 | Member files of one v0.4.0 model | Every member file rewritten, and a report, or error diagnostics and no files. No I/O. |
 | CLI, WASM, `internal/serve` | Actions for each runtime | Arguments, files, signals, HTTP, JavaScript values | Exit codes, files, browser values, and server lifecycle |
 
 The loader (DP8) is `app.ReadModel` with `syntax.ParseFiles` and `syntax.Document.SourceOf`. Its contract has four rules:
 
 - R1: A path to a file is a one-file model. A path to a folder is a folder model.
 - R2: A folder model uses every regular file directly in the folder whose name ends in `.em.hcl` and does not start with a dot. Symlinks to files count. Subfolders and other files are ignored.
-- R3: `app.ReadModel` sorts the member files by name, byte by byte, and not by locale. Model order is file order, then source order inside each file.
+- R3: `app.ReadModel` sorts the member files by name, byte by byte, and not by locale. This order fixes only diagnostic order and which duplicate is reported first; it never changes the model.
 - R4: A folder with no member file gives error EM001 with the detail `folder <path> has no .em.hcl files`.
 
 `syntax.ParseFiles` takes the files in that order and parses each one on its own. If any file has a syntax error, it returns no document and all the syntax diagnostics. `SourceOf` returns the bytes of the file whose name equals the filename of an HCL range, so each diagnostic and each source excerpt names its own file. A folder with one member file behaves like that file.
@@ -227,7 +246,7 @@ The CLI owns output-file safety. `emhcl export` refuses an `-o` target that has 
 ## Change rules
 
 1. Change the language grammar in `internal/syntax` and in the normative specification first. Then update source decoding and validator rules, in that order.
-2. Add a shared interpretation to `internal/source`. Do not rebuild catalogs, inferred addresses, or traversals in validators or renderers.
+2. Add a shared interpretation to `internal/source`. Do not rebuild catalogs, field-type addresses, or traversals in validators or renderers.
 3. Keep validation policy in `internal/validator`. A model or a renderer must not correct invalid input without a diagnostic.
 4. Keep the canonical model independent of presentation. Layout for a renderer belongs in `internal/renderer`.
 5. Add a use case one time, in `internal/app`. Runtime adapters translate inputs and outputs. They do not build the pipeline again.
@@ -238,11 +257,13 @@ The CLI owns output-file safety. `emhcl export` refuses an `-o` target that has 
 10. If a conversion has no correct native form, return an error. If it drops data, write a warning at the place where it drops the data.
 11. If you change a flow rule in `internal/validator`, change `import_policy.go` in the same change.
 12. After each change to the interchange mapping, make sure that the round trip stays stable. Do this for each file in `examples/` and `testdata/valid/`.
-13. Renaming a member file keeps the order of chaptered workflows, because chapters set that order. It can move unchaptered workflows, because they follow file name order. It can also change which duplicate declaration EM002 reports as the first one.
+13. Renaming a member file or moving a block between files does not change the model. It can change which duplicate declaration EM002 reports as the first one. Do not add a rule that depends on the number of files or on block position.
 14. Add a route only in `parseHash`. Load-time scoping and navigation read the same grammar.
 15. A board must not render or call another board. A new board registers its filter function with `EMC.onFilterChange` and its layout function with a `relayout` hook.
 16. Put a slice presentation that two views share in `viewer.js` under `EMC`. Do not export it from one view to another.
 17. Change the fragment with `location.hash` or `replaceHash`. Do not let the browser follow a fragment link, because inside the `srcdoc` frame of the playground the link loads the playground page.
+18. Keep v0.4.0 rules inside `internal/migrate`. No other package may infer field types, derive titles, or read the `translation` keyword.
+19. A profile assigns only the severity of a judgment signal. Do not let a profile, a judgment signal, or a renderer decide whether a model, HTML, or JSON is produced; only core errors do.
 
 A change breaks the Independence Axiom when, for example:
 

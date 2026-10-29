@@ -4,10 +4,10 @@
     {
       "id": 1,
       "prompt": "Create `borrowing.em.hcl` for a library. A member uses a checkout screen to borrow an available book copy. Borrow Book produces Book Borrowed; reject an attempt when the copy is already on loan. Members can view their current loans. When a loan becomes overdue, the system should request an overdue notice without human input. Include UUID member_id and copy_id contracts, concrete Read Model questions, and scenarios. Write the file in the current directory and validate it if the Event Modeling HCL CLI is available.",
-      "expected_output": "A coherent valid v0.4.0 model containing State Change, State View, and Automation workflows with owned Events, reusable field types, canonical flows, and pattern-correct scenarios.",
+      "expected_output": "A coherent valid v0.5.0 model with one board in business-time order, containing State Change, State View, and Automation workflows with owned Events, reusable field types, explicit field types, canonical flows, and pattern-correct scenarios.",
       "files": [],
       "expectations": [
-        "The output is a `.em.hcl` file with lower-snake-case block labels and context-owned Events.",
+        "The output is a `.em.hcl` file with lower-snake-case block labels, context-owned Events, one `board` block that lists every workflow in business-time order, and an explicit `type` on every field and subfield.",
         "Borrowing is a state_change with Screen to Command and Command to Event expressed in canonical direction.",
         "Current loans is a state_view whose Read Model has a concrete question and whose scenario has Given Event and Then Read Model with no When step.",
         "The overdue notice reaction is an automation consuming only internal Events, with a pending-work read model feeding the processor, and includes a machine-action scenario using HCL When/Then grammar.",
@@ -18,11 +18,11 @@
     {
       "id": 2,
       "prompt": "From this requirement, create `payment-activation.em.hcl`: Stripe sends Payment Captured. Our Subscriptions domain uses that fact to Activate Subscription and records Subscription Activated. The payment message contains payment_id, subscription_id, amount, and currency. We do not yet know whether partial payments activate a subscription. Model that uncertainty rather than choosing a rule. Include a success scenario and validate the model if possible.",
-      "expected_output": "A Translation workflow from an external Stripe-owned Event to an internal Subscription Event, preserving the partial-payment question as an attached open hotspot.",
+      "expected_output": "An automation workflow that translates an external Stripe-owned Event into an internal Subscription Event, preserving the partial-payment question as an attached open hotspot.",
       "files": [],
       "expectations": [
         "Stripe is represented by an external system and an external bounded context that owns Payment Captured.",
-        "The workflow is translation, not automation, and consumes the external Event through canonical from flow, preferably via a pending-work read model.",
+        "The workflow is an `automation` (no `translation` keyword exists) that consumes the external Event through canonical from flow, preferably via a pending-work read model, so tools derive it as a translation.",
         "The internal Command and Event use Subscriptions domain language and are connected in canonical direction. The internal event is not a linked copy of the Stripe event.",
         "payment_id, subscription_id, amount, and currency are represented with reusable typed contracts and traceable flow. No mapping, linked_copy, or storyline attribute is introduced.",
         "A pattern-correct success scenario is present: Given the external event, When the processor or command, Then the internal event.",
@@ -58,15 +58,27 @@
     {
       "id": 5,
       "prompt": "Split `clinic.em.hcl` into a folder model `clinic/` so that each team can own its own workflows. The file has a `clinic` bounded context, a `receptionist` actor, the workflows `register_pet`, `pet_directory`, and `notify_owner`, one chapter that lists them, and an open hotspot on the notify_owner processor. Keep the board order the same and validate the folder if the CLI is available.",
-      "expected_output": "A folder of member `.em.hcl` files with the same blocks and the same board order, which validates as one folder model with no EM013, EM014, or EM407 diagnostic.",
+      "expected_output": "A folder of member `.em.hcl` files with the same blocks and the same `board`, which validates as one folder model with no EM014, EM015, or EM016 diagnostic.",
       "files": [],
       "expectations": [
         "Every block moves whole into a file directly in `clinic/`. No block spans two files, and no `include` or `import` block is invented.",
         "The bounded context with all its events, aggregates, and field types is in one file.",
-        "All chapter blocks are in one file, every workflow is in exactly one chapter, and the chapter list keeps the original workflow order.",
-        "File names use a prefix so that file name order is the reading order. No ID is declared twice across files.",
-        "Each member file is formatted with `emhcl fmt -w <file>` because fmt refuses a folder, and the folder is validated with `emhcl validate clinic` (emhcl v0.9.0 or newer).",
+        "The single `board` block moves whole into one file and keeps its workflow list unchanged, so the story order is the same. The chapter keeps its membership; no workflow is in two chapters.",
+        "File names may use a prefix for human reading order, but the reply does not rely on file order for the board. No ID is declared twice across files.",
+        "Each member file is formatted with `emhcl fmt -w <file>` because fmt refuses a folder, and the folder is validated with `emhcl validate clinic` (emhcl v0.12.0 or newer).",
         "The open hotspot stays open, and the reply does not call the model implementation-ready."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "`legacy.em.hcl` is a v0.4.0 model: it has no board, several fields such as `field \"order_id\" {}` that rely on a matching field_type, and a `translation \"import_partner_order\"` workflow. `emhcl validate` now fails. Bring it to the current language without changing its meaning and validate it if the CLI is available.",
+      "expected_output": "The model is converted with `emhcl migrate -w legacy.em.hcl`, then validated; the reply reports the migrate report lines and the validation result.",
+      "files": [],
+      "expectations": [
+        "The agent runs `emhcl migrate` (first without `-w` or reading its report) rather than hand-editing the v0.4.0 constructs.",
+        "The result has one `board` listing every workflow in the former order, an explicit qualified `field_type.<context>.<id>` type on each formerly typeless field, and `automation` in place of `translation`.",
+        "Titles written by migrate are kept unless the user asks to remove them; no title is invented beyond them.",
+        "The migrated model is validated with `emhcl validate legacy.em.hcl` and the observed result is reported."
       ]
     }
   ]

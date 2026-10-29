@@ -12,3 +12,7 @@ state_change "create_pet" {
     to   = [event.example.pet_created]
   }
 }
+
+board {
+  workflows = [workflow.create_pet]
+}

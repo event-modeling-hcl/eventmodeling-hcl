@@ -1,6 +1,10 @@
 package validator
 
-import "github.com/hashicorp/hcl/v2"
+import (
+	"strings"
+
+	"github.com/hashicorp/hcl/v2"
+)
 
 type diagnosticCode string
 
@@ -12,15 +16,13 @@ const (
 	codeInvalidBlockLabel         diagnosticCode = "EM003"
 	codeInvalidWorkflowChild      diagnosticCode = "EM004"
 	codeInvalidChapter            diagnosticCode = "EM005"
-	codeInvalidChapterRange       diagnosticCode = "EM006"
 	codeInvalidAttribute          diagnosticCode = "EM007"
 	codeInvalidEnum               diagnosticCode = "EM008"
 	codeInvalidFieldType          diagnosticCode = "EM009"
 	codeInvalidExample            diagnosticCode = "EM010"
-	codeInvalidTranslation        diagnosticCode = "EM011"
-	codeInvalidAutomation         diagnosticCode = "EM012"
-	codeChaptersInSeveralFiles    diagnosticCode = "EM013"
 	codeWorkflowInSeveralChapters diagnosticCode = "EM014"
+	codeInvalidBoard              diagnosticCode = "EM015"
+	codeBoardRepeatsWorkflow      diagnosticCode = "EM016"
 
 	codeInvalidReference    diagnosticCode = "EM101"
 	codeUnresolvedReference diagnosticCode = "EM102"
@@ -37,24 +39,30 @@ const (
 	codeCommandWithoutReason  diagnosticCode = "EM404"
 	codeShelfAntiPattern      diagnosticCode = "EM405"
 	codeOpenHotspot           diagnosticCode = "EM406"
-	codeUnchapteredWorkflow   diagnosticCode = "EM407"
 )
 
-var profileSeverities = map[Profile]map[diagnosticCode]hcl.DiagnosticSeverity{
-	Workshop: {
-		codeBedAntiPattern:        hcl.DiagInvalid,
-		codeLeftChairAntiPattern:  hcl.DiagInvalid,
-		codeRightChairAntiPattern: hcl.DiagInvalid,
-		codeCommandWithoutReason:  hcl.DiagInvalid,
-		codeShelfAntiPattern:      hcl.DiagInvalid,
-		codeOpenHotspot:           hcl.DiagInvalid,
-		codeUnchapteredWorkflow:   hcl.DiagInvalid,
-	},
-	Strict: {
-		codeCommandWithoutReason: hcl.DiagError,
-		codeOpenHotspot:          hcl.DiagError,
-		codeUnchapteredWorkflow:  hcl.DiagError,
-	},
+// isJudgmentCode reports whether code is a judgment signal: the EM4xx family
+// (EM401-EM406). Every other code is a core diagnostic, whose severity no
+// profile changes.
+func isJudgmentCode(code diagnosticCode) bool {
+	return strings.HasPrefix(string(code), "EM4")
+}
+
+// judgmentSeverity is the severity profile assigns to the judgment signal code:
+// workshop reports every signal as information, valid as a warning, and strict
+// rejects commands without a reason and open hotspots.
+func judgmentSeverity(code diagnosticCode, profile Profile) hcl.DiagnosticSeverity {
+	switch profile {
+	case Workshop:
+		return hcl.DiagInvalid
+	case Valid:
+		return hcl.DiagWarning
+	case Strict:
+		if code == codeCommandWithoutReason || code == codeOpenHotspot {
+			return hcl.DiagError
+		}
+	}
+	return hcl.DiagWarning
 }
 
 // Profile controls the severity assigned to Event Modeling judgment diagnostics.
@@ -101,7 +109,9 @@ func errorDiagnostic(code diagnosticCode, subject hcl.Range, summary, detail str
 	return diag(code, hcl.DiagError, subject, summary, detail)
 }
 
-func warningDiagnostic(code diagnosticCode, subject hcl.Range, summary, detail string) *hcl.Diagnostic {
+// judgmentSignal creates a judgment signal. Its severity is a placeholder:
+// applyProfile assigns the severity of the selected profile.
+func judgmentSignal(code diagnosticCode, subject hcl.Range, summary, detail string) *hcl.Diagnostic {
 	return diag(code, hcl.DiagWarning, subject, summary, detail)
 }
 
@@ -114,20 +124,36 @@ func DiagnosticCode(diagnostic *hcl.Diagnostic) string {
 	return string(codeUnclassified)
 }
 
+// IsJudgment reports whether diagnostic is a judgment signal (EM401-EM406)
+// rather than a core diagnostic. An error-severity judgment diagnostic is a
+// policy rejection, not a core failure.
+func IsJudgment(diagnostic *hcl.Diagnostic) bool {
+	code, ok := diagnostic.Extra.(diagnosticCode)
+	return ok && isJudgmentCode(code)
+}
+
 // DiagnosticCodeExtra provides an HCL diagnostic Extra value with an Event
 // Modeling code for adapters that construct diagnostics outside this package.
 func DiagnosticCodeExtra(code string) interface{} {
 	return diagnosticCode(code)
 }
 
-func applyProfile(diagnostics hcl.Diagnostics, profile Profile) hcl.Diagnostics {
-	severityOverrides, ok := profileSeverities[profile]
-	if !ok {
-		return diagnostics
-	}
+// hasCoreErrors reports whether any core diagnostic is an error.
+func hasCoreErrors(diagnostics hcl.Diagnostics) bool {
 	for _, diagnostic := range diagnostics {
-		if severity, exists := severityOverrides[diagnosticCode(DiagnosticCode(diagnostic))]; exists {
-			diagnostic.Severity = severity
+		if diagnostic.Severity == hcl.DiagError && !IsJudgment(diagnostic) {
+			return true
+		}
+	}
+	return false
+}
+
+// applyProfile is the policy evaluator: it assigns every judgment signal its
+// severity under profile and leaves core diagnostics unchanged.
+func applyProfile(diagnostics hcl.Diagnostics, profile Profile) hcl.Diagnostics {
+	for _, diagnostic := range diagnostics {
+		if code, ok := diagnostic.Extra.(diagnosticCode); ok && isJudgmentCode(code) {
+			diagnostic.Severity = judgmentSeverity(code, profile)
 		}
 	}
 	return diagnostics

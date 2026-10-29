@@ -22,8 +22,14 @@ func Export(m *model.Model) (*Document, []string, error) {
 		if actor.Description != "" {
 			e.warn("actor.%s description has no interchange equivalent and was not exported", actor.ID)
 		}
-		if slug(actor.Title, "actor") != actor.ID {
-			e.warn("actor.%s label cannot be carried by the JSON actor name; importing regenerates it from %q", actor.ID, actor.Title)
+		if slug(labelOf(actor.Title, actor.ID), "actor") != actor.ID {
+			e.warn("actor.%s label cannot be carried by the JSON actor name; importing regenerates it from %q", actor.ID, labelOf(actor.Title, actor.ID))
+		}
+	}
+	translations := map[string]bool{}
+	for _, edge := range m.Edges {
+		if edge.External {
+			translations[edge.WorkflowID] = true
 		}
 	}
 	for index, workflow := range m.Workflows {
@@ -31,7 +37,17 @@ func Export(m *model.Model) (*Document, []string, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+		if workflow.Kind == model.Automation && translations[workflow.ID] {
+			slice.SliceType = "TRANSLATION"
+		}
 		document.Slices = append(document.Slices, slice)
+	}
+	if len(m.OffBoard) > 0 {
+		offBoard := make([]string, 0, len(m.OffBoard))
+		for _, id := range m.OffBoard {
+			offBoard = append(offBoard, "workflow."+id)
+		}
+		e.warn("off-board workflows %s are not on the board; they were exported after the board sequence in ID order", strings.Join(offBoard, ", "))
 	}
 	exportedActors := map[string]bool{}
 	for _, slice := range document.Slices {
@@ -40,7 +56,7 @@ func Export(m *model.Model) (*Document, []string, error) {
 		}
 	}
 	for _, actor := range m.Actors {
-		if !exportedActors[actor.Title] {
+		if !exportedActors[labelOf(actor.Title, actor.ID)] {
 			e.warn("actor.%s has no exported slice screen association; its catalog declaration was not exported", actor.ID)
 		}
 	}
@@ -55,10 +71,10 @@ func Export(m *model.Model) (*Document, []string, error) {
 			e.warn("bounded_context.%s description and owner metadata have no interchange catalog equivalent and were not exported", context.ID)
 		}
 		names := e.emittedContextNames[context.ID]
-		if len(names) > 0 && context.Title != model.Humanize(context.ID) && !names[context.Title] {
+		if len(names) > 0 && context.Title != "" && !names[context.Title] {
 			e.warn("bounded_context.%s title %q cannot be carried by a JSON context name that imports as the same label; the label was exported instead", context.ID, context.Title)
 		}
-		if context.TitleExplicit && context.Title == context.ID {
+		if context.Title == context.ID {
 			e.warn("bounded_context.%s has an explicit title equal to its label; the JSON context name cannot record that the title was written, so importing leaves it implicit", context.ID)
 		}
 		if len(names) == 0 {
@@ -159,19 +175,19 @@ func newExporter(m *model.Model) *exporter {
 	for _, context := range m.Contexts {
 		e.contexts[context.ID] = context
 		for _, aggregate := range context.Aggregates {
-			e.aggregates[context.ID+"."+aggregate.ID] = aggregate.Title
+			e.aggregates[context.ID+"."+aggregate.ID] = labelOf(aggregate.Title, aggregate.ID)
 		}
 		for _, fieldType := range context.FieldTypes {
 			e.fieldTypes[context.ID+"."+fieldType.ID] = fieldType
 		}
 		for _, event := range context.Events {
-			e.nodes["event."+context.ID+"."+event.ID] = node{title: event.Title, elementType: "EVENT"}
+			e.nodes["event."+context.ID+"."+event.ID] = node{title: labelOf(event.Title, event.ID), elementType: "EVENT"}
 		}
 	}
 	for _, workflow := range m.Workflows {
 		for _, element := range workflow.Elements {
 			if elementType := elementTypeOf(element.Kind); elementType != "" {
-				e.nodes[qualify(string(element.Kind)+"."+element.ID, workflow.ID)] = node{title: element.Title, elementType: elementType}
+				e.nodes[qualify(string(element.Kind)+"."+element.ID, workflow.ID)] = node{title: labelOf(element.Title, element.ID), elementType: elementType}
 			}
 		}
 	}
@@ -234,7 +250,7 @@ func (e *exporter) slice(index int, workflow model.Workflow) (Slice, error) {
 		ID:             "workflow." + workflow.ID,
 		Status:         exportStatus(workflow.Status),
 		Index:          &position,
-		Title:          workflow.Title,
+		Title:          labelOf(workflow.Title, workflow.ID),
 		SliceType:      strings.ToUpper(string(workflow.Kind)),
 		Commands:       []Element{},
 		Events:         []Element{},
@@ -265,15 +281,15 @@ func (e *exporter) slice(index int, workflow model.Workflow) (Slice, error) {
 	for _, element := range workflow.Elements {
 		switch element.Kind {
 		case model.ScreenImage:
-			slice.ScreenImages = append(slice.ScreenImages, ScreenImage{ID: qualifyAny(element, workflow.ID), Title: element.Title, URL: element.Presentation.URL})
+			slice.ScreenImages = append(slice.ScreenImages, ScreenImage{ID: qualifyAny(element, workflow.ID), Title: labelOf(element.Title, element.ID), URL: element.Presentation.URL})
 			continue
 		case model.Table:
-			slice.Tables = append(slice.Tables, Table{ID: qualifyAny(element, workflow.ID), Title: element.Title, Fields: e.fields(element.Fields, "")})
+			slice.Tables = append(slice.Tables, Table{ID: qualifyAny(element, workflow.ID), Title: labelOf(element.Title, element.ID), Fields: e.fields(element.Fields, "")})
 			continue
 		case model.Command, model.ReadModel, model.Screen, model.Processor:
 		}
 		id := qualify(string(element.Kind)+"."+element.ID, workflow.ID)
-		exported := e.element(id, elementTypeOf(element.Kind), element.Title, element.Semantic, element.Presentation, element.Fields, "")
+		exported := e.element(id, elementTypeOf(element.Kind), labelOf(element.Title, element.ID), element.Semantic, element.Presentation, element.Fields, "")
 		addAggregate(exported.Aggregate)
 		switch element.Kind {
 		case model.Command:
@@ -288,7 +304,7 @@ func (e *exporter) slice(index int, workflow model.Workflow) (Slice, error) {
 			}
 			if actor, ok := e.actors[element.Semantic.Actor]; ok && !actors[actor.ID] {
 				actors[actor.ID] = true
-				slice.Actors = append(slice.Actors, Actor{Name: actor.Title, AuthRequired: actor.AuthRequired})
+				slice.Actors = append(slice.Actors, Actor{Name: labelOf(actor.Title, actor.ID), AuthRequired: actor.AuthRequired})
 			}
 		case model.Processor:
 			slice.Processors = append(slice.Processors, exported)
@@ -296,7 +312,7 @@ func (e *exporter) slice(index int, workflow model.Workflow) (Slice, error) {
 		}
 	}
 	if len(slice.Actors) == 1 && assignedScreens != len(slice.Screens) {
-		e.warn("slice %q actors cannot distinguish assigned from unassigned screens; slice actor associations omitted", workflow.Title)
+		e.warn("slice %q actors cannot distinguish assigned from unassigned screens; slice actor associations omitted", slice.Title)
 		slice.Actors = nil
 	}
 	for _, reference := range e.sliceEvents(workflow) {
@@ -304,7 +320,7 @@ func (e *exporter) slice(index int, workflow model.Workflow) (Slice, error) {
 		if !ok {
 			continue
 		}
-		exported := e.element(reference, "EVENT", event.Title, event.Semantic, event.Presentation, event.Fields, context.ID)
+		exported := e.element(reference, "EVENT", labelOf(event.Title, event.ID), event.Semantic, event.Presentation, event.Fields, context.ID)
 		exported.ModelContext = e.emitContext(context, false)
 		exported.Context = "INTERNAL"
 		if context.External {
@@ -582,7 +598,7 @@ func exportExample(example json.RawMessage) json.RawMessage {
 
 func (e *exporter) specification(slice Slice, workflow model.Workflow, scenario model.Scenario) Specification {
 	id := "scenario." + workflow.ID + "." + scenario.ID
-	specification := Specification{ID: id, SliceName: slice.Title, Title: scenario.Title, Given: []SpecificationStep{}, When: []SpecificationStep{}, Then: []SpecificationStep{}, LinkedID: slice.ID}
+	specification := Specification{ID: id, SliceName: slice.Title, Title: labelOf(scenario.Title, scenario.ID), Given: []SpecificationStep{}, When: []SpecificationStep{}, Then: []SpecificationStep{}, LinkedID: slice.ID}
 	counts := map[model.StepKind]int{}
 	for _, step := range scenario.Steps {
 		exported := e.step(id, workflow.ID, counts[step.Kind], step)
@@ -653,4 +669,10 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// labelOf is the name upstream receives for a construct: its title, or its
+// raw ID when untitled.
+func labelOf(title, id string) string {
+	return firstNonEmpty(title, id)
 }

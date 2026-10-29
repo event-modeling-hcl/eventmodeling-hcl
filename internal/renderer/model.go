@@ -1,15 +1,17 @@
 // Package renderer turns a validated Event Modeling IR into a self-contained
 // interactive HTML canvas.
+//
+// Every label in the ViewModel is the construct's stated title, or its raw ID
+// when the source states none; no label is derived from an ID.
 package renderer
 
 import (
 	"encoding/json"
-
-	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/version"
 )
 
-const specVersion = version.Spec
-
+// ViewModel is the browser data. Slices are the board workflows in board
+// order: the story sequence. OffBoard holds the off-board workflows in ID
+// order; they belong to no story position and the viewer lists them apart.
 type ViewModel struct {
 	Title      string             `json:"title"`
 	Version    string             `json:"version"`
@@ -19,6 +21,7 @@ type ViewModel struct {
 	Chapters   []Chapter          `json:"chapters"`
 	Hotspots   []Hotspot          `json:"hotspots"`
 	Slices     []Slice            `json:"slices"`
+	OffBoard   []Slice            `json:"offBoard"`
 	Edges      []Edge             `json:"edges"`
 }
 
@@ -53,6 +56,8 @@ type ContextEdge struct {
 	Via        []string `json:"via,omitempty"`
 }
 
+// Chapter lists its board workflows in board order. Off-board members appear
+// only in the off-board collection.
 type Chapter struct {
 	ID     string   `json:"id"`
 	Title  string   `json:"title"`
@@ -67,6 +72,8 @@ type Hotspot struct {
 	Question string `json:"question"`
 }
 
+// Slice is one workflow. Type is the view pattern: the workflow kind, or
+// "translation" for an automation that consumes an external event.
 type Slice struct {
 	ID          string     `json:"id"`
 	Type        string     `json:"type"`
@@ -87,6 +94,7 @@ type Element struct {
 	Actor    string   `json:"actor,omitempty"`
 	ImageURL string   `json:"imageUrl,omitempty"`
 	Agg      string   `json:"agg,omitempty"`
+	AggTitle string   `json:"aggTitle,omitempty"`
 	Ctx      string   `json:"ctx,omitempty"`
 	External bool     `json:"external,omitempty"`
 	Given    bool     `json:"given,omitempty"`

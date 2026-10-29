@@ -7,3 +7,7 @@ bounded_context "example" {
     example = "not-a-number"
   }
 }
+
+board {
+  workflows = []
+}

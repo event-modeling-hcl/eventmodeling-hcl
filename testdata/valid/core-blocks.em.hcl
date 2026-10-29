@@ -1,7 +1,16 @@
+board {
+  workflows = [
+    workflow.create_pet,
+    workflow.view_pets,
+    workflow.notify_pet_created,
+  ]
+}
+
 bounded_context "example" {
   title = "Example"
 
   aggregate "pet" {
+    title = "Pet"
   }
 
   field_type "pet_id" {

@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/model"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/version"
 )
 
 func TestBuildViewModel_AdaptsCurrentCompleteModel(t *testing.T) {
@@ -23,10 +25,10 @@ func TestBuildViewModel_AdaptsCurrentCompleteModel(t *testing.T) {
 
 	view := BuildViewModel(path, loaded)
 
-	if got, want := view.Title, "Complete"; got != want {
+	if got, want := view.Title, "complete"; got != want {
 		t.Fatalf("title = %q, want %q", got, want)
 	}
-	if got, want := view.Version, "v0.4.0"; got != want {
+	if got, want := view.Version, version.Spec; got != want {
 		t.Fatalf("version = %q, want %q", got, want)
 	}
 	if got, want := len(view.Slices), 4; got != want {
@@ -149,6 +151,12 @@ func TestBuildViewModel_AssignsIncreasingStagesToLocalFlow(t *testing.T) {
 	}
 
 	translation := findSlice(t, view, "import_partner_pet")
+	if got, want := translation.Type, "translation"; got != want {
+		t.Fatalf("import_partner_pet type = %q, want derived %q", got, want)
+	}
+	if got, want := findSlice(t, view, "notify_owner").Type, "automation"; got != want {
+		t.Fatalf("notify_owner type = %q, want %q", got, want)
+	}
 	externalEvent := findElement(t, translation, "event__partner__pet_received")
 	processor := findElement(t, translation, "import_partner_pet__processor__translate_pet")
 	if !externalEvent.External {
@@ -224,4 +232,168 @@ func hasEdge(view *ViewModel, from, to string) bool {
 		}
 	}
 	return false
+}
+
+// offBoardSource is a v0.5.0 model whose board lists two workflows in an order
+// that is not ID order, leaves a third off the board, and gives a chapter one
+// on-board and one off-board member.
+const offBoardSource = `
+board {
+  workflows = [workflow.zeta_view, workflow.alpha_change]
+}
+
+bounded_context "clinic" {
+  title = "Clinic"
+
+  event "pet_added" {
+    title = "Pet added"
+
+    field "name" {
+      type = "String"
+    }
+  }
+
+  event "pet_archived" {
+    field "name" {
+      type = "String"
+    }
+  }
+}
+
+state_change "alpha_change" {
+  title = "Add pet"
+
+  command "add_pet" {
+    title        = "Add pet"
+    api_endpoint = "POST /pets"
+    to           = [event.clinic.pet_added]
+
+    field "name" {
+      type = "String"
+    }
+  }
+}
+
+state_view "zeta_view" {
+  title = "Pet list"
+
+  readmodel "pets" {
+    title    = "Pets"
+    question = "Which pets are registered?"
+    from     = [event.clinic.pet_added]
+
+    field "name" {
+      type = "String"
+    }
+  }
+}
+
+state_change "archive_pet" {
+  command "archive" {
+    api_endpoint = "POST /pets/archive"
+    to           = [event.clinic.pet_archived]
+
+    field "name" {
+      type = "String"
+    }
+  }
+}
+
+chapter "care" {
+  title     = "Care"
+  workflows = [workflow.alpha_change, workflow.archive_pet, workflow.zeta_view]
+}
+`
+
+func TestBuildViewModel_KeepsOffBoardWorkflowsOutOfTheStory(t *testing.T) {
+	loaded, diagnostics := loadTestModel(t, "off-board.em.hcl", []byte(offBoardSource))
+	if diagnostics.HasErrors() {
+		t.Fatalf("load model: %s", diagnostics.Error())
+	}
+
+	view := BuildViewModel("off-board.em.hcl", loaded)
+
+	if got, want := sliceIDs(view.Slices), []string{"zeta_view", "alpha_change"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("story slices = %v, want board order %v", got, want)
+	}
+	if got, want := sliceIDs(view.OffBoard), []string{"archive_pet"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("off-board slices = %v, want %v", got, want)
+	}
+	if got, want := view.Chapters, []Chapter{{ID: "care", Title: "Care", Slices: []string{"zeta_view", "alpha_change"}}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("chapters = %#v, want board members in board order %#v", got, want)
+	}
+	// An event that only an off-board workflow touches stays with it.
+	archived := findElement(t, &view.OffBoard[0], "event__clinic__pet_archived")
+	if archived.Given {
+		t.Fatal("off-board produced event is marked upstream")
+	}
+	for _, slice := range view.Slices {
+		for _, element := range slice.Elements {
+			if strings.HasPrefix(element.ID, "archive_pet__") || element.ID == "event__clinic__pet_archived" {
+				t.Fatalf("story slice %q carries off-board element %q", slice.ID, element.ID)
+			}
+		}
+	}
+}
+
+func TestBuildViewModel_LabelsUntitledConstructsWithRawIDs(t *testing.T) {
+	loaded, diagnostics := loadTestModel(t, "off-board.em.hcl", []byte(offBoardSource))
+	if diagnostics.HasErrors() {
+		t.Fatalf("load model: %s", diagnostics.Error())
+	}
+
+	view := BuildViewModel("off-board.em.hcl", loaded)
+
+	archive := view.OffBoard[0]
+	if got, want := archive.Title, "archive_pet"; got != want {
+		t.Fatalf("untitled workflow label = %q, want raw ID %q", got, want)
+	}
+	if got, want := findElement(t, &archive, "archive_pet__command__archive").Title, "archive"; got != want {
+		t.Fatalf("untitled command label = %q, want raw ID %q", got, want)
+	}
+	if got, want := findElement(t, &archive, "event__clinic__pet_archived").Title, "pet_archived"; got != want {
+		t.Fatalf("untitled event label = %q, want raw ID %q", got, want)
+	}
+}
+
+func TestBuildViewModel_LabelsEveryUntitledKindWithItsRawID(t *testing.T) {
+	view := BuildViewModel("untitled.em.hcl", &model.Model{
+		Actors:   []model.Actor{{ID: "front_desk"}},
+		Contexts: []model.Context{{ID: "clinic_ops", Aggregates: []model.Aggregate{{ID: "pet_record"}}}},
+		Board:    []string{"check_in"},
+		Workflows: []model.Workflow{{Kind: model.StateChange, ID: "check_in",
+			Elements: []model.Element{{Kind: model.Command, ID: "check_in_pet",
+				Semantic: model.Semantic{Aggregate: "aggregate.clinic_ops.pet_record"}}},
+			Scenarios: []model.Scenario{{ID: "happy_path", Steps: []model.Step{
+				{Kind: model.When, Target: "command", Ref: "command.check_in_pet"},
+			}}},
+		}},
+		Chapters: []model.Chapter{{ID: "arrival", Workflows: []string{"workflow.check_in"}}},
+	})
+
+	slice := view.Slices[0]
+	command := findElement(t, &slice, "check_in__command__check_in_pet")
+	for name, pair := range map[string][2]string{
+		"actor":     {view.Actors["front_desk"].Title, "front_desk"},
+		"context":   {view.Contexts["clinic_ops"].Title, "clinic_ops"},
+		"map node":  {findContextNode(t, view.ContextMap, "clinic_ops").Title, "clinic_ops"},
+		"workflow":  {slice.Title, "check_in"},
+		"element":   {command.Title, "check_in_pet"},
+		"aggregate": {command.AggTitle, "pet_record"},
+		"scenario":  {slice.Scenarios[0].Title, "happy_path"},
+		"step ref":  {slice.Scenarios[0].When.Ref, "check_in_pet"},
+		"chapter":   {view.Chapters[0].Title, "arrival"},
+	} {
+		if pair[0] != pair[1] {
+			t.Errorf("%s label = %q, want raw ID %q", name, pair[0], pair[1])
+		}
+	}
+}
+
+func sliceIDs(slices []Slice) []string {
+	ids := make([]string, 0, len(slices))
+	for _, slice := range slices {
+		ids = append(ids, slice.ID)
+	}
+	return ids
 }

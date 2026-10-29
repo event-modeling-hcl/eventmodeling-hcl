@@ -203,7 +203,7 @@
     if(e.agg){
       const a = EMC.el("div","card aggregate",
         `<div class="kind">${AGG_ICON}<span class="kn">Aggregate</span></div>`+
-        `<div class="ct">${EMC.esc(EMC.aggTitle(e.agg))}</div>`);
+        `<div class="ct">${EMC.esc(EMC.aggTitle(e))}</div>`);
       a.dataset.id = "agg__"+e.id;
       a.dataset.slice = slice;
       a.dataset.ctx = ctx;

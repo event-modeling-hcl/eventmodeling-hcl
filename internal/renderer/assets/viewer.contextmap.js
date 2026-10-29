@@ -31,7 +31,7 @@
       '<div class="grp"><h4>Derived relationships</h4>'+
         '<div class="row"><span class="pg">U → D</span>Upstream → downstream ends</div>'+
         '<div class="row"><span class="sw" style="--fl:var(--cm-tag-fill);--cl:var(--cm-tag-line)"></span>CS · customer/supplier — cross-context event consumption</div>'+
-        '<div class="row"><span class="sw" style="--fl:var(--cm-tag-fill);--cl:var(--cm-tag-line)"></span>ACL · anti-corruption layer — consumer is a translation</div>'+
+        '<div class="row"><span class="sw" style="--fl:var(--cm-tag-fill);--cl:var(--cm-tag-line)"></span>ACL · anti-corruption layer — consumer is a translation (an automation consuming an external event)</div>'+
         '<div class="row">OHS/CF/SK/Partnership are not derived: the source model declares no such relationships.</div>'+
       '</div>';
   }

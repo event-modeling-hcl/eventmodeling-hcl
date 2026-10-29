@@ -1,1 +1,5 @@
 event "event" {}
+
+board {
+  workflows = []
+}
