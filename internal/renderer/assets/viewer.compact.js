@@ -182,8 +182,9 @@
   }
 
   function hotspotNote(h){
-    const dot = EMC.el("div","hotspot");
-    dot.innerHTML = '<span class="hs-mark">?!</span><span class="hs-label">Hotspot</span><span class="hs-q">'+EMC.esc(h.question)+'</span>';
+    const resolved = h.status === "resolved";
+    const dot = EMC.el("div","hotspot" + (resolved ? " is-resolved" : ""));
+    dot.innerHTML = '<span class="hs-mark">'+(resolved ? '✓' : '?!')+'</span><span class="hs-label">'+(resolved ? 'Resolved' : 'Hotspot')+'</span><span class="hs-q">'+EMC.esc(h.question)+'</span>';
     dot.setAttribute("tabindex","0");
     dot.setAttribute("data-q", h.question + "  ·  ["+h.status+"]");
     return dot;
@@ -503,6 +504,8 @@
       ["Processor","var(--proc-fill)","var(--proc-line)"],
       ["Aggregate","#f6eda0","#d4c663"],
       ["External system",EXTERNAL_COLOR.fill,EXTERNAL_COLOR.line],
+      ["Open hotspot","var(--hot-sticky-fill)","var(--hot-sticky-line)"],
+      ["Resolved hotspot","var(--hot-resolved-fill)","var(--hot-resolved-line)"],
     ].map(([l,f,c])=>`<div class="row"><span class="sw" style="--fl:${f};--cl:${c}"></span>${l}</div>`).join("");
     return `<div class="grp"><h4>Elements</h4>${rows}</div>`+
       `<div class="grp"><h4>Bounded contexts</h4><div class="row ctx-note">`+

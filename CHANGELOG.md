@@ -6,6 +6,17 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+## [v0.13.0] - 2026-10-30
+
+This release updates hotspot styling. The Event Modeling HCL language is
+unchanged (Specification v0.5.0).
+
+### Changed
+
+- Resolved hotspots use neutral gray sticky notes and show a visible **Resolved**
+  label in Model, Compact, and Event Storming views. Open hotspots retain their
+  red styling, so resolved questions no longer look like open issues.
+
 ## [v0.12.0] - 2026-10-30
 
 This release implements Event Modeling HCL Specification v0.5.0 (RFC 0004, Uncoupled Authoring Controls). The [specification changelog](https://github.com/event-modeling-hcl/spec/blob/main/CHANGELOG.md) says: "v0.5.0 is a breaking revision … A v0.4.0 model does not load under v0.5.0 rules; `migrate` converts it without changing its meaning." Run `emhcl migrate -w <model>` on each v0.4.0 model.

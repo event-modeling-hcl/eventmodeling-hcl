@@ -299,8 +299,9 @@
       const target = [...board.querySelectorAll(".es-note")].find(note=>note.dataset.id===hotspot.onId) ||
         [...board.querySelectorAll(".es-row-head")].find(head=>head.dataset.nodeId===hotspot.onId);
       if(!target){ unpinned.push(hotspot); return; }
-      const pin = EMC.el("div", "hotspot es-hotspot",
-        `<span class="es-hotspot-mark">?!</span><span class="es-hotspot-label">hotspot</span>`+
+      const resolved = hotspot.status === "resolved";
+      const pin = EMC.el("div", "hotspot es-hotspot" + (resolved ? " is-resolved" : ""),
+        `<span class="es-hotspot-mark">${resolved ? "✓" : "?!"}</span><span class="es-hotspot-label">${resolved ? "Resolved" : "hotspot"}</span>`+
         `<span class="es-hotspot-question es-note-detail">${EMC.esc(hotspot.question)}</span>`);
       pin.setAttribute("tabindex", "0");
       pin.setAttribute("data-q", `${hotspot.question}  ·  [${hotspot.status}]`);
@@ -409,14 +410,15 @@
       swatch("Automation / Translation", "var(--es-policy-fill)", "var(--es-policy-line)"),
       swatch("Read model", "var(--es-read-fill)", "var(--es-read-line)"),
       swatch("Screen", "var(--es-screen-fill)", "var(--es-screen-line)"),
-      swatch("Hotspot", "var(--hot-fill)", "var(--hot-line)"),
+      swatch("Open hotspot", "var(--hot-fill)", "var(--hot-line)"),
+      swatch("Resolved hotspot", "var(--hot-resolved-fill)", "var(--hot-resolved-line)"),
     ].join("");
     const placedActors = new Set(EMC.MODEL.slices.flatMap(slice=>slice.elements.map(element=>element.actor).filter(Boolean)));
     const actors = Object.entries(EMC.MODEL.actors).map(([id, actor]) =>
       `<div class="row"><span class="sw" style="--fl:var(--es-actor-fill);--cl:var(--es-actor-line)"></span><span>${EMC.esc(actor.title)}${placedActors.has(id)?"":' · <span class="mono">unassigned</span>'}</span></div>`).join("");
     const patterns = Object.entries(EMC.PATTERN_LABEL).map(([key,label])=>`<div class="row"><span class="pg">${EMC.PAT_SVG[key]}</span>${label}${EMC.PATTERN_NOTE[key]?` · ${EMC.PATTERN_NOTE[key]}`:""}</div>`).join("");
     const statuses = Object.entries(EMC.STATUS_LABEL).map(([key,label])=>`<div class="row"><span class="sd" style="background:${EMC.statusVar(key)}"></span>${label}</div>`).join("");
-    const other = unpinned.map(h=>`<div class="row"><span class="sw" style="--fl:var(--hot-fill);--cl:var(--hot-line)"></span><span>${EMC.esc(h.question)}${h.target?` · <span class="mono">${EMC.esc(h.target)}</span>`:""}</span></div>`).join("");
+    const other = unpinned.map(h=>`<div class="row${h.status === "resolved" ? " is-resolved" : ""}"><span class="sw" style="--fl:var(--hot-fill);--cl:var(--hot-line)"></span><span>${EMC.esc(h.question)} · ${h.status === "resolved" ? "Resolved" : "Open"}${h.target?` · <span class="mono">${EMC.esc(h.target)}</span>`:""}</span></div>`).join("");
     LEGENDS.storming = `<div class="grp"><h4>Elements</h4>${elements}</div>`+
       (actors?`<div class="grp"><h4>Actors</h4>${actors}</div>`:"")+
       `<div class="grp"><h4>Patterns (slice types)</h4>${patterns}</div><div class="grp"><h4>Slice status</h4>${statuses}</div>`+

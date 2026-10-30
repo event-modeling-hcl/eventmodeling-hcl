@@ -556,8 +556,9 @@ function renderEventModel(){
   // --- hotspots: pin onto visible targets; keep the rest in the legend ---
   const UNPINNED_HOTSPOTS = [];
   function hotspotNote(h){
-    const dot = el("div","hotspot");
-    dot.innerHTML = '<span class="hs-mark">?!</span><span class="hs-label">Hotspot</span><span class="hs-q">'+esc(h.question)+'</span>';
+    const resolved = h.status === "resolved";
+    const dot = el("div","hotspot" + (resolved ? " is-resolved" : ""));
+    dot.innerHTML = '<span class="hs-mark">'+(resolved ? '✓' : '?!')+'</span><span class="hs-label">'+(resolved ? 'Resolved' : 'Hotspot')+'</span><span class="hs-q">'+esc(h.question)+'</span>';
     dot.setAttribute("tabindex","0");
     dot.setAttribute("data-q", h.question + "  ·  ["+h.status+"]");
     return dot;
@@ -722,12 +723,13 @@ function renderEventModel(){
     ["readmodel","Read model","var(--read-fill)","var(--read-line)"],
     ["screen","Screen","var(--screen-fill)","var(--screen-line)"],
     ["processor","Processor","var(--proc-fill)","var(--proc-line)"],
-    ["hotspot","Hotspot","var(--hot-sticky-fill)","var(--hot-sticky-line)"],
+    ["hotspot","Open hotspot","var(--hot-sticky-fill)","var(--hot-sticky-line)"],
+    ["hotspot","Resolved hotspot","var(--hot-resolved-fill)","var(--hot-resolved-line)"],
   ].map(([k,l,f,c])=>`<div class="row"><span class="sw" style="--fl:${f};--cl:${c}"></span>${l}</div>`).join("");
   const patLeg = Object.entries(PATTERN_LABEL).map(([k,l])=>`<div class="row"><span class="pg">${PAT_SVG[k]}</span>${l}${PATTERN_NOTE[k]?` · ${PATTERN_NOTE[k]}`:""}</div>`).join("");
   const stLeg = Object.entries(STATUS_LABEL).map(([k,l])=>`<div class="row"><span class="sd" style="background:${statusVar(k)}"></span>${l}</div>`).join("");
-  const hotspotLeg = UNPINNED_HOTSPOTS.map(h=>`<div class="row"><span class="sw" style="--fl:var(--hot-sticky-fill);--cl:var(--hot-sticky-line)"></span>`+
-    `<span>${esc(h.question)}${h.target?` · <span class="mono">${esc(h.target)}</span>`:""}</span></div>`).join("");
+  const hotspotLeg = UNPINNED_HOTSPOTS.map(h=>`<div class="row${h.status === "resolved" ? " is-resolved" : ""}"><span class="sw" style="--fl:var(--hot-sticky-fill);--cl:var(--hot-sticky-line)"></span>`+
+    `<span>${esc(h.question)} · ${h.status === "resolved" ? "Resolved" : "Open"}${h.target?` · <span class="mono">${esc(h.target)}</span>`:""}</span></div>`).join("");
   const placedActors = new Set(MODEL.slices.flatMap(slice=>slice.elements.map(element=>element.actor).filter(Boolean)));
   const actorLeg = Object.entries(MODEL.actors).map(([id,actor])=>`<div class="row"><span class="sw" style="--fl:#8FE3D8;--cl:#5DBFB3"></span>`+
     `<span>${esc(actor.title)}${placedActors.has(id)?"":` · <span class="mono">unassigned</span>`}</span></div>`).join("");

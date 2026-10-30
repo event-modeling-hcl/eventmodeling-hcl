@@ -38,6 +38,7 @@
   --table-fill:#f6eda0; --table-line:#d4c663; --table-ink:#423a12;
   --hot-fill:#F7C2C2;     --hot-line:#DC6A6A;     --hot-ink:#5b1a1a;
   --hot-sticky-fill:#E5484D; --hot-sticky-line:#B4232A; --hot-sticky-ink:#FFFFFF;
+  --hot-resolved-fill:#d4d4d4; --hot-resolved-line:#8a8a8a; --hot-resolved-ink:#303030;
   --sticky-shadow:0 2px 2px rgba(48,38,22,.12),0 7px 12px rgba(48,38,22,.18);
   --sticky-shadow-hot:0 3px 4px rgba(48,38,22,.14),0 12px 20px rgba(48,38,22,.22);
 
@@ -441,6 +442,10 @@ button{font-family:inherit}
 
 /* hotspot: shared base (Storming's .es-hotspot relies on this positioning) */
 .hotspot{position:absolute; z-index:6; cursor:help}
+.is-resolved{
+  --hot-fill:var(--hot-resolved-fill); --hot-line:var(--hot-resolved-line); --hot-ink:var(--hot-resolved-ink);
+  --hot-sticky-fill:var(--hot-resolved-fill); --hot-sticky-line:var(--hot-resolved-line); --hot-sticky-ink:var(--hot-resolved-ink);
+}
 /* Model view: big red sticky, ~60% of the pinned card, hanging off its top-right corner */
 .board .hotspot{top:0; right:0; z-index:7; width:60%; min-width:84px; max-width:140px; aspect-ratio:1;
   box-sizing:border-box; padding:8px 7px; border-radius:1px; border:0;

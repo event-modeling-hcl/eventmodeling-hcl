@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`emhcl` v0.12.0 implements Event Modeling HCL Specification v0.5.0. A model can
+`emhcl` v0.13.0 implements Event Modeling HCL Specification v0.5.0. A model can
 be one `.em.hcl` file or a folder of `.em.hcl` files.
 This repository provides a strict validator, canonical formatter, typed semantic model,
 normative language documentation, and executable examples. The domain reference is the upstream [Event Modeling
@@ -24,7 +24,7 @@ preserve the rules and durable artifacts of an Event Modeling session.
 Install the tagged command with Go 1.25 or newer:
 
 ```bash
-go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.12.0
+go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.13.0
 ```
 
 Go writes the executable to `GOBIN`, or to `$(go env GOPATH)/bin` when
@@ -46,7 +46,7 @@ the [GitHub Releases page](https://github.com/event-modeling-hcl/eventmodeling-h
 Verify a downloaded archive with that release's `checksums.txt`:
 
 ```bash
-archive=emhcl_0.12.0_linux_amd64.tar.gz
+archive=emhcl_0.13.0_linux_amd64.tar.gz
 grep " ${archive}$" checksums.txt | sha256sum -c -
 # macOS: grep " ${archive}$" checksums.txt | shasum -a 256 -c -
 ```
@@ -56,7 +56,7 @@ With GitHub CLI 2.49.0 or newer, verify the downloaded archive was produced by
 this repository's release workflow:
 
 ```bash
-gh attestation verify emhcl_0.12.0_linux_amd64.tar.gz \
+gh attestation verify emhcl_0.13.0_linux_amd64.tar.gz \
   --repo event-modeling-hcl/eventmodeling-hcl
 ```
 
@@ -158,6 +158,10 @@ chapters.
   of the next chapter. Slide links replace the current history entry, so browser
   Back leaves the slides. **Full screen** hides the toolbar where the browser
   allows full screen.
+
+In **Model**, **Compact**, and **Storming** (Event Storming), open hotspots use
+red sticky notes. Hotspots with `status = "resolved"` use neutral gray notes
+and show a visible **Resolved** label, so status does not depend on color alone.
 
 For a local edit-and-render loop, serve one model and keep the browser open
 while the file changes:
