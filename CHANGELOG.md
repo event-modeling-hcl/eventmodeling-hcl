@@ -6,12 +6,7 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
-### Fixed
-
-- Migration rejects v0.4.0-invalid one-file chapter ranges and chapters spread across several files before rewriting.
-- The IR records `TitlePresent` separately from literal title text, so `title = ""` is not confused with omission. Rendering and export preserve literal empty titles.
-
-## [v0.12.0] - 2026-10-29
+## [v0.12.0] - 2026-10-30
 
 This release implements Event Modeling HCL Specification v0.5.0 (RFC 0004, Uncoupled Authoring Controls). The [specification changelog](https://github.com/event-modeling-hcl/spec/blob/main/CHANGELOG.md) says: "v0.5.0 is a breaking revision … A v0.4.0 model does not load under v0.5.0 rules; `migrate` converts it without changing its meaning." Run `emhcl migrate -w <model>` on each v0.4.0 model.
 
@@ -40,6 +35,8 @@ This release implements Event Modeling HCL Specification v0.5.0 (RFC 0004, Uncou
 
 ### Fixed
 
+- Migration rejects v0.4.0-invalid one-file chapter ranges and chapters spread across several files before rewriting.
+- The IR records `TitlePresent` separately from literal title text, so `title = ""` is not confused with omission. Rendering and export preserve literal empty titles.
 - The toolchain, CI verification, and release builds select Go 1.26.10, which fixes standard-library vulnerability GO-2026-6809 in `crypto/x509` (reachable from `emhcl serve`).
 
 ## [v0.11.0] - 2026-10-09
