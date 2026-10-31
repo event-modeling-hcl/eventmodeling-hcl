@@ -6,6 +6,15 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+### Added
+
+- Makefile targets `model-fmt-check`, `model-valid`, and `model-ready` check one model that `MODEL=<model.em.hcl | folder>` names. Each target runs the one before it: formatting, then the default profile, then the strict profile.
+- Makefile target `examples-fmt-check` fails when a file in `examples/` differs from `emhcl fmt` output. `make verify` and CI run it.
+
+### Changed
+
+- The `event-modeling-hcl` agent skill (v2.1.0) states the scenario rules as EBNF productions, its gates as a Makefile dependency graph, the status locks as a state table, the field-provenance rules as contracts, and a retry limit for the repair loop. Review findings use the CLI diagnostic format, and the final report is a `Key: Value` header block.
+
 ## [v0.13.0] - 2026-10-30
 
 This release updates hotspot styling. The Event Modeling HCL language is

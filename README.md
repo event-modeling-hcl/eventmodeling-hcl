@@ -543,6 +543,19 @@ make verify
 The test suite validates every `.em.hcl` file in `examples/` and asserts every
 fixture in `testdata/invalid/` fails validation.
 
+Three targets check one model, a file or a folder, that you name with `MODEL`.
+Each target runs the target before it first, and stops at the first failure:
+
+```bash
+make model-fmt-check MODEL=examples/pet-clinic   # every member file is formatted
+make model-valid     MODEL=examples/pet-clinic   # and it passes the default profile
+make model-ready     MODEL=examples/pet-clinic   # and it passes the strict profile
+```
+
+`make model-ready` is the gate for an implementation-ready model. It fails while
+the model has an open hotspot. The agent skill in
+`.agents/skills/event-modeling-hcl` uses the same order.
+
 ### Pre-commit Hooks
 
 Install [pre-commit](https://pre-commit.com/), then install the repository hook

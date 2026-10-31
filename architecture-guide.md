@@ -234,6 +234,57 @@ Some residual shared items are intentional:
 
 The slides list every hotspot in scope under "Open questions", resolved hotspots too, with the status as plain text. The Compact board does not show a hotspot that it cannot pin. The Model and Storming boards list such hotspots in their legend.
 
+## Requirements for the agent skill
+
+The repository ships an agent skill in `.agents/skills/event-modeling-hcl`. An AI agent reads it when it writes or reviews a model. The skill is a client of the tool. It adds one need, one FR, and one DP:
+
+| Need | Functional requirement | Acceptance criterion | Design parameter |
+| --- | --- | --- | --- |
+| N7: Authors who work with an AI agent get a model that the tool accepts | FR10: Guide an agent to a model that passes the gates, and to a true report of the gate that it reached | The agent claims a gate only when `emhcl` exited 0 for that gate. Its report names each command and its exit code. | DP10: The skill (`SKILL.md` and `references/`) and the Makefile targets `model-fmt-check`, `model-valid`, and `model-ready` |
+
+In the tool matrix, the FR10 row has `X` under DP1, DP8, DP2, DP3, DP5, DP7, DP9, and DP6. The skill copies grammar facts from DP1 and DP2, the folder rules from DP8, and the scenario productions and diagnostic codes from DP3. It runs `emhcl fmt`, `import`, `migrate`, and `validate`, so it reads the results of DP5, DP7, DP9, and DP6. FR10 has `0` under DP4, because the skill does not read the typed model.
+
+The DP10 column has `0` in every other row. The skill and the Makefile targets only call the CLI and read its exit code. They cannot change what the parser, the validator, the formatter, or an adapter accepts. Thus the FR10 row and the DP10 column go at the end of the matrix, and the matrix stays lower triangular.
+
+FR10 has seven child requirements. Each DP is a formalism that the skill states in a few lines, in place of a prose rule.
+
+| Child FR | Acceptance criterion | DP |
+| --- | --- | --- |
+| FR10.3: Write only legal scenarios | Each scenario matches the production for its workflow kind | DP10.3: The EBNF scenario productions, copied from the specification into `references/language-v0.5.md` |
+| FR10.5: Give each field a source | Each field has a source, a written derivation, or an open hotspot | DP10.5: The `@requires`, `@ensures`, and `@invariant` contracts in `SKILL.md` section 5 |
+| FR10.4: Leave locked workflows unchanged | No edit to a locked workflow without a confirmation that names it | DP10.4: The status state table in `SKILL.md` section 1 |
+| FR10.1: Claim a gate only after the tool passed it | A gate is claimed only when its command exited 0 | DP10.1: The Makefile gate graph (`formatted`, `valid`, `implementation-ready`). In this repository, `make model-ready MODEL=<path>`. |
+| FR10.2: Stop a repair loop that does not converge | No third edit for the same code on the same element without a new user decision | DP10.2: The circuit breaker with threshold k = 2 in `SKILL.md` section 9 |
+| FR10.7: Report review findings that the tool can confirm | Each finding is one diagnostic line. `EM401`–`EM406` lines come from the CLI output. | DP10.7: The diagnostic line format in `SKILL.md` section 8 |
+| FR10.6: Report the result in a form that a program can read | The report starts with a `Key: Value` header block | DP10.6: The RFC 822 style header block in `SKILL.md` section 10 |
+
+| FR \ DP | DP10.3 Productions | DP10.5 Contracts | DP10.4 Status table | DP10.1 Gate graph | DP10.2 Breaker | DP10.7 Diagnostics | DP10.6 Header |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| FR10.3 Legal scenarios | X | 0 | 0 | 0 | 0 | 0 | 0 |
+| FR10.5 Field sources | 0 | X | 0 | 0 | 0 | 0 | 0 |
+| FR10.4 Locked workflows | 0 | 0 | X | 0 | 0 | 0 | 0 |
+| FR10.1 True gates | X | 0 | X | X | 0 | 0 | 0 |
+| FR10.2 Bounded repair | 0 | 0 | 0 | X | X | 0 | 0 |
+| FR10.7 Review findings | 0 | X | 0 | X | 0 | X | 0 |
+| FR10.6 Report | 0 | 0 | X | X | X | 0 | X |
+
+The matrix is lower triangular, so the skill is decoupled. Set the DPs in this order: productions, contracts, status table, gate graph, breaker, diagnostics, header.
+
+The off-diagonal entries are these influences:
+
+- FR10.1 depends on DP10.3, because a scenario that breaks a production fails `validate`. It depends on DP10.4, because a lock can stop the repair that a gate needs.
+- FR10.2 depends on DP10.1, because the breaker counts the failures that the gate commands report.
+- FR10.7 depends on DP10.1 for the `EM4xx` lines, and on DP10.5 for the findings that have no code.
+- FR10.6 reports the gate (DP10.1), an open breaker (DP10.2), and the locked workflows (DP10.4).
+
+The important zeros are these:
+
+- FR10.1 has `0` under DP10.5. The validator does not check field lineage, so a contract violation never changes a gate.
+- FR10.3 has `0` under DP10.1. The gate graph finds an illegal scenario, but only the productions and the validator decide what is legal. A gate never makes an illegal scenario legal.
+- No DP of the skill has an `X` in a row of the tool matrix.
+
+The Makefile targets keep one owner for each fact. `model-fmt-check` compares each member file with the output of `emhcl fmt`, so the formatter owns the layout. `model-valid` and `model-ready` run `emhcl validate`, so the validator owns validity and the profiles. The targets only fix the order of the three calls. `examples-fmt-check` applies the same comparison to `examples/`.
+
 ## Module contracts
 
 | Module | Owns | Input | Output and failure contract |
@@ -285,6 +336,8 @@ The CLI owns output-file safety. `emhcl export` refuses an `-o` target that has 
 17. Change the fragment with `location.hash` or `replaceHash`. Do not let the browser follow a fragment link, because inside the `srcdoc` frame of the playground the link loads the playground page.
 18. Keep v0.4.0 rules inside `internal/migrate`. No other package can infer field types, derive titles, or read the `translation` keyword.
 19. A profile assigns only the severity of a judgment signal. Do not let a profile, a judgment signal, or a renderer decide whether a model, HTML, or JSON is produced. Only core errors decide it.
+20. If you change a scenario rule in `validator/scenarios.go`, a diagnostic code, a profile severity, or an exit code of `internal/cli`, change the specification first (rule 1). Then change the copy in `.agents/skills/event-modeling-hcl` in the same change.
+21. Keep the Makefile model targets as calls to `emhcl`. Do not add a rule to them that the CLI does not check.
 
 A change breaks the Independence Axiom when, for example:
 
@@ -295,10 +348,11 @@ A change breaks the Independence Axiom when, for example:
 - The importer writes a model that the validator did not accept.
 - A viewer page renders another board to get filters, data, or a helper.
 - A viewer route gets a second parser.
+- The agent skill states a language rule that the specification and the validator do not have.
 
 ## Known deviations
 
-The code at release v0.13.0 does not follow this guide in five places. Each one keeps the matrices triangular, but each one gives a fact two owners. Two owners make a change more likely to break one of the FRs.
+The code at release v0.13.0 does not follow this guide in six places. Each one keeps the matrices triangular, but each one gives a fact two owners. Two owners make a change more likely to break one of the FRs.
 
 | ID | Deviation | Rule | Effect | Correction |
 | --- | --- | --- | --- | --- |
@@ -307,6 +361,7 @@ The code at release v0.13.0 does not follow this guide in five places. Each one 
 | D3 | The resolved-hotspot check (the class, the mark, and the label) is copied into `viewer.js`, `viewer.compact.js`, and `viewer.eventstorming.js`. The slides do not use it. | 16 | A change to the meaning of a hotspot status needs three edits, and the slides can disagree. | Add one hotspot-status helper to `EMC` and use it in the boards and the slides. |
 | D4 | The interchange module repeats three validator flow rules (see [Influences across branches](#influences-across-branches)). | 11 | The importer can write a flow that the validator refuses. `app.Import` then reports the error, so the user sees it. | Move the flow tables to a package that both modules import. |
 | D5 | A new board needs edits in `showPage`, `relayoutAll`, and `render.go`. | 15 | Each board name has three owners. | Let each board register its render and layout functions with `EMC`. |
+| D6 | The agent skill copies the scenario productions, the diagnostic codes, the profile severities, and the exit codes (see [Requirements for the agent skill](#requirements-for-the-agent-skill)). | 20 | The skill can teach a rule that the validator no longer has. The gate graph still reports the real result, so the agent cannot claim a gate that the tool refused. | Generate the skill copy from the specification, or check it in `make verify`. |
 
 ## Information Axiom and evidence
 
@@ -318,7 +373,9 @@ The repository does not give a number for information content. It does not measu
 - Injected effects.
 - Automated tests.
 
-`make verify` runs a repeatable set of steps. They cover formatting, module tidiness, `go vet`, unit tests, the race detector, Staticcheck, switch exhaustiveness, vulnerabilities, a compile of the WASM module, the shipped examples, and three checks of the release tag and version.
+`make verify` runs a repeatable set of steps. They cover formatting, module tidiness, `go vet`, unit tests, the race detector, Staticcheck, switch exhaustiveness, vulnerabilities, a compile of the WASM module, the validation and the `emhcl fmt` layout of the shipped examples, and three checks of the release tag and version.
+
+The agent skill has less evidence. `evals/evals.json` holds six prompts with expectations. The repository has no automated run of them, and no measured pass rate for each child FR of FR10. The formalisms in DP10 come from a published A/B benchmark on Gemini models (Randal L. Schwartz, "What LLMs 'Know' That You Don't Know They Know", DEV Community, 2026). That benchmark does not measure this skill. To compare the skill with its prose version under the Information Axiom, run the six evals against both versions and compare the pass rates for the same expectations.
 
 The interchange module has this evidence:
 

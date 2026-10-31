@@ -282,13 +282,40 @@ a todo list includes its completion event in `readmodel.from`.
 
 ## Scenarios
 
-Each step has exactly one target. `error` is a literal string.
+Each step has exactly one target. `error` is a literal string. These
+productions are a copy of the "Scenarios" section of the specification, in its
+EBNF notation: `{ x }` is zero or more, `|` is a choice, quoted text is
+literal, and `(* ... *)` is a comment. Steps may appear in any order. The
+specification wins if the two differ. The validator reports a wrong count as
+`EM301`, a step with zero or two targets as `EM302`, and a target that the
+workflow kind does not allow as `EM303`.
 
-| Workflow | Given | When | Then |
-| --- | --- | --- | --- |
-| State Change | zero or more Events | exactly one Command | one or more Events/Errors |
-| State View | one or more Events | none | one or more Read Models/Errors |
-| Automation | zero or more Events/Read Models | exactly one Processor/Command | one or more Events/Errors |
+```text
+state_change_scenario = 'scenario' id '{' { sc_given | sc_when | sc_then | comment | attribute } '}'
+  (* zero or more sc_given, exactly one sc_when, one or more sc_then *)
+sc_given              = 'given' '{' event_target step_body '}'
+sc_when               = 'when'  '{' command_target step_body '}'
+sc_then               = 'then'  '{' ( event_target | error_target ) step_body '}'
+
+state_view_scenario   = 'scenario' id '{' { sv_given | sv_then | comment | attribute } '}'
+  (* one or more sv_given, no when step, one or more sv_then *)
+sv_given              = 'given' '{' event_target step_body '}'
+sv_then               = 'then'  '{' ( readmodel_target | error_target ) step_body '}'
+
+automation_scenario   = 'scenario' id '{' { au_given | au_when | au_then | comment | attribute } '}'
+  (* zero or more au_given, exactly one au_when, one or more au_then *)
+au_given              = 'given' '{' ( event_target | readmodel_target ) step_body '}'
+au_when               = 'when'  '{' ( processor_target | command_target ) step_body '}'
+au_then               = 'then'  '{' ( event_target | error_target ) step_body '}'
+
+event_target          = 'event' '=' event_ref
+command_target        = 'command' '=' command_ref
+readmodel_target      = 'readmodel' '=' readmodel_ref
+processor_target      = 'processor' '=' processor_ref
+error_target          = 'error' '=' string
+step_body             = { attribute | field | field_list }
+  (* a step sets exactly one target attribute *)
+```
 
 Canvas automation specs that use an empty When, a Then command, or "nothing
 dispatched" are not this grammar. Do not encode them by inventing attributes.

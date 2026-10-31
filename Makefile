@@ -1,11 +1,26 @@
 GO ?= go
 BINARY := bin/emhcl
 EXAMPLES := $(wildcard examples/*.em.hcl) $(patsubst %/,%,$(wildcard examples/*/))
+EXAMPLE_FILES := $(wildcard examples/*.em.hcl examples/*/*.em.hcl)
+# MODEL is one .em.hcl file or one folder model. A folder model uses every
+# .em.hcl file directly in the folder whose name does not start with a dot.
+MODEL ?=
+MODEL_FILES = $(if $(wildcard $(MODEL)/.),$(wildcard $(MODEL)/*.em.hcl),$(MODEL))
 WASM_DIR := web/playground
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build test test-race vet fmt-check tidy-check staticcheck exhaustive vulncheck validate-examples build-wasm wasm-check release-tag-check release-annotation-check release-version-check verify clean
+.PHONY: help build test test-race vet fmt-check tidy-check staticcheck exhaustive vulncheck validate-examples examples-fmt-check model-fmt-check model-valid model-ready build-wasm wasm-check release-tag-check release-annotation-check release-version-check verify clean
+
+# $(call emhcl-fmt-check,<files>) fails when a file differs from `emhcl fmt`.
+define emhcl-fmt-check
+@temporary=$$(mktemp); \
+trap 'rm -f "$$temporary"' EXIT; \
+for file in $(1); do \
+	$(BINARY) fmt "$$file" > "$$temporary" || exit $$?; \
+	cmp -s "$$temporary" "$$file" || { echo "$$file is not formatted. Run: emhcl fmt -w $$file" >&2; exit 1; }; \
+done
+endef
 
 help: ## List available commands.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -49,6 +64,21 @@ validate-examples: build ## Validate every shipped Event Modeling example.
 		$(BINARY) validate "$$model" || exit $$?; \
 	done
 
+examples-fmt-check: build ## Fail if a shipped example file is not emhcl-formatted.
+	$(call emhcl-fmt-check,$(EXAMPLE_FILES))
+
+# Model gates for MODEL=<model.em.hcl | folder>. Each target needs the one
+# before it: model-ready <- model-valid <- model-fmt-check <- build.
+model-fmt-check: build ## Fail if a member file of MODEL is not emhcl-formatted.
+	@test -n "$(MODEL)" || { echo "usage: make $@ MODEL=<model.em.hcl | folder>" >&2; exit 2; }
+	$(call emhcl-fmt-check,$(MODEL_FILES))
+
+model-valid: model-fmt-check ## Validate MODEL with the default (valid) profile.
+	$(BINARY) validate "$(MODEL)"
+
+model-ready: model-valid ## Validate MODEL with the strict profile: the implementation-ready gate.
+	$(BINARY) validate --profile strict "$(MODEL)"
+
 build-wasm: ## Build the WebAssembly playground module into web/playground/.
 	@mkdir -p $(WASM_DIR)
 	$(GO) run ./cmd/playground-seed examples/minimal.em.hcl > $(WASM_DIR)/seed.js
@@ -79,7 +109,7 @@ release-version-check: ## Verify the linker-injected release version is reported
 	$(GO) build -ldflags '-X main.buildVersion=v0.13.0' -o "$$temporary/emhcl" ./cmd/emhcl; \
 	test "$$($$temporary/emhcl version)" = 'emhcl v0.13.0'
 
-verify: fmt-check tidy-check vet test test-race staticcheck exhaustive vulncheck validate-examples wasm-check release-tag-check release-annotation-check release-version-check ## Run the complete local verification suite.
+verify: fmt-check tidy-check vet test test-race staticcheck exhaustive vulncheck validate-examples examples-fmt-check wasm-check release-tag-check release-annotation-check release-version-check ## Run the complete local verification suite.
 
 clean: ## Remove locally built artifacts.
 	rm -rf bin dist $(WASM_DIR)/emhcl.wasm $(WASM_DIR)/wasm_exec.js $(WASM_DIR)/seed.js

@@ -20,7 +20,8 @@ make verify
   - race tests,
   - `staticcheck`,
   - `govulncheck`,
-  - and validation of every example in `examples/`.
+  - validation of every example in `examples/`,
+  - and a check that every example file is `emhcl fmt` formatted.
 
 ## Code conventions
 
