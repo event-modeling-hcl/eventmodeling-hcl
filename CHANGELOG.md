@@ -8,13 +8,16 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ### Added
 
+- Specification v0.6.0 (RFC 0005, View Scenarios in Automations). An `automation` scenario without a `when` step is a view form scenario: one or more `given` events, then a read model of the same automation or an error. A missing `given` is `EM301`, a target that the view form does not allow is `EM303`, and a `then` read model of another workflow is `EM101`. Every v0.5.0 model stays valid. `version.Spec` is `v0.6.0`.
+- `emhcl import` keeps a JSON automation specification without a `when` step as a view form scenario, and `emhcl export` writes it with an empty `when` list. A view form step that targets a read model of another slice is omitted with a warning.
+- `examples/pet-clinic` has a view form scenario on the `notify_owner` to-do list, so the round-trip test covers the form.
 - Makefile targets `model-fmt-check`, `model-valid`, and `model-ready` check one model that `MODEL=<model.em.hcl | folder>` names. Each target runs the one before it: formatting, then the default profile, then the strict profile.
 - Makefile target `examples-fmt-check` fails when a file in `examples/` differs from `emhcl fmt` output. `make verify` and CI run it.
 
 ### Changed
 
 - The `event-modeling-hcl` agent skill (v2.1.0) states the scenario rules as EBNF productions, its gates as a Makefile dependency graph, the status locks as a state table, the field-provenance rules as contracts, and a retry limit for the repair loop. The final report is a `Key: Value` header block.
-- The agent skill no longer asks for a view scenario on the to-do read model of an `automation`, because v0.5.0 cannot express it. The to-do list appears in a `given` step, and the closing rule goes in a scenario `comment`. Spec RFC 0005 proposes a view form for these scenarios.
+- The agent skill (v2.3.0) targets Specification v0.6.0. Its language reference is now `references/language-v0.6.md` with the view form productions. A to-do read model of an `automation` gets view form scenarios: when a row enters the list, and when the completion event removes it.
 - The agent skill says that a `field` block has no `description` attribute, and that a field derivation goes in the description of the element that owns the field.
 - The agent skill (v2.2.0) writes its own review findings as `Review:` lines, with no EM code. Only lines that `emhcl` printed use `Error` or `Warning`. In an A/B run of the six evals, v2.1.0 made the agent's findings look like `emhcl` output in three of six runs.
 
