@@ -133,9 +133,19 @@ automation "request_order_confirmation" {
     given { readmodel = readmodel.orders_needing_confirmation }
     when  { processor = processor.confirmation_processor }
     then  { event = event.notifications.order_confirmation_requested }
+  }
 
-    comment {
-      description = "After order_confirmation_requested, the order leaves orders_needing_confirmation."
+  scenario "placed_order_waits_for_confirmation" {
+    given { event = event.orders.order_placed }
+    then  { readmodel = readmodel.orders_needing_confirmation }
+  }
+
+  scenario "confirmed_order_leaves_the_list" {
+    given { event = event.orders.order_placed }
+    given { event = event.notifications.order_confirmation_requested }
+    then {
+      expect_empty_list = true
+      readmodel         = readmodel.orders_needing_confirmation
     }
   }
 }
@@ -145,10 +155,11 @@ The read model is a queue of pending items, not a status flag on the entity.
 A completion event is added to that read model's `from` list; do not reverse
 an edge, and do not invent a closer attribute. This automation consumes only
 internal events; one that consumes external events is a translation (below).
-`when` is the processor or the command it issues. `then` is
-an event or an error, never the command, never a read model, and never empty.
-The to-do list appears only as a `given` step. Write how a completion event
-closes a row in a scenario `comment`.
+The first scenario is the action form: `when` is the processor or the command
+it issues, and `then` is an event or an error, never the command, never a read
+model, and never empty. The other two are the view form: no `when`, given
+events, and `then` the to-do list of this automation. They show when a row
+enters the list and when the completion event removes it.
 
 ## Translation (an automation over external events)
 

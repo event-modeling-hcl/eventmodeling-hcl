@@ -3,7 +3,7 @@ name: event-modeling-hcl
 description: >-
   Turn product ideas, requirements, workshop notes, user stories, domain prose,
   existing behavior, or event-driven designs into valid Event Modeling HCL
-  v0.5.0 models: one `.em.hcl` file or a folder of `.em.hcl` files. Use this
+  v0.6.0 models: one `.em.hcl` file or a folder of `.em.hcl` files. Use this
   skill whenever the user asks to create, extend, split, repair, review,
   validate, format, migrate, import, export, or explain an Event Model or
   `.em.hcl` file, or mentions Events, Commands, Read Models, State Change,
@@ -11,10 +11,11 @@ description: >-
   information completeness, or Given/When/Then scenarios—even if they do not
   name HCL.
 compatibility: >-
-  Targets Event Modeling HCL Specification v0.5.0. For machine verification,
-  use emhcl v0.12.0 or newer; older releases implement v0.4.0.
+  Targets Event Modeling HCL Specification v0.6.0. For machine verification,
+  use emhcl v0.14.0 or newer. v0.12.0 and v0.13.0 implement v0.5.0 and reject
+  view form automation scenarios. Older releases implement v0.4.0.
 metadata:
-  version: "2.2.0"
+  version: "2.3.0"
   author: workspace
   specification: "https://github.com/event-modeling-hcl/spec"
 ---
@@ -32,21 +33,21 @@ the strict native HCL language.
 - Read [references/methodology.md](references/methodology.md) when discovering a
   new model, interpreting prose, choosing slice boundaries, reviewing model
   quality, honoring status locks, or recording evidence provenance.
-- Read [references/language-v0.5.md](references/language-v0.5.md) before writing
+- Read [references/language-v0.6.md](references/language-v0.6.md) before writing
   or repairing HCL, splitting a model into a folder, migrating a v0.4.0 model,
   or converting JSON. It is the local syntax and validation reference.
 - Read [references/patterns.md](references/patterns.md) when a pattern shape or
   scenario form is uncertain. Adapt examples to the domain; never copy their
   placeholder vocabulary into the output.
 
-For conflicts, the normative Event Modeling HCL v0.5.0 specification wins over
+For conflicts, the normative Event Modeling HCL v0.6.0 specification wins over
 examples, existing files, or general HCL knowledge.
 
 ## Rules that are not syntax
 
 Apply three layers, in this order when they conflict:
 
-1. Validator and v0.5.0 grammar. Illegal HCL is never "more faithful".
+1. Validator and v0.6.0 grammar. Illegal HCL is never "more faithful".
 2. Methodology judgment in `references/methodology.md`. A valid file can still
    be a poor model.
 3. Canvas layout (columns, lanes, stickies). It has no attributes. Encode the
@@ -91,7 +92,7 @@ Choose the model shape:
 - In a folder model, put the `board` and catalog blocks in one file, chapter
   blocks in any file, and each workflow in its own file. File names have no
   meaning to the tool; a number prefix only helps people read. See "Folder
-  models" in `references/language-v0.5.md`.
+  models" in `references/language-v0.6.md`.
 - A v0.4.0 model (no `board`, typeless fields, or `translation` blocks) must be
   converted first with `emhcl migrate -w <model>`; then review the result.
 
@@ -252,13 +253,15 @@ for example `command.place_order`.
 ### 7. Specify observable business behavior
 
 Keep each `scenario` inside its workflow. Write it by the EBNF productions in
-the "Scenarios" section of `references/language-v0.5.md`, one production for
+the "Scenarios" section of `references/language-v0.6.md`, one production for
 each workflow kind. Do not use canvas Given/When/Then variants.
 
-Methodology notes that leave an automation When empty, put the issued command
-in Then, or assert "nothing dispatched" do not match the productions, so they
-are not legal scenarios. Prose givens and `storyline` blocks are not legal
-either. See `references/methodology.md`.
+An `automation` scenario has two forms. An action form scenario has one `when`
+step. A view form scenario has no `when` step and states the content of a read
+model of that automation, for example a to-do list. Methodology notes that put
+the issued command in Then, or assert "nothing dispatched", match neither form,
+so they are not legal scenarios. Prose givens and `storyline` blocks are not
+legal either. See `references/methodology.md`.
 
 Each step has exactly one typed target. There is no Query concept and no
 `query` attribute. Use `comment { description = ... }` for semantic notes;
@@ -309,9 +312,11 @@ not in a file, uses `input` as the file and has no line or column.
 ### 9. Format, validate, and repair the source
 
 Prefer a repository-local compatible binary, then a PATH-installed binary.
-Check the version with `emhcl version`. v0.5.0 models need v0.12.0 or newer.
-A `dev` build from a repository checkout that accepts a `board` block counts
-as current.
+Check the version with `emhcl version`. v0.6.0 models need v0.14.0 or newer.
+v0.12.0 and v0.13.0 implement v0.5.0, so they cannot confirm a v0.6.0 model.
+A `dev` build from a repository checkout counts as current only when it
+accepts a view form automation scenario (an `automation` scenario with given
+events, no `when` step, and a `then` read model of that automation).
 Do not install tooling or execute untrusted downloads without the user's
 request.
 
@@ -361,7 +366,7 @@ hotspot on a workshop draft. Never suppress the diagnostic or invent a rule to
 clear it.
 
 If no compatible CLI is available, perform the complete static checklist in
-`references/language-v0.5.md` and report that machine validation was not run.
+`references/language-v0.6.md` and report that machine validation was not run.
 Never claim validation from inspection alone.
 
 ### 10. Report precisely

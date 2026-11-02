@@ -1,9 +1,10 @@
-# Event Modeling HCL v0.5.0 reference
+# Event Modeling HCL v0.6.0 reference
 
-This is a compact authoring checklist derived from the normative v0.5.0
+This is a compact authoring checklist derived from the normative v0.6.0
 specification. A model is one `.em.hcl` file or a folder of `.em.hcl` files.
-v0.5.0 is a breaking revision: a v0.4.0 model does not validate until
-`emhcl migrate` converts it (see "Tooling").
+v0.6.0 adds view form `automation` scenarios to v0.5.0. v0.5.0 was a breaking
+revision: a v0.4.0 model does not validate until `emhcl migrate` converts it
+(see "Tooling").
 
 ## Language principles
 
@@ -163,7 +164,7 @@ field "customer_id" {
 ```
 
 The current CLI also accepts unchecked `mapping` and `schema` strings. They are
-not v0.5.0 contracts and not methodology lineage. `emhcl import` can write them
+not v0.6.0 contracts and not methodology lineage. `emhcl import` can write them
 to keep JSON data. Keep them in an imported file, but do not add new ones. Do not write
 `session:`, `latest:`, `derived:`, or `aggregate:` expressions. Record a
 derivation in `description`, a scenario `comment`, or a `hotspot`.
@@ -288,7 +289,10 @@ EBNF notation: `{ x }` is zero or more, `|` is a choice, quoted text is
 literal, and `(* ... *)` is a comment. Steps may appear in any order. The
 specification wins if the two differ. The validator reports a wrong count as
 `EM301`, a step with zero or two targets as `EM302`, and a target that the
-workflow kind does not allow as `EM303`.
+workflow kind or the form does not allow as `EM303`. The count of `when` steps
+selects the form of an `automation` scenario: one `when` step gives the action
+form, no `when` step gives the view form. A view form `then` read model of
+another workflow (`readmodel.<other_workflow>.<id>`) is `EM101`.
 
 ```text
 state_change_scenario = 'scenario' id '{' { sc_given | sc_when | sc_then | comment | attribute } '}'
@@ -302,11 +306,17 @@ state_view_scenario   = 'scenario' id '{' { sv_given | sv_then | comment | attri
 sv_given              = 'given' '{' event_target step_body '}'
 sv_then               = 'then'  '{' ( readmodel_target | error_target ) step_body '}'
 
-automation_scenario   = 'scenario' id '{' { au_given | au_when | au_then | comment | attribute } '}'
+automation_scenario   = action_scenario | view_scenario
+action_scenario       = 'scenario' id '{' { au_given | au_when | au_then | comment | attribute } '}'
   (* zero or more au_given, exactly one au_when, one or more au_then *)
+view_scenario         = 'scenario' id '{' { av_given | av_then | comment | attribute } '}'
+  (* one or more av_given, no when step, one or more av_then *)
 au_given              = 'given' '{' ( event_target | readmodel_target ) step_body '}'
 au_when               = 'when'  '{' ( processor_target | command_target ) step_body '}'
 au_then               = 'then'  '{' ( event_target | error_target ) step_body '}'
+av_given              = 'given' '{' event_target step_body '}'
+av_then               = 'then'  '{' ( readmodel_target | error_target ) step_body '}'
+  (* the read model of av_then belongs to the same automation *)
 
 event_target          = 'event' '=' event_ref
 command_target        = 'command' '=' command_ref
@@ -317,8 +327,11 @@ step_body             = { attribute | field | field_list }
   (* a step sets exactly one target attribute *)
 ```
 
-Canvas automation specs that use an empty When, a Then command, or "nothing
+Canvas automation specs that put a command in Then or assert "nothing
 dispatched" are not this grammar. Do not encode them by inventing attributes.
+A scenario with no `when` step is legal only in the view form: given events,
+then a read model of the same automation. An empty `when {}` block is still
+illegal, because each step sets exactly one target (`EM302`).
 
 Scenario and step attributes:
 
@@ -441,8 +454,9 @@ you add the workflow to `board.workflows`.
 
 ## Tooling
 
-Use emhcl v0.12.0 or newer. It implements specification v0.5.0. Older releases
-implement v0.4.0 and reject a `board` block.
+Use emhcl v0.14.0 or newer. It implements specification v0.6.0. v0.12.0 and
+v0.13.0 implement v0.5.0 and reject view form automation scenarios. Older
+releases implement v0.4.0 and reject a `board` block.
 
 ```text
 emhcl migrate -w old-model.em.hcl
