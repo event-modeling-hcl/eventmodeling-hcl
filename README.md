@@ -4,7 +4,8 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`emhcl` v0.13.0 implements Event Modeling HCL Specification v0.5.0. A model can
+`emhcl` implements Event Modeling HCL Specification v0.6.0. Releases v0.12.0
+and v0.13.0 implement v0.5.0. A model can
 be one `.em.hcl` file or a folder of `.em.hcl` files.
 This repository provides a strict validator, canonical formatter, typed semantic model,
 normative language documentation, and executable examples. The domain reference is the upstream [Event Modeling
@@ -271,7 +272,8 @@ folder with no member file gives error EM001.
 ## Migrate a v0.4.0 model
 
 Specification v0.5.0 is a breaking revision. A v0.4.0 model does not validate
-under v0.5.0 rules. `emhcl migrate` converts it without changing its meaning:
+under v0.5.0 or v0.6.0 rules. `emhcl migrate` converts it without changing its
+meaning:
 
 ```bash
 emhcl migrate old.em.hcl          # print the migrated source
@@ -289,7 +291,7 @@ folder, a `# ==> <path> <==` line precedes each member. With `-w`, it rewrites
 only the files that change. A report on stderr gives the board placement, the
 number of types and titles written, and each rewritten translation.
 
-`migrate` validates its output under v0.5.0 rules. It stops with exit code 1,
+`migrate` validates its output under the current rules. It stops with exit code 1,
 and writes nothing, when the input does not parse, already has a `board`, has
 a typeless field that v0.4.0 could not resolve to exactly one field type, or
 breaks the v0.4.0 translation rules. The derived titles that it writes are
@@ -315,7 +317,7 @@ required properties (such as `sliceType`, element `fields`/`dependencies` or
 specification `linkedId`), values outside an enum, mistyped values and trailing
 content are import errors that name the offending JSON path.
 
-The native language is Specification **v0.5.0**. Actors are declared at
+The native language is Specification **v0.6.0**. Actors are declared at
 the top level and referenced by screens; workflows have no actor attribute
 or actor inheritance.
 
@@ -499,6 +501,41 @@ state_view "pet_directory" {
 }
 ```
 
+An `automation` scenario has two forms. With one `when` step, it states what
+the processor or the command does. Without a `when` step, it states the
+content of a read model of the same automation, for example a to-do list:
+
+```hcl
+automation "remind_owners" {
+  readmodel "pets_to_remind" {
+    question = "Which added pets still need a reminder?"
+    from     = [event.pet_management.pet_added, event.pet_management.reminder_requested]
+    to       = [processor.reminder]
+  }
+
+  processor "reminder" {
+    to = [command.request_reminder]
+  }
+
+  command "request_reminder" {
+    to = [event.pet_management.reminder_requested]
+  }
+
+  scenario "reminded_pet_leaves_the_list" {
+    given { event = event.pet_management.pet_added }
+    given { event = event.pet_management.reminder_requested }
+    then {
+      expect_empty_list = true
+      readmodel         = readmodel.pets_to_remind
+    }
+  }
+}
+```
+
+The completion event `reminder_requested` is in `readmodel.from`, so it can
+remove the pet from the list. The `pet_management` context declares both
+events.
+
 Use native values for field examples:
 
 ```hcl
@@ -578,7 +615,7 @@ exhaustiveness, vulnerability, example-validation, and release checks.
 
 ## Boundaries
 
-The supported HCL Specification v0.5.0 resolves references within one model,
+The supported HCL Specification v0.6.0 resolves references within one model,
 one file or one folder, and enforces scoped identity, the board, canonical
 typed flows, scenario shape, explicit field types, field examples, and workflow
 patterns, as the

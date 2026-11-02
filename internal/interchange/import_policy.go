@@ -25,11 +25,24 @@ func workflowAllows(kind, child string) bool {
 	return false
 }
 
-func scenarioAllows(kind, phase, target string) bool {
-	switch kind {
+// automationViewForm and scenarioRules copy the scenario form selection in
+// validator/scenarios.go. Change both in the same change (architecture guide,
+// change rule 11). An automation specification without a when step is a view
+// form scenario with the step rules of a state_view scenario.
+const automationViewForm = "automation view form"
+
+func scenarioRules(kind string, whenCount int) string {
+	if kind == "automation" && whenCount == 0 {
+		return automationViewForm
+	}
+	return kind
+}
+
+func scenarioAllows(rules, phase, target string) bool {
+	switch rules {
 	case "state_change":
 		return phase == "given" && target == "event" || phase == "when" && target == "command" || phase == "then" && (target == "event" || target == "error")
-	case "state_view":
+	case "state_view", automationViewForm:
 		return phase == "given" && target == "event" || phase == "then" && (target == "readmodel" || target == "error")
 	case "automation":
 		return phase == "given" && (target == "event" || target == "readmodel") || phase == "when" && (target == "command" || target == "processor") || phase == "then" && (target == "event" || target == "error")
@@ -52,6 +65,7 @@ func (im *importer) stepTarget(workflow string, step SpecificationStep) (ref, bo
 func (im *importer) prepareSpecification(workflow, kind string, specification Specification, kinds map[string]string) (Specification, bool) {
 	result := specification
 	result.Given, result.When, result.Then = nil, nil, nil
+	rules := scenarioRules(kind, len(specification.When))
 	invalidWhen := false
 	for _, phase := range []struct {
 		name   string
@@ -74,8 +88,11 @@ func (im *importer) prepareSpecification(workflow, kind string, specification Sp
 			target, valid := im.stepTarget(workflow, step)
 			if !valid {
 				im.warn("specification %q: %s step %q (%s) cannot resolve linkedId %q to the declared target kind; step omitted", specification.Title, phase.name, step.Title, step.Type, step.LinkedID)
-			} else if !scenarioAllows(kind, phase.name, target.kind) {
-				im.warn("specification %q: %s target %s is not allowed in %s; step omitted", specification.Title, phase.name, target.kind, kind)
+			} else if !scenarioAllows(rules, phase.name, target.kind) {
+				im.warn("specification %q: %s target %s is not allowed in %s; step omitted", specification.Title, phase.name, target.kind, rules)
+				valid = false
+			} else if rules == automationViewForm && target.kind == "readmodel" && target.scope != workflow {
+				im.warn("specification %q: %s step %q targets a read model of another slice; a view form scenario may target only its own read model; step omitted", specification.Title, phase.name, step.Title)
 				valid = false
 			} else if target.kind != "event" && target.kind != "error" && !workflowAllows(kinds[target.scope], target.kind) {
 				im.warn("specification %q: %s step %q targets an element omitted from its incompatible workflow; step omitted", specification.Title, phase.name, step.Title)
@@ -88,8 +105,9 @@ func (im *importer) prepareSpecification(workflow, kind string, specification Sp
 			}
 		}
 	}
-	if invalidWhen || len(result.Then) == 0 || kind == "state_view" && (len(result.Given) == 0 || len(result.When) != 0) || kind != "state_view" && len(result.When) != 1 {
-		im.warn("specification %q has no valid %s scenario shape after unsupported steps; entire specification omitted", specification.Title, kind)
+	viewShape := rules == "state_view" || rules == automationViewForm
+	if invalidWhen || len(result.Then) == 0 || viewShape && (len(result.Given) == 0 || len(result.When) != 0) || !viewShape && len(result.When) != 1 {
+		im.warn("specification %q has no valid %s scenario shape after unsupported steps; entire specification omitted", specification.Title, rules)
 		return result, false
 	}
 	return result, true

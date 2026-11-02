@@ -274,6 +274,135 @@ func TestValidateSourceWithProfile_ExplainsStateViewWhen(t *testing.T) {
 	}
 }
 
+func TestValidateSourceWithProfile_AutomationScenarioForms(t *testing.T) {
+	automation := func(scenario string) string {
+		return nativeCatalog() + `automation "remind_owners" {
+  readmodel "pets_to_remind" {
+    question = "Which added pets still need a reminder?"
+    from     = [event.pet_management.pet_added]
+    to       = [processor.reminder]
+  }
+  processor "reminder" {
+    to = [command.remind]
+  }
+  command "remind" {
+    to = [event.pet_management.pet_added]
+  }
+` + scenario + `
+}
+state_view "list_pets" {
+  readmodel "pets" {
+    question = "Which pets exist?"
+    from     = [event.pet_management.pet_added]
+  }
+}`
+	}
+	tests := []struct {
+		name       string
+		scenario   string
+		wantCode   string
+		wantDetail string
+		absentCode string
+	}{
+		{
+			name: "view form states the to-do list",
+			scenario: `  scenario "pet_waits" {
+    given { event = event.pet_management.pet_added }
+    then  { readmodel = readmodel.pets_to_remind }
+  }`,
+		},
+		{
+			name: "view form accepts the self-qualified read model",
+			scenario: `  scenario "pet_waits" {
+    given { event = event.pet_management.pet_added }
+    then  { readmodel = readmodel.remind_owners.pets_to_remind }
+  }`,
+		},
+		{
+			name: "action form keeps a given read model",
+			scenario: `  scenario "reminded" {
+    given { readmodel = readmodel.pets_to_remind }
+    when  { processor = processor.reminder }
+    then  { event = event.pet_management.pet_added }
+  }`,
+		},
+		{
+			name: "view form needs a given event",
+			scenario: `  scenario "empty" {
+    then { readmodel = readmodel.pets_to_remind }
+  }`,
+			wantCode:   "EM301",
+			wantDetail: "an automation scenario without a when step is a view form scenario and must contain at least one given event step. An action form scenario needs exactly one when step.",
+		},
+		{
+			name: "missing when makes a then event illegal",
+			scenario: `  scenario "forgot_when" {
+    given { event = event.pet_management.pet_added }
+    then  { event = event.pet_management.pet_added }
+  }`,
+			wantCode:   "EM303",
+			wantDetail: "automation view form scenario then steps may use: readmodel or error. You referenced: event. An automation scenario without a when step is a view form scenario. An action form scenario needs exactly one when step.",
+		},
+		{
+			name: "view form given is an event",
+			scenario: `  scenario "given_list" {
+    given { readmodel = readmodel.pets_to_remind }
+    then  { readmodel = readmodel.pets_to_remind }
+  }`,
+			wantCode:   "EM303",
+			wantDetail: "automation view form scenario given steps may use: event. You referenced: readmodel. An automation scenario without a when step is a view form scenario. An action form scenario needs exactly one when step.",
+		},
+		{
+			name: "view form read model of another workflow",
+			scenario: `  scenario "other_list" {
+    given { event = event.pet_management.pet_added }
+    then  { readmodel = readmodel.list_pets.pets }
+  }`,
+			wantCode:   "EM101",
+			wantDetail: `a view form scenario may reference only a read model of its own automation "remind_owners". You referenced: readmodel.list_pets.pets.`,
+		},
+		{
+			name: "foreign given read model is a target error only",
+			scenario: `  scenario "foreign_given" {
+    given { readmodel = readmodel.list_pets.pets }
+    then  { readmodel = readmodel.pets_to_remind }
+  }`,
+			wantCode:   "EM303",
+			wantDetail: "automation view form scenario given steps may use: event. You referenced: readmodel. An automation scenario without a when step is a view form scenario. An action form scenario needs exactly one when step.",
+			absentCode: "EM101",
+		},
+		{
+			name: "action form with two when steps",
+			scenario: `  scenario "twice" {
+    when { processor = processor.reminder }
+    when { command = command.remind }
+    then { event = event.pet_management.pet_added }
+  }`,
+			wantCode:   "EM301",
+			wantDetail: "a scenario must contain exactly one when step.",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(withBoard(automation(test.scenario))), Valid)
+			if test.wantCode == "" {
+				if diagnostics.HasErrors() {
+					t.Fatalf("diagnostics = %s, want no errors", diagnostics.Error())
+				}
+				return
+			}
+			if got := diagnosticDetailForCode(t, diagnostics, test.wantCode); got != test.wantDetail {
+				t.Fatalf("%s detail = %q, want %q", test.wantCode, got, test.wantDetail)
+			}
+			for _, diagnostic := range diagnostics {
+				if test.absentCode != "" && DiagnosticCode(diagnostic) == test.absentCode {
+					t.Fatalf("diagnostics include %s: %s", test.absentCode, diagnostics.Error())
+				}
+			}
+		})
+	}
+}
+
 func TestValidateSourceWithProfile_AppliesProfileSeverity(t *testing.T) {
 	model := withBoard(`state_change "add_pet" {
   command "add_pet" {}

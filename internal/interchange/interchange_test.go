@@ -395,6 +395,103 @@ func TestImportExport_TranslationRoundTripsThroughAutomation(t *testing.T) {
 	}
 }
 
+// TestImport_AutomationViewFormSpecifications covers the importer copy of the
+// view form rules (architecture guide, change rule 11). Each case edits the
+// exported specification of the "remind" automation and imports it again.
+func TestImport_AutomationViewFormSpecifications(t *testing.T) {
+	source := []byte(`board { workflows = [workflow.remind, workflow.list] }
+bounded_context "pets" {
+  event "added" {}
+  event "reminded" {}
+}
+automation "remind" {
+  readmodel "to_remind" {
+    question = "Which added pets still need a reminder?"
+    from     = [event.pets.added, event.pets.reminded]
+    to       = [processor.reminder]
+  }
+  processor "reminder" {
+    to = [command.remind]
+  }
+  command "remind" {
+    to = [event.pets.reminded]
+  }
+  scenario "added_pet_waits" {
+    given { event = event.pets.added }
+    then  { readmodel = readmodel.to_remind }
+  }
+}
+state_view "list" {
+  readmodel "pets" {
+    question = "Which pets exist?"
+    from     = [event.pets.added]
+  }
+}`)
+	exported := app.Export("remind.em.hcl", source)
+	if exported.Diagnostics.HasErrors() {
+		t.Fatalf("export diagnostics: %+v", exported.Diagnostics)
+	}
+	tests := []struct {
+		name        string
+		edit        func(*interchange.Specification)
+		wantKept    bool
+		wantWarning string
+	}{
+		{name: "view form without when is kept", edit: func(*interchange.Specification) {}, wantKept: true},
+		{
+			name:        "read model of another slice is omitted",
+			edit:        func(specification *interchange.Specification) { specification.Then[0].LinkedID = "readmodel.list.pets" },
+			wantWarning: `targets a read model of another slice; a view form scenario may target only its own read model; step omitted`,
+		},
+		{
+			name: "view form without given is omitted",
+			edit: func(specification *interchange.Specification) {
+				specification.Given = []interchange.SpecificationStep{}
+			},
+			wantWarning: `has no valid automation view form scenario shape after unsupported steps; entire specification omitted`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			document := parsed(t, exported.JSON)
+			found := false
+			for i := range document.Slices {
+				for j := range document.Slices[i].Specifications {
+					specification := &document.Slices[i].Specifications[j]
+					if specification.LinkedID == "workflow.remind" {
+						test.edit(specification)
+						found = true
+					}
+				}
+			}
+			if !found {
+				t.Fatalf("exported JSON has no specification of workflow.remind:\n%s", exported.JSON)
+			}
+			encoded, err := interchange.MarshalDocument(document)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			imported := app.Import("remind.json", encoded, "remind.em.hcl")
+			if imported.Diagnostics.HasErrors() {
+				t.Fatalf("import diagnostics: %+v\n%s", imported.Diagnostics, imported.Source)
+			}
+			if kept := strings.Contains(imported.Source, `scenario "added_pet_waits"`); kept != test.wantKept {
+				t.Fatalf("scenario kept = %t, want %t:\n%s", kept, test.wantKept, imported.Source)
+			}
+			warnings := strings.Join(imported.Warnings, "\n")
+			if test.wantWarning == "" {
+				if strings.Contains(warnings, "specification") && strings.Contains(warnings, "omitted") {
+					t.Fatalf("unexpected specification warning:\n%s", warnings)
+				}
+				return
+			}
+			if !strings.Contains(warnings, test.wantWarning) {
+				t.Fatalf("warnings = %s, want %q", warnings, test.wantWarning)
+			}
+		})
+	}
+}
+
 func TestExport_AutomationWithoutExternalEventIsAutomation(t *testing.T) {
 	source := []byte(`board { workflows = [workflow.react] }
 bounded_context "orders" {

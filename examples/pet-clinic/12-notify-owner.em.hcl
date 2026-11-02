@@ -19,4 +19,16 @@ automation "notify_owner" {
     aggregate = aggregate.clinic.owner
     to        = [event.clinic.external_pet_imported]
   }
+
+  scenario "registered_pet_needs_notification" {
+    title = "Registered pet needs notification"
+
+    given {
+      event = event.clinic.pet_registered
+    }
+
+    then {
+      readmodel = readmodel.pets_needing_notification
+    }
+  }
 }

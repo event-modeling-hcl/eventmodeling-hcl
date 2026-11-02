@@ -1,6 +1,6 @@
 # Architecture Guide
 
-This guide describes how `emhcl` is organized. It also shows how the design uses Axiomatic Design to keep changes predictable. The guide describes the current repository. The language contract is in the [Event Modeling HCL specification](https://github.com/event-modeling-hcl/spec). The tool implements Specification v0.5.0: a model is one file or one folder, a `board` block sets the story order, and file layout has no meaning.
+This guide describes how `emhcl` is organized. It also shows how the design uses Axiomatic Design to keep changes predictable. The guide describes the current repository. The language contract is in the [Event Modeling HCL specification](https://github.com/event-modeling-hcl/spec). The tool implements Specification v0.6.0: a model is one file or one folder, a `board` block sets the story order, file layout has no meaning, and an `automation` scenario has an action form and a view form.
 
 The [v0.5.0 review record](v0.5.0-review.md) records the status before the fixes, the conformance defects that the review reproduced, and the difference between the local diagonal authoring controls and the decoupled semantic pipeline. The section [Known deviations](#known-deviations) lists the places where the current code does not follow this guide.
 
@@ -32,7 +32,7 @@ Information content is `I = -log2(p)`, where `p` is the probability of meeting t
 | N3: Users can consume models in useful forms | FR5: Format or render the same output for the same input | Formatting and HTML generation do no OS actions | DP5: `internal/formatter` and `internal/renderer` |
 | N5: Users exchange models with Event Modeling JSON tools | FR7: Convert between the canonical model and slice-based JSON | Each conversion gives a schema-valid document or a native model, or it fails with a stated reason | DP7: `internal/interchange` |
 | N4: The CLI, the browser, and the server agree | FR6: Compose and expose the use cases | Each entry point delegates to one application service | DP6: `internal/app` and thin runtime adapters |
-| N6: Authors move v0.4.0 models to v0.5.0 | FR9: Rewrite a v0.4.0 model without changing its meaning | The rewritten model passes the v0.5.0 core rules, or nothing is written | DP9: `internal/migrate` with `app.MigratePath` |
+| N6: Authors move v0.4.0 models to the current language | FR9: Rewrite a v0.4.0 model without changing its meaning | The rewritten model passes the current core rules, or nothing is written | DP9: `internal/migrate` with `app.MigratePath` |
 
 Slice-based JSON is the document format that the [published Event Modeling JSON schema](https://github.com/dilgerma/event-modeling-spec/blob/main/eventmodeling.schema.json) defines. A slice is one JSON entry that matches one native workflow.
 
@@ -71,7 +71,7 @@ The migration branch is separate:
 app.MigratePath
   -> app.ReadModel
   -> migrate.Migrate (v0.4.0 reading on raw HCL)
-  -> app.ValidateFiles (v0.5.0 rules, profile valid)
+  -> app.ValidateFiles (current rules, profile valid)
 ```
 
 `internal/migrate` is the only package that reads v0.4.0 rules: the effective chapter and file order of workflows, typeless field resolution, derived titles, and the `translation` keyword. It works on `hclsyntax` and `hclwrite` and imports only `internal/syntax`, so no v0.4.0 rule can reach the validator, the model, or a renderer. It refuses a v0.4.0 chapter range and a chapter that is spread over several files. Edited files keep their comments. Files that need no edit are returned unchanged. `MigratePath` returns the files only when they have no core error.
@@ -127,7 +127,7 @@ FR7 has six child requirements. The table gives each one its mechanism.
 | FR7.5: Keep at most one actor per slice | Import refuses a slice with two or more actors. Export refuses a workflow whose screens name two or more actors. | DP7.5: Actor gate | `rejectMultipleActors` in `import.go`, `slice` in `export.go` |
 | FR7.6: Disclose each loss | Each value that a conversion drops produces a warning. | DP7.6: Warnings at the point of loss | `warn` calls in `import.go`, `import_policy.go`, `export.go` |
 
-The actor gate follows from the language. Specification v0.5.0 gives a screen one optional actor and gives a workflow no actor attribute. A JSON slice lists actors without links to screens. Thus a slice with two actors has no correct native form. The gate stops the conversion instead of guessing. If only some screens of a workflow name the actor, export drops the actor and writes a warning.
+The actor gate follows from the language. Specification v0.6.0 gives a screen one optional actor and gives a workflow no actor attribute. A JSON slice lists actors without links to screens. Thus a slice with two actors has no correct native form. The gate stops the conversion instead of guessing. If only some screens of a workflow name the actor, export drops the actor and writes a warning.
 
 The native language has no translation keyword. Export writes slice type `TRANSLATION` for an `automation` that has at least one edge with `External` set, and `AUTOMATION` otherwise. Import writes `TRANSLATION` as `automation`. Import writes a `board` that lists the slices in the order of their `index` value. Slices without an `index` come last, in document order. Export writes `index` as the position of the slice. Export writes off-board workflows after the board workflows, in ID order, with a warning.
 
@@ -162,9 +162,9 @@ DP3 influences FR7.4. The interchange module repeats three flow rules of `intern
 
 - `allowedFlowRoots` in `import.go` repeats the flow grammar in `validator/references.go`.
 - `workflowAllows` in `import_policy.go` repeats the workflow element rules in `validator/structure.go`.
-- `scenarioAllows` in `import_policy.go` repeats `scenarioTargetAllowed` in `validator/scenarios.go`.
+- `scenarioRules` and `scenarioAllows` in `import_policy.go` repeat `scenarioRules` and `scenarioTargetAllowed` in `validator/scenarios.go`. Both copies select the form of an `automation` scenario by the count of `when` steps. A scenario without a `when` step uses the view form, which has the step rules of a `state_view` scenario. Both copies also refuse a view form read model of another workflow: the validator with `EM101`, the importer with a warning.
 
-No shared code or test ties these copies together. If you change one of these rules in the validator, you must change its copy in the same change.
+No shared code ties these copies together. Two tests tie the scenario copy partly. The round-trip test exports and imports `examples/pet-clinic`, which has a view form scenario, so a refused scenario would change the second export. `TestImport_AutomationViewFormSpecifications` checks that the importer keeps a view form scenario, omits a step that targets a read model of another slice, and omits a view form scenario without a `given` step. If you change one of these rules in the validator, you must change its copy in the same change.
 
 DP4 influences FR7.3. Export reads JSON values from the canonical model. `jsonValue` in `internal/model` builds the keys and the structure of each value from the HCL source text, which it reads with `syntax.Document.SourceOf`. Keys do not go through `cty`, because `cty` normalizes Unicode keys. Normalization would merge the keys `é` and `e\u0301`. Scalar values still go through `cty` (see [Information Axiom and evidence](#information-axiom-and-evidence)). Export writes an example that is not a string or an object as JSON text (`exportExample` in `export.go`).
 
