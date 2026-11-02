@@ -116,7 +116,7 @@ the read model; it is not a hard error to omit it.
 automation "request_order_confirmation" {
   readmodel "orders_needing_confirmation" {
     question = "Which placed orders still need confirmation?"
-    from     = [event.orders.order_placed]
+    from     = [event.orders.order_placed, event.notifications.order_confirmation_requested]
     to       = [processor.confirmation_processor]
   }
 
@@ -130,8 +130,13 @@ automation "request_order_confirmation" {
 
   scenario "confirmation_is_requested" {
     given { event = event.orders.order_placed }
+    given { readmodel = readmodel.orders_needing_confirmation }
     when  { processor = processor.confirmation_processor }
     then  { event = event.notifications.order_confirmation_requested }
+
+    comment {
+      description = "After order_confirmation_requested, the order leaves orders_needing_confirmation."
+    }
   }
 }
 ```
@@ -141,7 +146,9 @@ A completion event is added to that read model's `from` list; do not reverse
 an edge, and do not invent a closer attribute. This automation consumes only
 internal events; one that consumes external events is a translation (below).
 `when` is the processor or the command it issues. `then` is
-an event or an error, never the command, and never empty.
+an event or an error, never the command, never a read model, and never empty.
+The to-do list appears only as a `given` step. Write how a completion event
+closes a row in a scenario `comment`.
 
 ## Translation (an automation over external events)
 

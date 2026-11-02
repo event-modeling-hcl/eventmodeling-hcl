@@ -14,7 +14,7 @@ compatibility: >-
   Targets Event Modeling HCL Specification v0.5.0. For machine verification,
   use emhcl v0.12.0 or newer; older releases implement v0.4.0.
 metadata:
-  version: "2.1.0"
+  version: "2.2.0"
   author: workspace
   specification: "https://github.com/event-modeling-hcl/spec"
 ---
@@ -290,17 +290,21 @@ canonical flow, `api_endpoint`, or a justified `external_trigger`—and every
 Read Model answers one concrete question. A valid file can still be a poor
 model.
 
-Write each review finding as one diagnostic line in the `emhcl` output format.
-Use the EM code when one exists. Use no code for a finding that has none:
+Write each review finding as one line. Keep the lines that `emhcl` printed
+apart from your own findings, so that a reader can see which tool made each
+line. The first form is a line that `emhcl` printed. The second form is your
+own finding:
 
 ```text
 <file>:<line>:<column>: <Error|Warning> <code>: <title>: <detail>
-<file>:<line>:<column>: <Error|Warning>: <detail>
+<file>:<line>:<column>: Review: <detail>
 ```
 
-When the CLI is available, copy the `EM401`–`EM406` lines from the output of
-`emhcl validate --profile strict`. Do not count them again by hand. Add the
-findings that have no code below them.
+Only `emhcl` writes `Error` or `Warning` lines. Copy them unchanged from the
+output of `emhcl validate --profile strict`, and do not count the `EM401`–`EM406`
+signals again by hand. Never put an EM code on your own finding, and never write
+your own finding as `Error` or `Warning`. A finding in the user's input text,
+not in a file, uses `input` as the file and has no line or column.
 
 ### 9. Format, validate, and repair the source
 
@@ -384,7 +388,9 @@ Ran: emhcl validate --profile strict <model.em.hcl> => exit 1 (EM406 x1)
 
 `Member-Files` lists the files of a folder model, or `none` for one file.
 `Gate` is the last target of the graph in section 9 that is done: `none`,
-`formatted`, `valid`, or `implementation-ready`. Without a compatible CLI,
+`formatted`, `valid`, or `implementation-ready`. It states only what `emhcl`
+accepted. If `Review:` findings remain, say so after the header block, even at
+`implementation-ready`. Without a compatible CLI,
 write `Gate: none` and `Ran: none (no compatible emhcl; static checklist only)`.
 
 On a request to review and also fix a model, author the fix, then list the

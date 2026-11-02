@@ -13,7 +13,10 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ### Changed
 
-- The `event-modeling-hcl` agent skill (v2.1.0) states the scenario rules as EBNF productions, its gates as a Makefile dependency graph, the status locks as a state table, the field-provenance rules as contracts, and a retry limit for the repair loop. Review findings use the CLI diagnostic format, and the final report is a `Key: Value` header block.
+- The `event-modeling-hcl` agent skill (v2.1.0) states the scenario rules as EBNF productions, its gates as a Makefile dependency graph, the status locks as a state table, the field-provenance rules as contracts, and a retry limit for the repair loop. The final report is a `Key: Value` header block.
+- The agent skill no longer asks for a view scenario on the to-do read model of an `automation`, because v0.5.0 cannot express it. The to-do list appears in a `given` step, and the closing rule goes in a scenario `comment`. Spec RFC 0005 proposes a view form for these scenarios.
+- The agent skill says that a `field` block has no `description` attribute, and that a field derivation goes in the description of the element that owns the field.
+- The agent skill (v2.2.0) writes its own review findings as `Review:` lines, with no EM code. Only lines that `emhcl` printed use `Error` or `Warning`. In an A/B run of the six evals, v2.1.0 made the agent's findings look like `emhcl` output in three of six runs.
 
 ## [v0.13.0] - 2026-10-30
 

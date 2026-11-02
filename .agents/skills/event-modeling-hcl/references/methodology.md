@@ -274,10 +274,13 @@ Other scenario rules:
   list, not seven mandatory blocks. Write each one the input supports. Skip a
   type only when it cannot occur, and say why in a `comment`. Do not fabricate
   error wording.
-- Every read model needs at least one view scenario, including every todo
-  list. A state view with only command tests elsewhere is incomplete. List
-  outcomes show concrete rows via step `field` examples, or explicitly expect
-  an empty list.
+- Every read model in a `state_view` needs at least one view scenario. A state
+  view with only command tests elsewhere is incomplete. List outcomes show
+  concrete rows via step `field` examples, or explicitly expect an empty list.
+- A to-do read model in an `automation` cannot be a `then` target in v0.5.0.
+  Specify it with automation scenarios instead: put the to-do list in a
+  `given { readmodel = … }` step and the processor in `when`. See
+  "Automations and todo lists" for the closing rule.
 - Idempotency: specify the target command's "already done" rejection. HCL
   cannot mark that rejection as a successful no-op. Use a `comment` on the
   automation scenario if a repeated trigger must be harmless. Do not invent
@@ -307,9 +310,12 @@ command.to -> event(s)
 The read model's question is pending work ("Which placed orders still need a
 confirmation?"), not entity status. List membership means open. Do not add a
 `status` field to mark rows done; a completion event drops the row. There is
-no HCL attribute that deletes a row. Specify that in a scenario: after the
-completion event, the todo read model is empty (`expect_empty_list = true`) or
-no longer contains that row.
+no HCL attribute that deletes a row. HCL v0.5.0 has no automation scenario
+that ends in a read model, so you cannot assert that the list is empty. Write
+the closing rule in a scenario `comment` on the automation, for example "After
+`order_confirmation_requested`, the order leaves
+`orders_needing_confirmation`." RFC 0005 proposes a view form for automation
+scenarios. It is not part of v0.5.0. Do not write it until the CLI accepts it.
 
 - Worker (automation): opened only by internal events. Closed by the completion
   event, usually its own result, by including that event in `readmodel.from`.

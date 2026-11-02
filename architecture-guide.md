@@ -255,7 +255,7 @@ FR10 has seven child requirements. Each DP is a formalism that the skill states 
 | FR10.4: Leave locked workflows unchanged | No edit to a locked workflow without a confirmation that names it | DP10.4: The status state table in `SKILL.md` section 1 |
 | FR10.1: Claim a gate only after the tool passed it | A gate is claimed only when its command exited 0 | DP10.1: The Makefile gate graph (`formatted`, `valid`, `implementation-ready`). In this repository, `make model-ready MODEL=<path>`. |
 | FR10.2: Stop a repair loop that does not converge | No third edit for the same code on the same element without a new user decision | DP10.2: The circuit breaker with threshold k = 2 in `SKILL.md` section 9 |
-| FR10.7: Report review findings that the tool can confirm | Each finding is one diagnostic line. `EM401`–`EM406` lines come from the CLI output. | DP10.7: The diagnostic line format in `SKILL.md` section 8 |
+| FR10.7: Report review findings and show which tool made each one | Each finding is one line. `Error` and `Warning` lines are copied unchanged from the CLI output. The agent's own findings use `Review:` and carry no EM code. | DP10.7: The two line formats in `SKILL.md` section 8 |
 | FR10.6: Report the result in a form that a program can read | The report starts with a `Key: Value` header block | DP10.6: The RFC 822 style header block in `SKILL.md` section 10 |
 
 | FR \ DP | DP10.3 Productions | DP10.5 Contracts | DP10.4 Status table | DP10.1 Gate graph | DP10.2 Breaker | DP10.7 Diagnostics | DP10.6 Header |
@@ -375,7 +375,17 @@ The repository does not give a number for information content. It does not measu
 
 `make verify` runs a repeatable set of steps. They cover formatting, module tidiness, `go vet`, unit tests, the race detector, Staticcheck, switch exhaustiveness, vulnerabilities, a compile of the WASM module, the validation and the `emhcl fmt` layout of the shipped examples, and three checks of the release tag and version.
 
-The agent skill has less evidence. `evals/evals.json` holds six prompts with expectations. The repository has no automated run of them, and no measured pass rate for each child FR of FR10. The formalisms in DP10 come from a published A/B benchmark on Gemini models (Randal L. Schwartz, "What LLMs 'Know' That You Don't Know They Know", DEV Community, 2026). That benchmark does not measure this skill. To compare the skill with its prose version under the Information Axiom, run the six evals against both versions and compare the pass rates for the same expectations.
+The agent skill has less evidence. `evals/evals.json` holds six prompts with expectations. The formalisms in DP10 come from a published A/B benchmark on Gemini models (Randal L. Schwartz, "What LLMs 'Know' That You Don't Know They Know", DEV Community, 2026). That benchmark does not measure this skill.
+
+One manual run on 2026-10-31 compared the versions of the skill, with one run for each eval and blind graders. E1 is a true report: each claim matches what `emhcl` prints, and no line looks like `emhcl` output unless `emhcl` printed it.
+
+| Skill version | Expectations passed | E1 passed |
+| --- | --- | --- |
+| v2.0 (prose rules) | 32 of 32 | 6 of 6 |
+| v2.1 (formalisms, own findings in the `emhcl` line format) | 31 of 32 | 3 of 6 |
+| v2.2 (own findings as `Review:` lines), evals 2, 3, 4, and 6 only | 19 of 20 | 4 of 4 |
+
+The E1 failures in v2.1 had one cause. The skill told the agent to write its own findings in the `emhcl` line format, so a reader could not tell them from tool output. v2.2 gives those findings their own `Review:` form, which is why FR10.7 now has that criterion. The one expectation that failed in v2.1 and v2.2 is the same one: eval 2 did not use a reusable `field_type` for each payment field. One run per eval cannot show whether that is a regression or chance. The data is in `skills/event-modeling-hcl-workspace/iteration-2` of the workspace, outside this repository. These samples are too small to give a probability for the Information Axiom. Run each eval several times for each version before you claim that one version is better.
 
 The interchange module has this evidence:
 
