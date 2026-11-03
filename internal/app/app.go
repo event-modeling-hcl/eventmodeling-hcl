@@ -10,11 +10,13 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/compare"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/formatter"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/interchange"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/model"
@@ -132,8 +134,9 @@ func ParseProfile(value string) (Profile, bool) {
 }
 
 // Diagnostic is a plain, serialization-friendly rendering of an HCL
-// diagnostic: no interfaces or pointers into HCL internals, so it marshals
-// cleanly to JSON and to a JavaScript value from within WebAssembly.
+// diagnostic: no interfaces or pointers into HCL internals. Its JSON tags are
+// the one list of diagnostic keys: `validate --format json`, `diff --format
+// json`, and cmd/wasm all encode it through Diagnostics.MarshalJSON.
 type Diagnostic struct {
 	Code     string `json:"code"`
 	Severity string `json:"severity"`
@@ -148,10 +151,14 @@ type Diagnostic struct {
 	Judgment bool `json:"judgment"`
 
 	// Filename is the source file the diagnostic points at. The CLI prints it
-	// as "file:line:column: ...", serve shows it on the diagnostics page, and
-	// cmd/wasm passes it to JavaScript as "file". JSON marshaling omits it
-	// (json:"-").
-	Filename string `json:"-"`
+	// as "file:line:column: ...", and serve shows it on the diagnostics page.
+	Filename string `json:"file"`
+
+	// Address is the reference form of the innermost declaration that
+	// contains the diagnostic, for example "command.place_order.submit"
+	// (source.Document.AddressAt). It is empty when the diagnostic lies
+	// outside every declaration with a reference form.
+	Address string `json:"address,omitempty"`
 }
 
 // RenderResult is the output of Render.
@@ -175,15 +182,20 @@ func Render(filename string, source []byte, profile Profile) RenderResult {
 
 // RenderFiles parses and validates the model made of files under profile and,
 // if it contains no core errors, renders it to a self-contained interactive
-// HTML canvas titled from name. Refusal and judgment behavior match Render.
-// Each file is parsed exactly once, whether or not the model validates.
+// HTML canvas titled with the default title for name (renderer.ModelName).
+// Refusal and judgment behavior match Render. Each file is parsed exactly
+// once, whether or not the model validates.
 func RenderFiles(name string, files []syntax.File, profile Profile) RenderResult {
+	return renderFiles(name, renderer.ModelName(name), files, profile)
+}
+
+func renderFiles(name, title string, files []syntax.File, profile Profile) RenderResult {
 	built, diagnostics := ValidatedModelFiles(name, files, profile)
 	result := RenderResult{Diagnostics: diagnostics}
 	if built == nil {
 		return result
 	}
-	html, err := renderer.Render(name, built)
+	html, err := renderer.Render(title, built)
 	if err != nil {
 		result.Diagnostics = append(result.Diagnostics, Diagnostic{
 			Severity: "Error",
@@ -197,13 +209,20 @@ func RenderFiles(name string, files []syntax.File, profile Profile) RenderResult
 	return result
 }
 
-// RenderPath reads and renders the model at path, a file or a folder.
+// RenderPath reads and renders the model at path, a file or a folder, with
+// the default title for path.
 func RenderPath(path string, profile Profile) RenderResult {
+	return RenderPathTitled(path, renderer.ModelName(path), profile)
+}
+
+// RenderPathTitled reads and renders the model at path with the diagram title
+// title. The title is a fact about this rendering, not about the model.
+func RenderPathTitled(path, title string, profile Profile) RenderResult {
 	files, diagnostics := ReadModel(path)
 	if diagnostics.HasErrors() {
 		return RenderResult{Diagnostics: diagnostics}
 	}
-	return RenderFiles(path, files, profile)
+	return renderFiles(path, title, files, profile)
 }
 
 // FormatResult is the output of Format.
@@ -225,13 +244,82 @@ func Format(filename string, source []byte) FormatResult {
 	}
 }
 
-// FormatFile reads and formats one Event Modeling document.
-func FormatFile(path string) FormatResult {
-	source, diagnostics := readFile(path)
+// FormattedFile is one member file of a model in canonical layout. Changed is
+// true when the layout differs from the source that ReadModel read.
+type FormattedFile struct {
+	syntax.File
+	Changed bool
+}
+
+// FormatPathResult is the output of FormatPath.
+type FormatPathResult struct {
+	// Files holds every member file in the order of ReadModel, or nil when
+	// Diagnostics contains an error.
+	Files       []FormattedFile
+	Diagnostics Diagnostics
+}
+
+// FormatPath formats each member file of the model at path, a file or a
+// folder. ReadModel selects the members, so a folder follows the same member
+// rules as every other command. Formatting needs only HCL that parses, not a
+// valid model. When any member has an error, no file is returned.
+func FormatPath(path string) FormatPathResult {
+	files, diagnostics := ReadModel(path)
 	if diagnostics.HasErrors() {
-		return FormatResult{Diagnostics: diagnostics}
+		return FormatPathResult{Diagnostics: diagnostics}
 	}
-	return Format(path, source)
+	formatted := make([]FormattedFile, 0, len(files))
+	for _, file := range files {
+		result := Format(file.Name, file.Source)
+		diagnostics = append(diagnostics, result.Diagnostics...)
+		formatted = append(formatted, FormattedFile{
+			File:    syntax.File{Name: file.Name, Source: []byte(result.Source)},
+			Changed: result.Source != string(file.Source),
+		})
+	}
+	if diagnostics.HasErrors() {
+		return FormatPathResult{Diagnostics: diagnostics}
+	}
+	return FormatPathResult{Files: formatted, Diagnostics: diagnostics}
+}
+
+// DiffResult is the output of DiffPaths.
+type DiffResult struct {
+	// Changes lists the declarations that differ (compare.Models), or is nil
+	// when a model has a core error.
+	Changes []compare.Change
+	// Diagnostics holds the diagnostics of each model that has a core error.
+	Diagnostics Diagnostics
+}
+
+// DiffPaths compares the models at base and head, each a file or a folder.
+// Each model is validated under the valid profile. If either has a core
+// error, the result holds the diagnostics of the refused models and no
+// changes.
+func DiffPaths(base, head string) DiffResult {
+	baseModel, baseDiagnostics := modelAtPath(base)
+	headModel, headDiagnostics := modelAtPath(head)
+	var refused Diagnostics
+	if baseModel == nil {
+		refused = append(refused, baseDiagnostics...)
+	}
+	if headModel == nil {
+		refused = append(refused, headDiagnostics...)
+	}
+	if baseModel == nil || headModel == nil {
+		return DiffResult{Diagnostics: refused}
+	}
+	return DiffResult{Changes: compare.Models(baseModel, headModel)}
+}
+
+// modelAtPath reads, validates under the valid profile, and builds the model
+// at path. A model with a core error returns nil and its diagnostics.
+func modelAtPath(path string) (*model.Model, Diagnostics) {
+	files, diagnostics := ReadModel(path)
+	if diagnostics.HasErrors() {
+		return nil, diagnostics
+	}
+	return ValidatedModelFiles(path, files, Valid)
 }
 
 // Validate parses and validates one source document under profile, returning
@@ -259,6 +347,15 @@ func ValidatePath(path string, profile Profile) Diagnostics {
 
 // Diagnostics is an ordered collection of application diagnostics.
 type Diagnostics []Diagnostic
+
+// MarshalJSON encodes the diagnostics as a JSON array. No diagnostics encode
+// as [], so a consumer can always iterate the value.
+func (d Diagnostics) MarshalJSON() ([]byte, error) {
+	if d == nil {
+		return []byte("[]"), nil
+	}
+	return json.Marshal([]Diagnostic(d))
+}
 
 // HasErrors reports whether at least one diagnostic has error severity: a
 // core error or a policy rejection. Commands exit unsuccessfully on it.
@@ -383,8 +480,18 @@ func validateFiles(files []syntax.File, profile Profile) (*validator.ValidatedDo
 	if parseDiagnostics.HasErrors() {
 		return nil, toDiagnostics(parseDiagnostics)
 	}
-	validated, validationDiagnostics := validator.ValidateDecodedDocument(sourcepkg.Decode(doc), profile)
-	return validated, toDiagnostics(validationDiagnostics)
+	decoded := sourcepkg.Decode(doc)
+	validated, validationDiagnostics := validator.ValidateDecodedDocument(decoded, profile)
+	diagnostics := toDiagnostics(validationDiagnostics)
+	for index, diagnostic := range validationDiagnostics {
+		if diagnostic.Subject == nil {
+			continue
+		}
+		if address, ok := decoded.AddressAt(*diagnostic.Subject); ok {
+			diagnostics[index].Address = address.String()
+		}
+	}
+	return validated, diagnostics
 }
 
 // toDiagnostics converts HCL diagnostics to the plain application contract.

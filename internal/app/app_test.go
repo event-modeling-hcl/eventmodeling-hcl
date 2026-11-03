@@ -394,12 +394,12 @@ func TestValidatePath_CrossFileDuplicateIDNamesSecondFile(t *testing.T) {
 	t.Fatalf("diagnostics = %#v, want an EM002 error in %s", diagnostics, second)
 }
 
-func TestFormatFile_UnreadablePathReturnsEM001(t *testing.T) {
-	result := FormatFile(filepath.Join(t.TempDir(), "missing.em.hcl"))
+func TestFormatPath_UnreadablePathReturnsEM001(t *testing.T) {
+	result := FormatPath(filepath.Join(t.TempDir(), "missing.em.hcl"))
 
 	assertReadFailure(t, result.Diagnostics)
-	if result.Source != "" {
-		t.Fatal("formatted source is non-empty for unreadable input")
+	if result.Files != nil {
+		t.Fatal("formatted files are present for unreadable input")
 	}
 }
 

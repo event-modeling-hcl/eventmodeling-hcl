@@ -234,6 +234,53 @@ Some residual shared items are intentional:
 
 The slides list every hotspot in scope under "Open questions", resolved hotspots too, with the status as plain text. The Compact board does not show a hotspot that it cannot pin. The Model and Storming boards list such hotspots in their legend.
 
+## Requirements for the tool contracts
+
+[RFC 0001](rfcs/0001-machine-readable-tool-contracts.md) adds one need: N8, a program that calls `emhcl` gets results with a stable contract. The agent skill, the Makefile targets, CI jobs, and the planned Claude plugin are such programs. The text output and the exit codes of existing calls do not change.
+
+The need adds one child of FR2 and five children of FR6:
+
+| FR | Acceptance criterion | DP |
+| --- | --- | --- |
+| FR2.1: Turn a source range into the address of a declaration | Each reference form gets its innermost declaration. A chapter, a hotspot, the board, and the model start (`Document.Start`) get no address. An offset in one member file never matches a block of another file. | DP2.1: `source.Address`, `source.ElementHasAddress`, and `(*source.Document).AddressAt`, with `syntax.BlockRange` for the extent of a block |
+| FR6.1: Report diagnostics as data | For every model in `examples/` and `testdata/` and each profile, `validate --format json` gives the text diagnostics in the same order | DP6.1: The JSON tags of `app.Diagnostic`, `Diagnostics.MarshalJSON`, and the one `--format` parser in `internal/cli` |
+| FR6.2: Compare two models by declaration | A block in another member file or a new layout gives no entry. Each edit gives exactly its entry. | DP6.2: `internal/compare`, `app.DiffPaths`, and the `diff` command |
+| FR6.3: Report the layout of each member file | `fmt --check` names exactly the member files that differ from `fmt` output | DP6.3: `app.FormatPath`, which reads the members through `app.ReadModel`, and the `--check` option |
+| FR6.4: Show a title that the caller supplies | The masthead shows the `--title` text. Without the option, the title is `renderer.ModelName` of the path. | DP6.4: The `title` input of `renderer.Render`, `app.RenderPathTitled`, and `--title` |
+| FR6.5: Report the versions as data | `spec` equals `version.Spec`, and `tool` equals the text output | DP6.5: `version --format json` |
+
+| FR \ DP | DP2.1 Address | DP6.1 Diagnostics | DP6.2 Diff | DP6.3 Format | DP6.4 Title | DP6.5 Versions |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| FR2.1 Address | X | 0 | 0 | 0 | 0 | 0 |
+| FR6.1 Diagnostics as data | X | X | 0 | 0 | 0 | 0 |
+| FR6.2 Compare models | X | X | X | 0 | 0 | 0 |
+| FR6.3 Layout of member files | 0 | 0 | 0 | X | 0 | 0 |
+| FR6.4 Diagram title | 0 | 0 | 0 | 0 | X | 0 |
+| FR6.5 Versions as data | 0 | X | 0 | 0 | 0 | X |
+
+The matrix is lower triangular. Set DP2.1 first, then DP6.1, then the other DPs in any order. The off-diagonal entries are these influences:
+
+- FR6.1 depends on DP2.1 for the `address` key.
+- FR6.2 depends on DP2.1 for the address strings. It depends on DP6.1, because `diff` writes diagnostics with the same encoding and reads the same `--format` option.
+- FR6.5 depends on DP6.1, because `version` reads the same `--format` option.
+
+The important zeros are these:
+
+- FR6.3 has `0` under DP6.1. `fmt` has no `--format` option.
+- FR6.4 has `0` under DP6.2. The title is an input of one rendering and is not part of the model, so a title never appears as a change.
+- FR2.1 has `0` under every DP6 column. The address exists before an adapter reads it.
+
+The new FR6 rows also depend on DPs of other branches. FR6.2 depends on DP4, because it compares canonical models. FR4 already makes the model independent of file names and block positions, so `diff` reports no layout change. FR6.3 depends on DP5 and DP8. FR6.4 depends on DP5.
+
+One existing row depends on DP2.1. FR3 has an `X` under DP2.1, because `validator.referenceExists` reads `source.ElementHasAddress`. FR3 already depends on DP2, and DP2.1 is part of DP2, which comes before DP3. Thus the list of element kinds has one owner, and the order stays the same. The DP6.1 to DP6.5 columns have no `X` in the rows FR1 to FR5 or FR7 to FR9. The tool matrix stays lower triangular.
+
+The change removed two copies of a fact. The Makefile no longer copies loader rule R2 to find member files. `cmd/wasm` no longer lists the diagnostic keys in its own map.
+
+Two risks remain:
+
+- `internal/compare` lists the collections of `model.Model`. `TestModels_CoversEveryTopLevelCollectionOfTheModel` fails when the model gets a collection that `compare` does not read.
+- `AddressAt` treats the empty range at the model start as outside every declaration, because `EM015` uses it. A future diagnostic with the same empty range at byte 0 gets no address. A block header at byte 0 is not empty, so it keeps its address.
+
 ## Requirements for the agent skill
 
 The repository ships an agent skill in `.agents/skills/event-modeling-hcl`. An AI agent reads it when it writes or reviews a model. The skill is a client of the tool. It adds one need, one FR, and one DP:
@@ -246,29 +293,31 @@ In the tool matrix, the FR10 row has `X` under DP1, DP8, DP2, DP3, DP5, DP7, DP9
 
 The DP10 column has `0` in every other row. The skill and the Makefile targets only call the CLI and read its exit code. They cannot change what the parser, the validator, the formatter, or an adapter accepts. Thus the FR10 row and the DP10 column go at the end of the matrix, and the matrix stays lower triangular.
 
-FR10 has seven child requirements. Each DP is a formalism that the skill states in a few lines, in place of a prose rule.
+FR10 has eight child requirements. Each DP is a formalism that the skill states in a few lines, in place of a prose rule.
 
 | Child FR | Acceptance criterion | DP |
 | --- | --- | --- |
-| FR10.3: Write only legal scenarios | Each scenario matches the production for its workflow kind | DP10.3: The EBNF scenario productions, copied from the specification into `references/language-v0.5.md` |
+| FR10.3: Write only legal scenarios | Each scenario matches the production for its workflow kind | DP10.3: The EBNF scenario productions, copied from the specification into `references/language-v0.6.md` |
 | FR10.5: Give each field a source | Each field has a source, a written derivation, or an open hotspot | DP10.5: The `@requires`, `@ensures`, and `@invariant` contracts in `SKILL.md` section 5 |
 | FR10.4: Leave locked workflows unchanged | No edit to a locked workflow without a confirmation that names it | DP10.4: The status state table in `SKILL.md` section 1 |
 | FR10.1: Claim a gate only after the tool passed it | A gate is claimed only when its command exited 0 | DP10.1: The Makefile gate graph (`formatted`, `valid`, `implementation-ready`). In this repository, `make model-ready MODEL=<path>`. |
 | FR10.2: Stop a repair loop that does not converge | No third edit for the same code on the same element without a new user decision | DP10.2: The circuit breaker with threshold k = 2 in `SKILL.md` section 9 |
 | FR10.7: Report review findings and show which tool made each one | Each finding is one line. `Error` and `Warning` lines are copied unchanged from the CLI output. The agent's own findings use `Review:` and carry no EM code. | DP10.7: The two line formats in `SKILL.md` section 8 |
 | FR10.6: Report the result in a form that a program can read | The report starts with a `Key: Value` header block | DP10.6: The RFC 822 style header block in `SKILL.md` section 10 |
+| FR10.8: State the supported tool range as data | `make skill-version-check` fails when `metadata.spec_version` differs from the `spec` value of `emhcl version --format json` | DP10.8: The keys `spec_version` and `emhcl_min` under `metadata` in `SKILL.md`, and the Makefile target `skill-version-check` |
 
-| FR \ DP | DP10.3 Productions | DP10.5 Contracts | DP10.4 Status table | DP10.1 Gate graph | DP10.2 Breaker | DP10.7 Diagnostics | DP10.6 Header |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| FR10.3 Legal scenarios | X | 0 | 0 | 0 | 0 | 0 | 0 |
-| FR10.5 Field sources | 0 | X | 0 | 0 | 0 | 0 | 0 |
-| FR10.4 Locked workflows | 0 | 0 | X | 0 | 0 | 0 | 0 |
-| FR10.1 True gates | X | 0 | X | X | 0 | 0 | 0 |
-| FR10.2 Bounded repair | 0 | 0 | 0 | X | X | 0 | 0 |
-| FR10.7 Review findings | 0 | X | 0 | X | 0 | X | 0 |
-| FR10.6 Report | 0 | 0 | X | X | X | 0 | X |
+| FR \ DP | DP10.3 Productions | DP10.5 Contracts | DP10.4 Status table | DP10.1 Gate graph | DP10.2 Breaker | DP10.7 Diagnostics | DP10.6 Header | DP10.8 Versions |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| FR10.3 Legal scenarios | X | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| FR10.5 Field sources | 0 | X | 0 | 0 | 0 | 0 | 0 | 0 |
+| FR10.4 Locked workflows | 0 | 0 | X | 0 | 0 | 0 | 0 | 0 |
+| FR10.1 True gates | X | 0 | X | X | 0 | 0 | 0 | 0 |
+| FR10.2 Bounded repair | 0 | 0 | 0 | X | X | 0 | 0 | 0 |
+| FR10.7 Review findings | 0 | X | 0 | X | 0 | X | 0 | 0 |
+| FR10.6 Report | 0 | 0 | X | X | X | 0 | X | 0 |
+| FR10.8 Supported range | 0 | 0 | 0 | 0 | 0 | 0 | 0 | X |
 
-The matrix is lower triangular, so the skill is decoupled. Set the DPs in this order: productions, contracts, status table, gate graph, breaker, diagnostics, header.
+The matrix is lower triangular, so the skill is decoupled. Set the DPs in this order: productions, contracts, status table, gate graph, breaker, diagnostics, header, versions. Outside the skill, FR10.8 depends on DP6.5, because `skill-version-check` reads `emhcl version --format json`.
 
 The off-diagonal entries are these influences:
 
@@ -283,24 +332,25 @@ The important zeros are these:
 - FR10.3 has `0` under DP10.1. The gate graph finds an illegal scenario, but only the productions and the validator decide what is legal. A gate never makes an illegal scenario legal.
 - No DP of the skill has an `X` in a row of the tool matrix.
 
-The Makefile targets keep one owner for each fact. `model-fmt-check` compares each member file with the output of `emhcl fmt`, so the formatter owns the layout. `model-valid` and `model-ready` run `emhcl validate`, so the validator owns validity and the profiles. The targets only fix the order of the three calls. `examples-fmt-check` applies the same comparison to `examples/`.
+The Makefile targets keep one owner for each fact. `model-fmt-check` runs `emhcl fmt --check`, so the formatter owns the layout and the loader owns the member files. `model-valid` and `model-ready` run `emhcl validate`, so the validator owns validity and the profiles. The targets only fix the order of the three calls. `examples-fmt-check` runs `emhcl fmt --check` on each model in `examples/`. `skill-version-check` compares the skill metadata with `emhcl version --format json`, so `internal/version` owns the specification version.
 
 ## Module contracts
 
 | Module | Owns | Input | Output and failure contract |
 | --- | --- | --- | --- |
 | `internal/syntax` | HCL body schemas and parsing | One or more files, each with a filename and source bytes | Parsed document or HCL syntax diagnostics. Each diagnostic names its own file. Two files with the same name give a diagnostic and no document. |
-| `internal/source` | Reference interpretation shared by the validator and the model | Parsed document | A wrapper around the parsed document, and helpers that turn reference expressions into addresses. No I/O and no policy. |
+| `internal/source` | Reference interpretation shared by the validator and the model, and declaration addresses | Parsed document | A wrapper around the parsed document, helpers that turn reference expressions into addresses, and `AddressAt`, which turns a source range into the address of a declaration. It owns the element kinds that have a reference form. No I/O and no policy. |
 | `internal/validator` | Core language rules, the catalog index, and the judgment policy evaluator | Decoded source and a profile | Diagnostics. Without core errors, also a `ValidatedDocument`, in every profile. |
 | `internal/model` | Canonical model for renderers and interchange, with normalized edges | `ValidatedDocument` | The same `Model` for the same input. No parsing, no validation, no I/O. |
+| `internal/compare` | The declaration changes between two models | Two canonical `Model` values | Added, removed, and changed declarations in a fixed order, with addresses from `internal/source`. No parsing, no validation, no I/O. |
 | `internal/formatter` | Canonical HCL layout | Source bytes of one file | Formatted bytes or parse diagnostics |
-| `internal/renderer` | View model, standalone HTML, and the viewer scripts | Canonical `Model` | HTML, or a template or serialization error. The viewer obeys the matrix for the diagram viewer. |
+| `internal/renderer` | View model, standalone HTML, the viewer scripts, and the default diagram title (`ModelName`) | Canonical `Model` and a title | HTML, or a template or serialization error. The viewer obeys the matrix for the diagram viewer. |
 | `internal/interchange` | Schema check and conversion for slice-based JSON | JSON bytes, or a canonical `Model` | A document or unformatted HCL with warnings. A returned error means that the input has no correct conversion. No I/O. |
-| `internal/app` | Use-case sequence and plain diagnostics | Source in memory, or a model path (one file or one folder) | Results for validate, format, render, import, export, and migrate that all adapters share. A model, HTML, or JSON exists only when there is no core error. Import is the exception: it returns the HCL source together with its validation diagnostics. |
+| `internal/app` | Use-case sequence and plain diagnostics, with their one JSON encoding | Source in memory, or a model path (one file or one folder) | Results for validate, format, render, diff, import, export, and migrate that all adapters share. A model, HTML, JSON, or a diff exists only when there is no core error. Import is the exception: it returns the HCL source together with its validation diagnostics. |
 | `internal/migrate` | v0.4.0 reading and the rewrite to v0.5.0 | Member files of one v0.4.0 model | Every member file, edited or unchanged, and a report, or error diagnostics and no files. No I/O. |
 | `internal/version` | The specification version and the tool version | The release version that the linker injects | `version.Spec` and `ToolVersion`. Used by `cmd/emhcl` and the renderer. |
 | `internal/playground`, `cmd/playground-seed` | The example source for the browser editor | One `.em.hcl` file | `seed.js` for `web/playground`. A build step, not part of the language pipeline. |
-| CLI (`internal/cli`, `cmd/emhcl`), WASM (`cmd/wasm`), `internal/serve` | Actions for each runtime | Arguments, files, signals, HTTP, JavaScript values | Exit codes, files, browser values, and server lifecycle. The CLI starts `internal/serve`. |
+| CLI (`internal/cli`, `cmd/emhcl`), WASM (`cmd/wasm`), `internal/serve` | Actions for each runtime, and the `--format` option | Arguments, files, signals, HTTP, JavaScript values | Exit codes, text or JSON output, files, browser values, and server lifecycle. The CLI starts `internal/serve`. |
 
 The loader (DP8) is `app.ReadModel` with `syntax.ParseFiles` and `syntax.Document.SourceOf`. Its contract has four rules:
 
@@ -338,6 +388,8 @@ The CLI owns output-file safety. `emhcl export` refuses an `-o` target that has 
 19. A profile assigns only the severity of a judgment signal. Do not let a profile, a judgment signal, or a renderer decide whether a model, HTML, or JSON is produced. Only core errors decide it.
 20. If you change a scenario rule in `validator/scenarios.go`, a diagnostic code, a profile severity, or an exit code of `internal/cli`, change the specification first (rule 1). Then change the copy in `.agents/skills/event-modeling-hcl` in the same change.
 21. Keep the Makefile model targets as calls to `emhcl`. Do not add a rule to them that the CLI does not check.
+22. Add a diagnostic key only as a JSON tag of `app.Diagnostic`. The CLI, the WASM module, and `serve` all encode that type.
+23. If you add a collection to `model.Model`, add its unit to `internal/compare` in the same change.
 
 A change breaks the Independence Axiom when, for example:
 
@@ -352,7 +404,7 @@ A change breaks the Independence Axiom when, for example:
 
 ## Known deviations
 
-The code at release v0.13.0 does not follow this guide in six places. Each one keeps the matrices triangular, but each one gives a fact two owners. Two owners make a change more likely to break one of the FRs.
+The code at release v0.15.0 does not follow this guide in six places. Each one keeps the matrices triangular, but each one gives a fact two owners. Two owners make a change more likely to break one of the FRs.
 
 | ID | Deviation | Rule | Effect | Correction |
 | --- | --- | --- | --- | --- |

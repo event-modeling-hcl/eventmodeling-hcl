@@ -81,6 +81,8 @@ func RenderHTML(view *ViewModel) (string, error) {
 	return strings.Replace(doc, modelMarker, string(encoded), 1), nil
 }
 
-func Render(filename string, source *model.Model) (string, error) {
-	return RenderHTML(BuildViewModel(filename, source))
+// Render writes the standalone HTML diagram of source with the diagram title
+// title.
+func Render(title string, source *model.Model) (string, error) {
+	return RenderHTML(BuildViewModel(title, source))
 }

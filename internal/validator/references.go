@@ -206,6 +206,14 @@ func allowedFlowRoots(workflowType, ownerKind, direction string) []string {
 }
 
 func (v *modelValidator) referenceExists(parts []string, workflowID string) bool {
+	if len(parts) == 2 && source.ElementHasAddress(parts[0]) {
+		workflow, ok := v.index.workflows[workflowID]
+		return ok && workflow.elements[parts[0]][parts[1]]
+	}
+	if len(parts) == 3 && source.ElementHasAddress(parts[0]) {
+		workflow, ok := v.index.workflows[parts[1]]
+		return ok && workflow.elements[parts[0]][parts[2]]
+	}
 	if len(parts) == 2 {
 		switch parts[0] {
 		case "actor":
@@ -219,9 +227,6 @@ func (v *modelValidator) referenceExists(parts []string, workflowID string) bool
 		case "workflow":
 			_, ok := v.index.workflows[parts[1]]
 			return ok
-		case "command", "readmodel", "screen", "processor":
-			workflow, ok := v.index.workflows[workflowID]
-			return ok && workflow.elements[parts[0]][parts[1]]
 		}
 	}
 	if len(parts) == 3 {
@@ -234,9 +239,6 @@ func (v *modelValidator) referenceExists(parts []string, workflowID string) bool
 		case "field_type":
 			_, ok := v.index.fieldTypes[address]
 			return ok
-		case "command", "readmodel", "screen", "processor":
-			workflow, ok := v.index.workflows[parts[1]]
-			return ok && workflow.elements[parts[0]][parts[2]]
 		}
 	}
 	return false

@@ -45,10 +45,13 @@ type adapter struct {
 	translations map[string]bool
 }
 
-func BuildViewModel(filename string, source *model.Model) *ViewModel {
+// BuildViewModel adapts the canonical model to the viewer. title is the
+// diagram title in the masthead and the document title. ModelName gives the
+// default title for a model path.
+func BuildViewModel(title string, source *model.Model) *ViewModel {
 	a := newAdapter(source)
 	view := &ViewModel{
-		Title:    modelName(filename),
+		Title:    title,
 		Version:  version.Spec,
 		Actors:   map[string]Actor{},
 		Contexts: map[string]Context{},
@@ -714,11 +717,11 @@ func maxIndex(indices []int) int {
 	return maximum
 }
 
-// modelName names the model by its path, unchanged: a file path gives its file
-// name without the .em.hcl suffix. A path without that suffix is a folder
-// model and gives the folder's own name, resolving "." and "/" through the
-// absolute path.
-func modelName(filename string) string {
+// ModelName is the default diagram title for a model path: a file path gives
+// its file name without the .em.hcl suffix. A path without that suffix is a
+// folder model and gives the folder's own name, resolving "." and "/" through
+// the absolute path.
+func ModelName(filename string) string {
 	base := filepath.Base(filename)
 	if strings.HasSuffix(base, ".em.hcl") {
 		return strings.TrimSuffix(base, ".em.hcl")

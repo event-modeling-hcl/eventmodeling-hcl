@@ -57,10 +57,9 @@ func (s *state) snapshot() (app.RenderResult, string) {
 
 // hashResult hashes everything a viewer could see: the rendered HTML, or —
 // when a model has errors — its diagnostics, including the file each one
-// points at (Diagnostic.Filename is not part of the JSON encoding). Hashing
-// only the HTML would make any two error states indistinguishable, since
-// both render no HTML at all, and the served page would never know to
-// reload from one error to a different one.
+// points at. Hashing only the HTML would make any two error states
+// indistinguishable, since both render no HTML at all, and the served page
+// would never know to reload from one error to a different one.
 func hashResult(result app.RenderResult) string {
 	encoded, err := json.Marshal(result)
 	if err != nil {
@@ -68,12 +67,8 @@ func hashResult(result app.RenderResult) string {
 		// this cannot fail in practice, but a distinct hash beats a panic.
 		return "unhashable"
 	}
-	h := sha256.New()
-	h.Write(encoded)
-	for _, diagnostic := range result.Diagnostics {
-		fmt.Fprintf(h, "%d:%s", len(diagnostic.Filename), diagnostic.Filename)
-	}
-	return hex.EncodeToString(h.Sum(nil))
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:])
 }
 
 const pollScript = `<script>

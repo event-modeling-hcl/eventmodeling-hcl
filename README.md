@@ -25,7 +25,7 @@ preserve the rules and durable artifacts of an Event Modeling session.
 Install the tagged command with Go 1.25 or newer:
 
 ```bash
-go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.13.0
+go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.15.0
 ```
 
 Go writes the executable to `GOBIN`, or to `$(go env GOPATH)/bin` when
@@ -47,7 +47,7 @@ the [GitHub Releases page](https://github.com/event-modeling-hcl/eventmodeling-h
 Verify a downloaded archive with that release's `checksums.txt`:
 
 ```bash
-archive=emhcl_0.13.0_linux_amd64.tar.gz
+archive=emhcl_0.15.0_linux_amd64.tar.gz
 grep " ${archive}$" checksums.txt | sha256sum -c -
 # macOS: grep " ${archive}$" checksums.txt | shasum -a 256 -c -
 ```
@@ -57,7 +57,7 @@ With GitHub CLI 2.49.0 or newer, verify the downloaded archive was produced by
 this repository's release workflow:
 
 ```bash
-gh attestation verify emhcl_0.13.0_linux_amd64.tar.gz \
+gh attestation verify emhcl_0.15.0_linux_amd64.tar.gz \
   --repo event-modeling-hcl/eventmodeling-hcl
 ```
 
@@ -254,12 +254,12 @@ error gives the location of the first declaration as `file:line:column`.
 
 ### Commands
 
-The `validate`, `diagram`, `serve`, `export`, and `migrate` commands accept a
-file or a folder. Each diagnostic gives the member file that it points to. The `serve`
-command reloads the page when you add, remove, rename, or edit a member file.
-If no member file is left, the page shows error EM001 until a member file
-returns. The `fmt` command formats one file at a time and refuses a folder. The
-`import` command writes one file.
+The `validate`, `diagram`, `serve`, `export`, `migrate`, `fmt`, and `diff`
+commands accept a file or a folder. Each diagnostic gives the member file that
+it points to. The `serve` command reloads the page when you add, remove,
+rename, or edit a member file. If no member file is left, the page shows error
+EM001 until a member file returns. The `fmt` command formats each member file
+of a folder. The `import` command writes one file.
 
 ```bash
 emhcl validate examples/pet-clinic
@@ -268,6 +268,45 @@ emhcl serve examples/pet-clinic
 
 A folder with exactly one member file gives the same result as that file. A
 folder with no member file gives error EM001.
+
+## Results for programs
+
+Scripts, CI jobs, and agents can read the results of `emhcl` as data. Text
+output and exit codes stay the same as before: 0 for success, 1 when a model
+has problems, and 2 for a command line that the tool cannot read.
+
+```bash
+emhcl validate --profile strict --format json examples/pet-clinic
+emhcl diff base/model head/model
+emhcl diff --format json base/model head/model
+emhcl fmt --check examples/pet-clinic
+emhcl diagram --title "shop main @ 1a2b3c4" -o model.html examples/pet-clinic
+emhcl version --format json
+```
+
+`validate --format json` writes one object to stdout with the keys `path`,
+`profile`, `has_errors`, `has_core_errors`, and `diagnostics`. Each diagnostic
+has `code`, `severity`, `summary`, `detail`, `line`, `column`, `judgment`, and
+`file`. `judgment` is true for EM401–EM406. A diagnostic inside a declaration
+also has `address`, the reference form of the innermost declaration with one,
+for example `command.place_order.submit` or `event.clinic.pet_registered`.
+
+`diff <base> <head>` lists the declarations that a change added, removed, or
+changed, one on each line, for example `changed workflow.register_pet`. A
+changed workflow lists its changed elements and scenarios below it. `diff`
+compares the typed models, so a block that moves to another member file, or a
+new layout, gives no line. A change to a field type marks only that field type.
+If either model has a core error, `diff` prints the diagnostics and exits 1.
+
+`fmt --check` writes no file. It prints each member file whose layout differs
+from `emhcl fmt` output and exits 1 when there is at least one. `fmt -w`
+rewrites only the files that change, and a syntax error in any member changes
+no file.
+
+`diagram --title` sets the title in the page header and the browser tab. Without
+it, the title is the name of the file or folder. `version --format json`
+prints `{"tool": ..., "spec": ...}`, where `spec` is the specification version
+that the tool implements.
 
 ## Migrate a v0.4.0 model
 
@@ -591,7 +630,10 @@ make model-ready     MODEL=examples/pet-clinic   # and it passes the strict prof
 
 `make model-ready` is the gate for an implementation-ready model. It fails while
 the model has an open hotspot. The agent skill in
-`.agents/skills/event-modeling-hcl` uses the same order.
+`.agents/skills/event-modeling-hcl` uses the same order. Its front matter names
+the specification that it teaches (`metadata.spec_version`) and the oldest
+`emhcl` release that implements it (`metadata.emhcl_min`).
+`make skill-version-check` fails when `spec_version` differs from the tool.
 
 ### Pre-commit Hooks
 

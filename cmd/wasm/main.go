@@ -15,6 +15,7 @@
 package main
 
 import (
+	"encoding/json"
 	"sort"
 	"syscall/js"
 
@@ -36,21 +37,15 @@ func profileArg(args []js.Value, index int) app.Profile {
 	return profile
 }
 
-func diagnosticsToJS(diagnostics []app.Diagnostic) []interface{} {
-	items := make([]interface{}, len(diagnostics))
-	for index, diagnostic := range diagnostics {
-		items[index] = map[string]interface{}{
-			"code":     diagnostic.Code,
-			"severity": diagnostic.Severity,
-			"summary":  diagnostic.Summary,
-			"detail":   diagnostic.Detail,
-			"line":     diagnostic.Line,
-			"column":   diagnostic.Column,
-			"file":     diagnostic.Filename,
-			"judgment": diagnostic.Judgment,
-		}
+// diagnosticsToJS converts diagnostics through their one JSON encoding
+// (app.Diagnostics.MarshalJSON), so the browser receives the same keys as
+// `emhcl validate --format json`.
+func diagnosticsToJS(diagnostics app.Diagnostics) js.Value {
+	encoded, err := json.Marshal(diagnostics)
+	if err != nil {
+		return js.Global().Get("Array").New()
 	}
-	return items
+	return js.Global().Get("JSON").Call("parse", string(encoded))
 }
 
 // render implements eventModelingRender(input, profile?) -> {html, diagnostics}.

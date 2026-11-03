@@ -13,6 +13,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclparse"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
 // File is one named source file of a model.
@@ -112,6 +113,17 @@ func (d *Document) Start() hcl.Range {
 // HCL's evaluated values normalize, such as the Unicode form of an object key.
 func (d *Document) SourceOf(rng hcl.Range) []byte {
 	return d.bytes[rng.Filename]
+}
+
+// BlockRange returns the source range of block, from its type keyword to its
+// closing brace. A body that the native HCL parser did not produce has no
+// known end, so its range is the block header.
+func BlockRange(block *hcl.Block) hcl.Range {
+	body, ok := block.Body.(*hclsyntax.Body)
+	if !ok {
+		return block.DefRange
+	}
+	return hcl.RangeBetween(block.DefRange, body.SrcRange)
 }
 
 // Content decodes body against schema, exactly like body.Content(&schema):

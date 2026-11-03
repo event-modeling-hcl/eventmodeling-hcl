@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,11 +12,14 @@ import (
 	"strings"
 
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/app"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/compare"
 	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/serve"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/syntax"
+	"github.com/event-modeling-hcl/eventmodeling-hcl/internal/version"
 )
 
 func usageMessage(name string) string {
-	return "usage: " + name + " <validate [--profile workshop|valid|strict] | diagram | serve | export> <model.em.hcl | folder> | fmt [-w] <model.em.hcl> | migrate [-w] <model.em.hcl | folder> | import <model.json> [diagram/export/import: -o <file>] [serve: --addr <host> --port <n> --profile <p>]"
+	return "usage: " + name + " <validate [--profile workshop|valid|strict] [--format text|json] | diagram [--title <text>] | serve | export> <model.em.hcl | folder> | diff [--format text|json] <base> <head> | fmt [-w | --check] <model.em.hcl | folder> | migrate [-w] <model.em.hcl | folder> | import <model.json> | version [--format text|json] [diagram/export/import: -o <file>] [serve: --addr <host> --port <n> --profile <p>]"
 }
 
 // defaultServeAddr and defaultServePort are serve's defaults when a
@@ -40,15 +44,40 @@ const (
 	importCommand
 	versionCommand
 	migrateCommand
+	diffCommand
 )
 
+// outputFormat selects how validate, diff, and version encode their result:
+// text for people (the default) or one JSON object for programs.
+type outputFormat uint8
+
+const (
+	textFormat outputFormat = iota
+	jsonFormat
+)
+
+// parseFormat is the one parser of the --format option.
+func parseFormat(value string) (outputFormat, error) {
+	switch value {
+	case "text":
+		return textFormat, nil
+	case "json":
+		return jsonFormat, nil
+	}
+	return textFormat, errors.New("format must be text or json")
+}
+
 // cliCommand is one fully parsed command-line invocation, ready to be
-// executed by Run.
+// executed by Run. For diff, path is the base model and head the head model.
 type cliCommand struct {
 	kind    commandKind
 	path    string
+	head    string
 	profile app.Profile
+	format  outputFormat
 	write   bool
+	check   bool
+	title   string
 	output  string
 	addr    string
 	port    int
@@ -65,11 +94,10 @@ func Run(name, toolVersion string, args []string, stdout, stderr io.Writer) int 
 	}
 
 	if command.kind == versionCommand {
-		fmt.Fprintf(stdout, "%s %s\n", name, toolVersion)
-		return 0
+		return writeVersion(command, name, toolVersion, stdout)
 	}
 	if command.kind == formatCommand {
-		return formatFile(command, stdout, stderr)
+		return formatModel(command, stdout, stderr)
 	}
 	if command.kind == diagramCommand {
 		return diagramFile(command, stdout, stderr)
@@ -86,40 +114,64 @@ func Run(name, toolVersion string, args []string, stdout, stderr io.Writer) int 
 	if command.kind == migrateCommand {
 		return migrateModel(command, stdout, stderr)
 	}
+	if command.kind == diffCommand {
+		return diffModels(command, stdout, stderr)
+	}
+	return validateModel(command, stdout, stderr)
+}
+
+// validateReport is the JSON object of `validate --format json`.
+type validateReport struct {
+	Path          string          `json:"path"`
+	Profile       string          `json:"profile"`
+	HasErrors     bool            `json:"has_errors"`
+	HasCoreErrors bool            `json:"has_core_errors"`
+	Diagnostics   app.Diagnostics `json:"diagnostics"`
+}
+
+// validateModel validates the model at command.path. Text output prints the
+// diagnostics to stderr and "<path> valid" to stdout on success. JSON output
+// writes one validateReport to stdout. The exit code is the same for both.
+func validateModel(command cliCommand, stdout, stderr io.Writer) int {
 	diagnostics := app.ValidatePath(command.path, command.profile)
+	exitCode := 0
+	if diagnostics.HasErrors() {
+		exitCode = 1
+	}
+	if command.format == jsonFormat {
+		writeJSON(stdout, validateReport{
+			Path:          command.path,
+			Profile:       command.profile.String(),
+			HasErrors:     diagnostics.HasErrors(),
+			HasCoreErrors: diagnostics.HasCoreErrors(),
+			Diagnostics:   diagnostics,
+		})
+		return exitCode
+	}
 	if len(diagnostics) > 0 {
 		writeDiagnostics(stderr, diagnostics)
 	}
-	if diagnostics.HasErrors() {
-		return 1
+	if exitCode == 0 {
+		fmt.Fprintf(stdout, "%s valid\n", command.path)
 	}
-
-	fmt.Fprintf(stdout, "%s valid\n", command.path)
-	return 0
+	return exitCode
 }
 
 // parseCommand turns raw command-line arguments into a cliCommand, or reports
 // an error describing why the arguments are not a valid invocation.
 func parseCommand(name string, args []string) (cliCommand, error) {
 	usage := usageMessage(name)
-	if len(args) == 1 && args[0] == "version" {
-		return cliCommand{kind: versionCommand}, nil
+	if len(args) >= 1 && args[0] == "version" {
+		return versionCLICommand(args[1:], usage)
 	}
-	if len(args) == 2 && args[0] == "validate" {
-		return validateCLICommand(args[1], app.Valid)
+	if len(args) >= 1 && args[0] == "validate" {
+		return validateCLICommand(args[1:], usage)
 	}
-	if len(args) == 4 && args[0] == "validate" && args[1] == "--profile" {
-		profile, ok := app.ParseProfile(args[2])
-		if !ok {
-			return cliCommand{}, errors.New("profile must be workshop, valid, or strict")
-		}
-		return validateCLICommand(args[3], profile)
+	if len(args) >= 1 && args[0] == "fmt" {
+		return formatCLICommand(args[1:], usage)
 	}
-	if len(args) == 2 && args[0] == "fmt" {
-		return formatCLICommand(args[1], false)
-	}
-	if len(args) == 3 && args[0] == "fmt" && args[1] == "-w" {
-		return formatCLICommand(args[2], true)
+	if len(args) >= 1 && args[0] == "diff" {
+		return diffCLICommand(args[1:], usage)
 	}
 	if len(args) == 2 && args[0] == "migrate" {
 		return migrateCLICommand(args[1], false)
@@ -158,21 +210,128 @@ func isDirectory(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-func validateCLICommand(path string, profile app.Profile) (cliCommand, error) {
-	if !isModelPath(path) {
+// validateCLICommand parses "validate [--profile p] [--format f] <path>",
+// with the options in any order. Each option can appear one time.
+func validateCLICommand(args []string, usage string) (cliCommand, error) {
+	command := cliCommand{kind: validateCommand, profile: app.Valid}
+	seen := map[string]bool{}
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--profile":
+			if seen["--profile"] || index+1 >= len(args) {
+				return cliCommand{}, errors.New(usage)
+			}
+			seen["--profile"] = true
+			profile, ok := app.ParseProfile(args[index+1])
+			if !ok {
+				return cliCommand{}, errors.New("profile must be workshop, valid, or strict")
+			}
+			command.profile = profile
+			index++
+		case "--format":
+			if seen["--format"] || index+1 >= len(args) {
+				return cliCommand{}, errors.New(usage)
+			}
+			seen["--format"] = true
+			format, err := parseFormat(args[index+1])
+			if err != nil {
+				return cliCommand{}, err
+			}
+			command.format = format
+			index++
+		default:
+			if command.path != "" {
+				return cliCommand{}, errors.New(usage)
+			}
+			command.path = args[index]
+		}
+	}
+	if command.path == "" {
+		return cliCommand{}, errors.New(usage)
+	}
+	if !isModelPath(command.path) {
 		return cliCommand{}, errors.New(modelPathError)
 	}
-	return cliCommand{kind: validateCommand, path: path, profile: profile}, nil
+	return command, nil
 }
 
-func formatCLICommand(path string, write bool) (cliCommand, error) {
-	if isDirectory(path) {
-		return cliCommand{}, errors.New("fmt formats one .em.hcl file at a time")
+// formatCLICommand parses "fmt [-w | --check] <path>". -w and --check
+// exclude each other.
+func formatCLICommand(args []string, usage string) (cliCommand, error) {
+	command := cliCommand{kind: formatCommand}
+	for _, arg := range args {
+		switch arg {
+		case "-w", "--check":
+			if command.write || command.check {
+				return cliCommand{}, errors.New(usage)
+			}
+			command.write = arg == "-w"
+			command.check = arg == "--check"
+		default:
+			if command.path != "" {
+				return cliCommand{}, errors.New(usage)
+			}
+			command.path = arg
+		}
 	}
-	if !strings.HasSuffix(path, ".em.hcl") {
-		return cliCommand{}, errors.New("model file must use the .em.hcl extension")
+	if command.path == "" {
+		return cliCommand{}, errors.New(usage)
 	}
-	return cliCommand{kind: formatCommand, path: path, write: write}, nil
+	if !isModelPath(command.path) {
+		return cliCommand{}, errors.New(modelPathError)
+	}
+	return command, nil
+}
+
+// diffCLICommand parses "diff [--format f] <base> <head>". --format can
+// appear one time.
+func diffCLICommand(args []string, usage string) (cliCommand, error) {
+	command := cliCommand{kind: diffCommand}
+	var paths []string
+	formatSeen := false
+	for index := 0; index < len(args); index++ {
+		if args[index] != "--format" {
+			paths = append(paths, args[index])
+			continue
+		}
+		if formatSeen || index+1 >= len(args) {
+			return cliCommand{}, errors.New(usage)
+		}
+		formatSeen = true
+		format, err := parseFormat(args[index+1])
+		if err != nil {
+			return cliCommand{}, err
+		}
+		command.format = format
+		index++
+	}
+	if len(paths) != 2 {
+		return cliCommand{}, errors.New(usage)
+	}
+	for _, path := range paths {
+		if !isModelPath(path) {
+			return cliCommand{}, errors.New(modelPathError)
+		}
+	}
+	command.path, command.head = paths[0], paths[1]
+	return command, nil
+}
+
+// versionCLICommand parses "version [--format f]".
+func versionCLICommand(args []string, usage string) (cliCommand, error) {
+	command := cliCommand{kind: versionCommand}
+	if len(args) == 0 {
+		return command, nil
+	}
+	if len(args) != 2 || args[0] != "--format" {
+		return cliCommand{}, errors.New(usage)
+	}
+	format, err := parseFormat(args[1])
+	if err != nil {
+		return cliCommand{}, err
+	}
+	command.format = format
+	return command, nil
 }
 
 func migrateCLICommand(path string, write bool) (cliCommand, error) {
@@ -184,10 +343,12 @@ func migrateCLICommand(path string, write bool) (cliCommand, error) {
 
 // outputCLICommand parses "<path> [-o <file>]" in either order for the
 // commands that read one input and write one output. The input is a model
-// path for diagram and export, and a JSON file for import.
+// path for diagram and export, and a JSON file for import. diagram also
+// accepts "--title <text>".
 func outputCLICommand(kind commandKind, args []string, usage string) (cliCommand, error) {
 	var path string
 	var output string
+	var title string
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
 		case "-o", "--output":
@@ -195,6 +356,15 @@ func outputCLICommand(kind commandKind, args []string, usage string) (cliCommand
 				return cliCommand{}, errors.New(usage)
 			}
 			output = args[index+1]
+			index++
+		case "--title":
+			if kind != diagramCommand || title != "" || index+1 >= len(args) {
+				return cliCommand{}, errors.New(usage)
+			}
+			if args[index+1] == "" {
+				return cliCommand{}, errors.New("title must not be empty")
+			}
+			title = args[index+1]
 			index++
 		default:
 			if path != "" {
@@ -227,7 +397,7 @@ func outputCLICommand(kind commandKind, args []string, usage string) (cliCommand
 			return cliCommand{}, errors.New("export output must not overwrite the source or use the .em.hcl extension; use -o <model.json> or omit -o to write JSON to stdout")
 		}
 	}
-	return cliCommand{kind: kind, path: path, output: output}, nil
+	return cliCommand{kind: kind, path: path, output: output, title: title}, nil
 }
 
 // overwritesFolderMember reports whether writing output would replace a member
@@ -312,27 +482,69 @@ func serveCLICommand(args []string, usage string) (cliCommand, error) {
 	return cliCommand{kind: serveCommand, path: path, profile: profile, addr: addr, port: port}, nil
 }
 
-func formatFile(command cliCommand, stdout, stderr io.Writer) int {
-	result := app.FormatFile(command.path)
+// formatModel formats the member files of the model at command.path, a file
+// or a folder. Without a flag it prints each file, and a folder prints a
+// "# ==> <file> <==" line before each member. With -w it rewrites only the
+// files whose layout changes. With --check it writes no file, prints the name
+// of each member whose layout differs, and exits 1 when at least one differs.
+// A syntax error in any member changes no file.
+func formatModel(command cliCommand, stdout, stderr io.Writer) int {
+	result := app.FormatPath(command.path)
 	if len(result.Diagnostics) > 0 {
 		writeDiagnostics(stderr, result.Diagnostics)
 	}
 	if result.Diagnostics.HasErrors() {
 		return 1
 	}
-	formatted := []byte(result.Source)
-	if !command.write {
-		_, _ = stdout.Write(formatted)
-		return 0
+	if command.check {
+		exitCode := 0
+		for _, file := range result.Files {
+			if file.Changed {
+				fmt.Fprintln(stdout, file.Name)
+				exitCode = 1
+			}
+		}
+		return exitCode
 	}
-	info, err := os.Stat(command.path)
-	if err != nil {
-		fmt.Fprintf(stderr, "failed to stat %s: %v\n", command.path, err)
-		return 1
+	files := make([]syntax.File, len(result.Files))
+	for index, file := range result.Files {
+		files[index] = file.File
 	}
-	if err := os.WriteFile(command.path, formatted, info.Mode().Perm()); err != nil {
-		fmt.Fprintf(stderr, "failed to write %s: %v\n", command.path, err)
-		return 1
+	if command.write {
+		return rewriteFiles(files, stderr)
+	}
+	printFiles(isDirectory(command.path), files, stdout)
+	return 0
+}
+
+// printFiles writes each file to stdout. A folder model gets a
+// "# ==> <file> <==" line before each member.
+func printFiles(folder bool, files []syntax.File, stdout io.Writer) {
+	for _, file := range files {
+		if folder {
+			fmt.Fprintf(stdout, "# ==> %s <==\n", file.Name)
+		}
+		_, _ = stdout.Write(file.Source)
+	}
+}
+
+// rewriteFiles overwrites each file whose content differs from the file on
+// disk, and keeps its permissions.
+func rewriteFiles(files []syntax.File, stderr io.Writer) int {
+	for _, file := range files {
+		current, err := os.ReadFile(file.Name)
+		if err == nil && string(current) == string(file.Source) {
+			continue
+		}
+		info, err := os.Stat(file.Name)
+		if err != nil {
+			fmt.Fprintf(stderr, "failed to stat %s: %v\n", file.Name, err)
+			return 1
+		}
+		if err := os.WriteFile(file.Name, file.Source, info.Mode().Perm()); err != nil {
+			fmt.Fprintf(stderr, "failed to write %s: %v\n", file.Name, err)
+			return 1
+		}
 	}
 	return 0
 }
@@ -354,31 +566,10 @@ func migrateModel(command cliCommand, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, line)
 	}
 	if !command.write {
-		folder := isDirectory(command.path)
-		for _, file := range result.Files {
-			if folder {
-				fmt.Fprintf(stdout, "# ==> %s <==\n", file.Name)
-			}
-			_, _ = stdout.Write(file.Source)
-		}
+		printFiles(isDirectory(command.path), result.Files, stdout)
 		return 0
 	}
-	for _, file := range result.Files {
-		current, err := os.ReadFile(file.Name)
-		if err == nil && string(current) == string(file.Source) {
-			continue
-		}
-		info, err := os.Stat(file.Name)
-		if err != nil {
-			fmt.Fprintf(stderr, "failed to stat %s: %v\n", file.Name, err)
-			return 1
-		}
-		if err := os.WriteFile(file.Name, file.Source, info.Mode().Perm()); err != nil {
-			fmt.Fprintf(stderr, "failed to write %s: %v\n", file.Name, err)
-			return 1
-		}
-	}
-	return 0
+	return rewriteFiles(result.Files, stderr)
 }
 
 // serveFile runs a local live-reload server for command.path until it is
@@ -397,8 +588,14 @@ func serveFile(command cliCommand, stderr io.Writer) int {
 
 // diagramFile writes the diagram unless the model has core errors. A policy
 // rejection still writes it, and the exit status reports the rejection.
+// --title replaces the default title, which the renderer derives from the path.
 func diagramFile(command cliCommand, stdout, stderr io.Writer) int {
-	result := app.RenderPath(command.path, app.Valid)
+	var result app.RenderResult
+	if command.title != "" {
+		result = app.RenderPathTitled(command.path, command.title, app.Valid)
+	} else {
+		result = app.RenderPath(command.path, app.Valid)
+	}
 	if len(result.Diagnostics) > 0 {
 		writeDiagnostics(stderr, result.Diagnostics)
 	}
@@ -412,6 +609,69 @@ func diagramFile(command cliCommand, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// diffReport is the JSON object of `diff --format json`. It has changes when
+// both models load, and diagnostics when a model has a core error.
+type diffReport struct {
+	Base        string            `json:"base"`
+	Head        string            `json:"head"`
+	Changes     *[]compare.Change `json:"changes,omitempty"`
+	Diagnostics app.Diagnostics   `json:"diagnostics,omitempty"`
+}
+
+// diffModels compares the base and head models. It exits 0 when both load,
+// also when they differ, and 1 when a model has a core error.
+func diffModels(command cliCommand, stdout, stderr io.Writer) int {
+	result := app.DiffPaths(command.path, command.head)
+	refused := result.Changes == nil
+	if command.format == jsonFormat {
+		report := diffReport{Base: command.path, Head: command.head, Diagnostics: result.Diagnostics}
+		if !refused {
+			report.Changes = &result.Changes
+		}
+		writeJSON(stdout, report)
+	} else if refused {
+		writeDiagnostics(stderr, result.Diagnostics)
+	} else {
+		writeChanges(stdout, result.Changes, "")
+	}
+	if refused {
+		return 1
+	}
+	return 0
+}
+
+// writeChanges writes one line for each change, "<change> <label>", with the
+// children of a workflow indented by two spaces.
+func writeChanges(w io.Writer, changes []compare.Change, indent string) {
+	for _, change := range changes {
+		fmt.Fprintf(w, "%s%s %s\n", indent, change.Change, change.Label())
+		writeChanges(w, change.Children, indent+"  ")
+	}
+}
+
+// writeVersion prints the tool version. JSON output adds the version of the
+// specification that the tool implements.
+func writeVersion(command cliCommand, name, toolVersion string, stdout io.Writer) int {
+	if command.format == jsonFormat {
+		writeJSON(stdout, struct {
+			Tool string `json:"tool"`
+			Spec string `json:"spec"`
+		}{Tool: toolVersion, Spec: version.Spec})
+		return 0
+	}
+	fmt.Fprintf(stdout, "%s %s\n", name, toolVersion)
+	return 0
+}
+
+// writeJSON writes value as one indented JSON object and a newline. It does
+// not escape <, >, and &, so diagnostic text stays readable.
+func writeJSON(w io.Writer, value any) {
+	encoder := json.NewEncoder(w)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	_ = encoder.Encode(value)
 }
 
 // exportFile writes the JSON unless the model has core errors. A policy

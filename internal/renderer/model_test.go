@@ -23,7 +23,7 @@ func TestBuildViewModel_AdaptsCurrentCompleteModel(t *testing.T) {
 		t.Fatalf("load example: %s", diagnostics.Error())
 	}
 
-	view := BuildViewModel(path, loaded)
+	view := BuildViewModel(ModelName(path), loaded)
 
 	if got, want := view.Title, "complete"; got != want {
 		t.Fatalf("title = %q, want %q", got, want)
