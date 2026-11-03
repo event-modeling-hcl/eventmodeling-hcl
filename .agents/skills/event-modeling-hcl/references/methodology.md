@@ -1,7 +1,7 @@
 # Event Modeling methodology
 
 Use this reference to turn incomplete domain input into a coherent business-time
-model, then encode it with the blocks in `language-v0.6.md`. It is not a second
+model, then encode it with the blocks in `language-v0.7.md`. It is not a second
 syntax manual.
 
 Authoritative source:
@@ -10,7 +10,7 @@ Where that guide's sources disagree, its Appendix C states the tension and the
 operative rule. Follow Appendix C over a conflicting worked example. HCL
 grammar still wins over both when the operative rule is not legal syntax.
 
-The canvas method is technology-agnostic. HCL v0.6.0 is the encoding. When they
+The canvas method is technology-agnostic. HCL v0.7.0 is the encoding. When they
 disagree, write legal HCL and keep the methodology rule as judgment, a
 `description`, a scenario `comment`, or a `hotspot`. Never invent an attribute
 to close the gap.
@@ -58,7 +58,7 @@ These methodology words are not HCL attributes or block kinds. Do not add them.
 | Storyline / beats | Several `scenario` blocks, or one scenario with ordered `given` events | `storyline { }` |
 | Field lineage expressions | Same `field_type` / field name across the connected edge; `generated = true` when the system fills the value; prose in `description`, `comment`, or `hotspot` | `mapping = "session:…"`, `latest:`, `derived:`, `aggregate:`, or any other mapping DSL |
 | Invisible signal / timer | A real `event` that opens work, then a `processor` | `triggers = ["daily"]` as the only cause; a pseudo-screen for a scheduler |
-| Role catalog | `actor` / `system` / `team` plus `description` of can and cannot | `roles = […]` (not in v0.6.0) |
+| Role catalog | `actor` / `system` / `team` plus `description` of can and cannot | `roles = […]` (not in v0.7.0) |
 | Notes lane | `chapter.description`, element `description`, scenario `comment`, `hotspot` | `note` blocks |
 | Spec lane wiring | Scenarios are nested in the workflow and have no `from` / `to` | Edges into scenarios |
 | Query / When-query | State view has no `when` | `query`, a `Get…` command |
@@ -135,8 +135,8 @@ The view of the result is a separate `state_view`.
 
 | Pattern | HCL workflow | Shape to author |
 | --- | --- | --- |
-| State change | `state_change` | `screen.to -> command.to -> event`. API: `api_endpoint` on the command, no fake screen. |
-| State view | `state_view` | `readmodel.from = [event…]`, `readmodel.to -> screen`. No command. |
+| State change | `state_change` | `screen.to -> command.to -> event`. API: a screen with `kind = "api"`, the route in its `api_endpoint`, and the deciding `actor`. |
+| State view | `state_view` | `readmodel.from = [event…]`, `readmodel.to -> screen`. No command. An API response is a screen with `kind = "api"`. |
 | Automation (worker) | `automation` | Internal events. Recommended: todo-list `readmodel` -> `processor` -> `command` -> internal event. |
 | Translation | `automation` | At least one event from an external bounded context. Same shape as a worker, emitting this domain's language. Tools derive "translation" from the external edge; there is no `translation` keyword. |
 
@@ -147,8 +147,9 @@ Validator, not merely advice:
   methodology judgment (see "Translation"); the validator does not check it.
 - Reverse edges (`command.from`, `screen.from`, `processor.from = [readmodel…]`,
   `command.from = [processor…]`) are `EM201`.
-- A command with no incoming canonical flow, no `api_endpoint`, and no
-  `external_trigger` is `EM404` (warning; error in strict).
+- A command with no incoming canonical flow and no `external_trigger` is
+  `EM404` (warning; error in strict). `api_endpoint` on the command is not a
+  reason.
 
 Methodology is stricter than those escapes:
 
@@ -159,7 +160,10 @@ Methodology is stricter than those escapes:
   Two screens or a screen and a processor targeting the same command is still
   a modeling error.
 - `api_endpoint` records a supplied route. It does not turn a query into a
-  command.
+  command, and on a command it does not replace the issuer. A client that
+  calls an API is an API screen. A fact that another system reports, such as
+  a webhook, is an external event translated by an `automation`, not an API
+  screen.
 
 Name the workflow after its defining element (the command, the read model, or
 the automation's command). Never `state_change "order_management"`. Slices
@@ -227,7 +231,7 @@ HCL checks that references resolve. It does not check lineage. You check it:
 - Reuse one realistic example value along a chain (`jane@example.com` stays
   that email). Do not overwrite a non-empty example. No `foo` / `test`.
 - Prefer `Decimal` for money. Map prose types onto the built-ins in
-  `language-v0.6.md` (`Date` vs `DateTime`, `Int` / `Long` / `Double` /
+  `language-v0.7.md` (`Date` vs `DateTime`, `Int` / `Long` / `Double` /
   `Decimal`). There is no `Text` or `Number` type.
 - Identity is `id_attribute = true`. Two identity fields are a compound
   identity. Do not invent a compound-key block.
@@ -247,7 +251,7 @@ user confirms the locked part.
 Author scenarios with the HCL grammar. The canvas sources use a different
 Given/When/Then for automations and errors. Do not copy those forms.
 
-| | Methodology sources | HCL v0.6.0 (required) |
+| | Methodology sources | HCL v0.7.0 (required) |
 | --- | --- | --- |
 | State change | Given events; When at most one command; Then events or an "empty" error flag | Zero or more `given` events; **exactly one** `when` command; one or more `then` events **or** `then { error = "…" }` |
 | State view | Given events; **empty When**; Then **exactly one** read model | One or more `given` events; **no `when`**; one or more `then` read models or errors. Zero givens is `EM301`. |

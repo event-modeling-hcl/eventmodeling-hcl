@@ -20,12 +20,12 @@
     const slice = EMC.MODEL.slices[sliceIndex];
     const parts = [];
     const kind = element.kind === "processor" ? processorLabel(slice.type) :
-      (EMC.KIND_LABEL[element.kind] || element.kind);
+      (EMC.kindLabel(element) || element.kind);
     parts.push(`<div class="es-note-kind">${EMC.esc(kind)}</div>`);
     parts.push(`<div class="es-note-title">${EMC.esc(element.title)}</div>`);
     if(element.question) parts.push(`<div class="q es-note-detail">“${EMC.esc(element.question)}”</div>`);
     if(element.api) parts.push(`<div class="es-api es-note-detail">${EMC.esc(element.api)}</div>`);
-    if(element.kind === "screen") parts.push('<div class="es-wire-frame es-note-detail"></div>');
+    if(EMC.hasWireframe(element)) parts.push('<div class="es-wire-frame es-note-detail"></div>');
     if(element.kind === "screen_image"){
       parts.push(`<div class="image-preview es-note-detail${element.imageUrl?"":" failed"}"><img src="${EMC.esc(element.imageUrl||"")}" alt="${EMC.esc(element.title)}" loading="lazy" referrerpolicy="no-referrer"><span class="image-preview-fallback">Preview unavailable</span></div>`);
     }

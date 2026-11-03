@@ -38,6 +38,47 @@ func TestFormat_OrdersAttributesAndPreservesTraversals(t *testing.T) {
 	}
 }
 
+func TestFormat_SortsScreenKindFirstInSemanticGroup(t *testing.T) {
+	source := []byte(`state_change "add_pet" {
+  screen "add_pet_request" {
+    to = [command.add_pet]
+    actor = actor.clinic_staff
+    api_endpoint = "POST /pets"
+    kind = "api"
+    tags = ["api"]
+  }
+  screen "add_pet_form" {
+    to = [command.add_pet]
+  }
+}
+`)
+	const want = `state_change "add_pet" {
+  screen "add_pet_request" {
+    tags         = ["api"]
+    kind         = "api"
+    api_endpoint = "POST /pets"
+    actor        = actor.clinic_staff
+    to           = [command.add_pet]
+  }
+
+  screen "add_pet_form" {
+    to = [command.add_pet]
+  }
+}
+`
+	formatted, diagnostics := Format("model.em.hcl", source)
+	if diagnostics.HasErrors() {
+		t.Fatalf("diagnostics = %s", diagnostics.Error())
+	}
+	if got := string(formatted); got != want {
+		t.Fatalf("formatted = %q, want %q", got, want)
+	}
+	again, _ := Format("model.em.hcl", formatted)
+	if !bytes.Equal(again, formatted) {
+		t.Fatalf("second format = %q, want idempotent %q", again, formatted)
+	}
+}
+
 func TestFormat_PreservesFieldShorthandsAndRanksFieldsAttribute(t *testing.T) {
 	source := []byte(`bounded_context "clinic" {
   field_type "pet_id" { type = "UUID" }

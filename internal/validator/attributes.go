@@ -64,6 +64,8 @@ func elementRule(name string) (attributeRule, bool) {
 	switch name {
 	case "group_id", "title", "description", "api_endpoint", "question":
 		return attributeRule{kind: stringValue}, true
+	case "kind":
+		return attributeRule{kind: stringValue, enum: []string{"ui", "api"}}, true
 	case "tags", "triggers":
 		return attributeRule{kind: stringListValue}, true
 	case "service":

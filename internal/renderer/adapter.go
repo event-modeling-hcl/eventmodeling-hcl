@@ -289,17 +289,18 @@ func compactStages(stages map[string]int) map[string]int {
 func (a *adapter) adaptElement(workflowID string, source model.Element) Element {
 	contextID := contextFromAggregate(source.Semantic.Aggregate)
 	return Element{
-		ID:       elementNodeID(workflowID, string(source.Kind), source.ID),
-		Kind:     string(source.Kind),
-		Title:    label(source.Title, source.ID, source.TitlePresent),
-		Actor:    lastPart(source.Semantic.Actor),
-		ImageURL: source.Presentation.URL,
-		Agg:      lastPart(source.Semantic.Aggregate),
-		AggTitle: a.aggregateTitle(source.Semantic.Aggregate),
-		API:      source.Semantic.APIEndpoint,
-		Question: source.Semantic.Question,
-		Tags:     source.Presentation.Tags,
-		Fields:   a.adaptFields(source.Fields, contextID),
+		ID:         elementNodeID(workflowID, string(source.Kind), source.ID),
+		Kind:       string(source.Kind),
+		Title:      label(source.Title, source.ID, source.TitlePresent),
+		Actor:      lastPart(source.Semantic.Actor),
+		ImageURL:   source.Presentation.URL,
+		Agg:        lastPart(source.Semantic.Aggregate),
+		AggTitle:   a.aggregateTitle(source.Semantic.Aggregate),
+		API:        source.Semantic.APIEndpoint,
+		ScreenKind: source.Semantic.ScreenKind,
+		Question:   source.Semantic.Question,
+		Tags:       source.Presentation.Tags,
+		Fields:     a.adaptFields(source.Fields, contextID),
 	}
 }
 

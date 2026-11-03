@@ -164,6 +164,7 @@ state_change "register_pet" {
 
   screen "pet_screen" {
     title  = "Pet screen"
+    kind   = "ui"
     actor  = actor.clinic_staff
     fields = [field_type.clinic.pet_name]
     to     = [command.register_pet_command]

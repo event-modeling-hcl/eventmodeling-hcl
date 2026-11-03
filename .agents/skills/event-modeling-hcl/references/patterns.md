@@ -66,17 +66,24 @@ state_change "place_order" {
 }
 ```
 
-For an API trigger, omit a fake Screen and use:
+For a command that a client program sends through an API, the issuer is an API
+screen. It names the actor that decides and carries the route:
 
 ```hcl
-command "place_order" {
+screen "place_order_request" {
+  kind         = "api"
   api_endpoint = "POST /orders"
-  to           = [event.orders.order_placed]
+  actor        = actor.customer
+  to           = [command.place_order]
 }
 ```
 
+Do not put `api_endpoint` on the command alone: that command has no issuer and
+gets `EM404`. An API response in a `state_view` is a screen with
+`kind = "api"` in `readmodel.to`.
+
 Use `external_trigger = true` only when the external trigger is real but not
-modeled as a Screen/API edge.
+modeled as a screen edge.
 
 A screen `to` list with more than one command is the bed: any second command,
 not only an unrelated one. Split the actions into separate screen states. The

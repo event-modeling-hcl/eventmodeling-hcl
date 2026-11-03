@@ -210,7 +210,7 @@ func WorkflowSchema() hcl.BodySchema {
 
 // ElementSchema is the schema of a command/readmodel/screen/processor
 // block's body. kind selects the block type so readmodel can require
-// question and screen can accept actor.
+// question and screen can accept actor and kind.
 func ElementSchema(kind string) hcl.BodySchema {
 	attributes := []hcl.AttributeSchema{
 		{Name: "group_id"}, {Name: "tags"}, {Name: "title"}, {Name: "description"},
@@ -222,7 +222,7 @@ func ElementSchema(kind string) hcl.BodySchema {
 		attributes = append(attributes, hcl.AttributeSchema{Name: "question", Required: true})
 	}
 	if kind == "screen" {
-		attributes = append(attributes, hcl.AttributeSchema{Name: "actor"})
+		attributes = append(attributes, hcl.AttributeSchema{Name: "actor"}, hcl.AttributeSchema{Name: "kind"})
 	}
 	return hcl.BodySchema{Attributes: attributes, Blocks: []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}}}
 }

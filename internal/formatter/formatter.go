@@ -97,6 +97,8 @@ func attributeRank(name string) int {
 		return 60
 	case "external":
 		return 70
+	case "kind":
+		return 90
 	case "question", "type", "cardinality", "mapping", "schema":
 		return 100
 	case "aggregate":

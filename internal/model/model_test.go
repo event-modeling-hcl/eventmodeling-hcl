@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -296,6 +297,52 @@ state_change "add_pet" {
 	}
 	if got, want := screen.Fields[1].Type, "field_type.clinic.pet_id"; got != want {
 		t.Fatalf("explicit screen field type = %q, want %q", got, want)
+	}
+}
+
+func TestBuild_StoresEffectiveScreenKind(t *testing.T) {
+	source := withBoard(`bounded_context "clinic" {
+  event "pet_added" {}
+}
+
+state_change "add_pet" {
+  screen "add_pet_request" {
+    kind = "api"
+    to   = [command.add_pet]
+  }
+  command "add_pet" { to = [event.clinic.pet_added] }
+}
+
+state_view "pets" {
+  readmodel "pets" {
+    question = "Which pets exist?"
+    from     = [event.clinic.pet_added]
+    to       = [screen.pets_page, screen.pets_ui]
+  }
+  screen "pets_page" {}
+  screen "pets_ui" { kind = "ui" }
+}`)
+
+	loaded, diagnostics := loadTestModel(t, "model.em.hcl", source)
+	if diagnostics.HasErrors() {
+		t.Fatalf("diagnostics = %s", diagnostics.Error())
+	}
+	for _, test := range []struct{ workflow, element, want string }{
+		{"add_pet", "add_pet_request", "api"},
+		{"add_pet", "add_pet", ""},
+		{"pets", "pets_page", "ui"},
+		{"pets", "pets_ui", "ui"},
+		{"pets", "pets", ""},
+	} {
+		element := elementByID(t, workflowByID(t, loaded, test.workflow), test.element)
+		if got := element.Semantic.ScreenKind; got != test.want {
+			t.Errorf("%s screen_kind = %q, want %q", test.element, got, test.want)
+		}
+	}
+	omitted := elementByID(t, workflowByID(t, loaded, "pets"), "pets_page")
+	explicit := elementByID(t, workflowByID(t, loaded, "pets"), "pets_ui")
+	if !reflect.DeepEqual(omitted.Semantic, explicit.Semantic) {
+		t.Errorf("omitted kind semantic = %#v, explicit ui = %#v, want equal", omitted.Semantic, explicit.Semantic)
 	}
 }
 

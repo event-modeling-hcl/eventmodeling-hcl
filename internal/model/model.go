@@ -161,6 +161,9 @@ type Semantic struct {
 	Triggers              []string `json:"triggers,omitempty"`
 	Question              string   `json:"question,omitempty"`
 	Actor                 string   `json:"actor,omitempty"`
+	// ScreenKind is the effective kind of a screen, "ui" or "api"; other
+	// elements leave it empty.
+	ScreenKind string `json:"screen_kind,omitempty"`
 }
 
 type Presentation struct {
@@ -430,7 +433,11 @@ func decodeWorkflow(block *hcl.Block, document *sourcepkg.Document) Workflow {
 
 func decodeElement(block *hcl.Block, document *sourcepkg.Document) Element {
 	content, _ := syntax.Content(block.Body, elementSchemaFor(block.Type))
-	return Element{Kind: mustElementKind(block.Type), ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Semantic: semanticFrom(content.Attributes), Presentation: presentationFrom(content.Attributes, document.Parsed()), Fields: decodeElementFields(content, fieldContext{document: document}), From: traversalList(content.Attributes["from"]), To: traversalList(content.Attributes["to"])}
+	semantic := semanticFrom(content.Attributes)
+	if block.Type == "screen" {
+		semantic.ScreenKind = cmp.Or(stringValue(content.Attributes["kind"]), "ui")
+	}
+	return Element{Kind: mustElementKind(block.Type), ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Semantic: semantic, Presentation: presentationFrom(content.Attributes, document.Parsed()), Fields: decodeElementFields(content, fieldContext{document: document}), From: traversalList(content.Attributes["from"]), To: traversalList(content.Attributes["to"])}
 }
 
 func decodeScenario(block *hcl.Block, document *sourcepkg.Document) Scenario {

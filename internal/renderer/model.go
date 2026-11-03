@@ -87,21 +87,24 @@ type Slice struct {
 }
 
 type Element struct {
-	ID       string   `json:"id"`
-	Kind     string   `json:"kind"`
-	Title    string   `json:"title"`
-	Stage    int      `json:"stage"`
-	Actor    string   `json:"actor,omitempty"`
-	ImageURL string   `json:"imageUrl,omitempty"`
-	Agg      string   `json:"agg,omitempty"`
-	AggTitle string   `json:"aggTitle,omitempty"`
-	Ctx      string   `json:"ctx,omitempty"`
-	External bool     `json:"external,omitempty"`
-	Given    bool     `json:"given,omitempty"`
-	API      string   `json:"api,omitempty"`
-	Question string   `json:"question,omitempty"`
-	Tags     []string `json:"tags,omitempty"`
-	Fields   []Field  `json:"fields,omitempty"`
+	ID       string `json:"id"`
+	Kind     string `json:"kind"`
+	Title    string `json:"title"`
+	Stage    int    `json:"stage"`
+	Actor    string `json:"actor,omitempty"`
+	ImageURL string `json:"imageUrl,omitempty"`
+	Agg      string `json:"agg,omitempty"`
+	AggTitle string `json:"aggTitle,omitempty"`
+	Ctx      string `json:"ctx,omitempty"`
+	External bool   `json:"external,omitempty"`
+	Given    bool   `json:"given,omitempty"`
+	API      string `json:"api,omitempty"`
+	// ScreenKind is "ui" or "api" for a screen; an API screen draws its route
+	// in place of a wireframe.
+	ScreenKind string   `json:"screenKind,omitempty"`
+	Question   string   `json:"question,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
+	Fields     []Field  `json:"fields,omitempty"`
 }
 
 type Field struct {

@@ -6,7 +6,7 @@ import "runtime/debug"
 
 // Spec is the version of the Event Modeling HCL Specification that this
 // renderer targets.
-const Spec = "v0.6.0"
+const Spec = "v0.7.0"
 
 // ToolVersion returns an injected release version when present, otherwise the
 // main module version recorded by a versioned go install build. Local builds

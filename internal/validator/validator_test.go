@@ -430,6 +430,154 @@ hotspot "missing_rule" {
 	requireSeverityForCode(t, workshop, "EM406", hcl.DiagInvalid)
 }
 
+func TestValidateSourceWithProfile_ScreenKind(t *testing.T) {
+	const catalog = `bounded_context "clinic" {
+  event "pet_registered" {}
+  event "pet_archived" {}
+}
+`
+	tests := []struct {
+		name     string
+		workflow string
+		wantCode string
+	}{
+		{name: "omitted", workflow: `state_change "register" {
+  screen "request" { to = [command.register] }
+  command "register" { to = [event.clinic.pet_registered] }
+}`},
+		{name: "api", workflow: `state_change "register" {
+  screen "request" {
+    kind         = "api"
+    api_endpoint = "POST /pets"
+    to           = [command.register]
+  }
+  command "register" { to = [event.clinic.pet_registered] }
+}`},
+		{name: "ui", workflow: `state_change "register" {
+  screen "request" {
+    kind = "ui"
+    to   = [command.register]
+  }
+  command "register" { to = [event.clinic.pet_registered] }
+}`},
+		{name: "api response", workflow: `state_view "pets" {
+  readmodel "pets" {
+    question = "Which pets exist?"
+    from     = [event.clinic.pet_registered]
+    to       = [screen.response]
+  }
+  screen "response" { kind = "api" }
+}`},
+		{name: "unknown string", wantCode: "EM008", workflow: `state_change "register" {
+  screen "request" {
+    kind = "rest"
+    to   = [command.register]
+  }
+  command "register" { to = [event.clinic.pet_registered] }
+}`},
+		{name: "not a string", wantCode: "EM007", workflow: `state_change "register" {
+  screen "request" {
+    kind = true
+    to   = [command.register]
+  }
+  command "register" { to = [event.clinic.pet_registered] }
+}`},
+		{name: "on command", wantCode: "EM000", workflow: `state_change "register" {
+  command "register" {
+    kind             = "api"
+    external_trigger = true
+    to               = [event.clinic.pet_registered]
+  }
+}`},
+		{name: "on readmodel", wantCode: "EM000", workflow: `state_view "pets" {
+  readmodel "pets" {
+    kind     = "api"
+    question = "Which pets exist?"
+    from     = [event.clinic.pet_registered]
+  }
+}`},
+		{name: "on processor", wantCode: "EM000", workflow: `automation "archive" {
+  processor "archiver" {
+    kind = "api"
+    from = [event.clinic.pet_registered]
+    to   = [command.archive]
+  }
+  command "archive" { to = [event.clinic.pet_archived] }
+}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(withBoard(catalog+test.workflow)), Strict)
+			if test.wantCode == "" {
+				if diagnostics.HasErrors() {
+					t.Fatalf("diagnostics = %s, want no errors", diagnostics.Error())
+				}
+				return
+			}
+			requireSeverityForCode(t, diagnostics, test.wantCode, hcl.DiagError)
+		})
+	}
+}
+
+func TestValidateSourceWithProfile_CommandReason(t *testing.T) {
+	const catalog = `bounded_context "clinic" {
+  event "pet_registered" {}
+  event "pet_archived" {}
+}
+`
+	tests := []struct {
+		name     string
+		workflow string
+		want     bool
+	}{
+		{name: "only api_endpoint", want: true, workflow: `state_change "register" {
+  command "register" {
+    api_endpoint = "POST /pets"
+    to           = [event.clinic.pet_registered]
+  }
+}`},
+		{name: "api screen and api_endpoint", workflow: `state_change "register" {
+  screen "request" {
+    kind = "api"
+    to   = [command.register]
+  }
+  command "register" {
+    api_endpoint = "POST /pets"
+    to           = [event.clinic.pet_registered]
+  }
+}`},
+		{name: "external_trigger", workflow: `state_change "register" {
+  command "register" {
+    external_trigger = true
+    to               = [event.clinic.pet_registered]
+  }
+}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diagnostics := ValidateSourceWithProfile("model.em.hcl", []byte(withBoard(catalog+test.workflow)), Valid)
+			if got := len(diagnosticsWithCode(diagnostics, "EM404")) == 1; got != test.want {
+				t.Fatalf("EM404 reported = %v, want %v: %s", got, test.want, diagnostics.Error())
+			}
+		})
+	}
+}
+
+func TestValidateSourceWithProfile_APIScreenBed(t *testing.T) {
+	model := withBoard(`bounded_context "clinic" {
+  event "pet_registered" {}
+}
+state_change "register" {
+  screen "request" {
+    kind = "api"
+    to   = [command.register, command.import]
+  }
+  command "register" { to = [event.clinic.pet_registered] }
+  command "import" { to = [event.clinic.pet_registered] }
+}`)
+	requireSeverityForCode(t, ValidateSourceWithProfile("model.em.hcl", []byte(model), Valid), "EM401", hcl.DiagWarning)
+}
+
 func TestValidateSource_RejectsTypelessEventField(t *testing.T) {
 	model := `bounded_context "clinic" {
   title = "Clinic"

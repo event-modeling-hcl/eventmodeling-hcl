@@ -43,11 +43,9 @@ func (v *modelValidator) workflowSmells(blocks hcl.Blocks) hcl.Diagnostics {
 			diagnostics = append(diagnostics, judgmentSignal(smellCode(smell), attribute.Expr.Range(), smell, fmt.Sprintf("%s %q connects to several %ss; review whether the workflow contains more than one business capability.", block.Type, block.Labels[0], expectedRoot)))
 		}
 		if block.Type == "command" {
-			content, _, _ := syntax.PartialContent(block.Body, syntax.ElementSchema(block.Type))
-			_, hasAPI := content.Attributes["api_endpoint"]
 			externalTrigger, _ := literalBool(content.Attributes["external_trigger"])
-			if !hasAPI && !externalTrigger && !incomingCommands[block.Labels[0]] {
-				diagnostics = append(diagnostics, judgmentSignal(codeCommandWithoutReason, block.DefRange, "Every command has a reason", fmt.Sprintf("command %q has no incoming flow, api_endpoint, or external_trigger.", block.Labels[0])))
+			if !externalTrigger && !incomingCommands[block.Labels[0]] {
+				diagnostics = append(diagnostics, judgmentSignal(codeCommandWithoutReason, block.DefRange, "Every command has a reason", fmt.Sprintf("command %q has no incoming flow or external_trigger.", block.Labels[0])))
 			}
 		}
 	}

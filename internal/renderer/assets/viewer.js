@@ -60,6 +60,10 @@ const PATTERN_LABEL = {state_change:"state_change", state_view:"state_view",
   automation:"automation", translation:"translation"};
 // The language has no translation kind: the viewer derives it.
 const PATTERN_NOTE = {translation:"automation consuming an external event"};
+// An API screen shows its route in place of a wireframe.
+const isAPIScreen = e => e.kind==="screen" && e.screenKind==="api";
+const kindLabel = e => isAPIScreen(e) ? "API" : KIND_LABEL[e.kind];
+const hasWireframe = e => e.kind==="screen" && !isAPIScreen(e);
 const STATUS_LABEL = {created:"Created", done:"Done", assigned:"Assigned", in_progress:"In progress",
   review:"Review", blocked:"Blocked", planned:"Planned", informational:"Informational"};
 
@@ -198,7 +202,7 @@ document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeDrawer(); })
 const EMC = {
   MODEL, FULL_MODEL, OFF_BOARD, chapters, chapterHref, ELEMENTS, SLICE_OF, EDGES, NEIGHBORS,
   el, esc, statusVar, openSlice, openSliceDetail,
-  KIND_LABEL, PAT_SVG, PATTERN_LABEL, PATTERN_NOTE, STATUS_LABEL, ACTOR_SVG, GEAR_SVG,
+  KIND_LABEL, kindLabel, hasWireframe, PAT_SVG, PATTERN_LABEL, PATTERN_NOTE, STATUS_LABEL, ACTOR_SVG, GEAR_SVG,
   ctxTitle, ctxExternal, aggTitle, eventCtx,
 };
 window.EMC = EMC;
@@ -360,7 +364,7 @@ function renderEventModel(){
 
   function cardHTML(e){
     const parts = [];
-    parts.push(`<div class="kind"><span class="kdot"></span><span class="kn">${KIND_LABEL[e.kind]}</span>` +
+    parts.push(`<div class="kind"><span class="kdot"></span><span class="kn">${kindLabel(e)}</span>` +
       (e.agg ? `<span class="agg">◈ ${esc(e.agg)}</span>` : (e.ctx ? `<span class="agg">${e.external?"↗ ":""}${esc(e.ctx)}</span>` : ``)) +
       `</div>`);
 
@@ -371,7 +375,7 @@ function renderEventModel(){
     }
     if(e.question) parts.push(`<div class="q">“${esc(e.question)}”</div>`);
     if(e.api) parts.push(`<div class="api">${esc(e.api)}</div>`);
-    if(e.kind==="screen"){
+    if(hasWireframe(e)){
       parts.push(`<div class="wire-frame"></div>`);
     }
     if(e.kind==="screen_image"){

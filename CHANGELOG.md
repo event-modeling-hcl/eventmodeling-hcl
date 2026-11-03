@@ -6,6 +6,22 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+This release implements Event Modeling HCL Specification v0.7.0 ([spec RFC 0006](https://github.com/event-modeling-hcl/spec/blob/main/rfcs/0006-api-screens.md), API Screens). Core validity does not change. One judgment signal changes: a command whose only reason is `api_endpoint` now gets `EM404`, a warning in the `valid` profile and an error in the `strict` profile. Add an API screen that names the actor and flows to the command.
+
+### Added
+
+- An optional `kind` attribute on `screen`, `"ui"` or `"api"`. Another string is `EM008`, a value that is not a string is `EM007`, and `kind` on another block is `EM000`. `version.Spec` is `v0.7.0`.
+- The typed IR stores the effective kind of each screen in the semantic field `screen_kind` (`"ui"` when omitted). `emhcl diff` reports a change of the kind as a changed screen.
+- `emhcl export` writes an API screen as a `SCREEN` with `apiEndpoint`, and warns that `kind = "api"` has no interchange equivalent.
+- Diagrams label an API screen "API" and show its route instead of a wireframe, in the Model, Compact, and Event Storming views.
+- `examples/api-screens.em.hcl` has an API request screen and an API response screen. The screen of `complete.em.hcl` and `pet-clinic` states `kind = "ui"`.
+
+### Changed
+
+- `EM404` reads only the incoming flow edges and `external_trigger`. `api_endpoint` on a command is no longer a reason. Every model in `examples/` keeps its diagnostics.
+- `emhcl fmt` sorts a screen `kind` first in the semantic configuration group. It never adds or removes `kind`.
+- The agent skill (v2.5.0) targets Specification v0.7.0. Its language reference is now `references/language-v0.7.md`. A command sent through an API gets an API screen instead of `api_endpoint` alone.
+
 ## [v0.15.0] - 2026-11-03
 
 This release implements [RFC 0001](rfcs/0001-machine-readable-tool-contracts.md) (Machine-Readable Tool Contracts). Programs can now read the results of `emhcl` as data. The Event Modeling HCL language is unchanged (Specification v0.6.0). Text output and exit codes stay the same, except as "Changed" lists.

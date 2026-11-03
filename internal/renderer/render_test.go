@@ -122,7 +122,7 @@ func TestRender_EmbedsScreenFields(t *testing.T) {
 		t.Fatalf("render example: %v", err)
 	}
 	if !strings.Contains(html, `"kind":"screen","title":"Pet screen"`) ||
-		!strings.Contains(html, `"actor":"clinic_staff","fields":[{"name":"pet_name"`) {
+		!strings.Contains(html, `"actor":"clinic_staff","screenKind":"ui","fields":[{"name":"pet_name"`) {
 		t.Error("rendered model JSON does not carry the screen card's fields")
 	}
 }

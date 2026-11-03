@@ -1,6 +1,6 @@
 # Architecture Guide
 
-This guide describes how `emhcl` is organized. It also shows how the design uses Axiomatic Design to keep changes predictable. The guide describes the current repository. The language contract is in the [Event Modeling HCL specification](https://github.com/event-modeling-hcl/spec). The tool implements Specification v0.6.0: a model is one file or one folder, a `board` block sets the story order, file layout has no meaning, and an `automation` scenario has an action form and a view form.
+This guide describes how `emhcl` is organized. It also shows how the design uses Axiomatic Design to keep changes predictable. The guide describes the current repository. The language contract is in the [Event Modeling HCL specification](https://github.com/event-modeling-hcl/spec). The tool implements Specification v0.7.0: a model is one file or one folder, a `board` block sets the story order, file layout has no meaning, an `automation` scenario has an action form and a view form, and a screen has a kind, `"ui"` or `"api"`.
 
 The [v0.5.0 review record](v0.5.0-review.md) records the status before the fixes, the conformance defects that the review reproduced, and the difference between the local diagonal authoring controls and the decoupled semantic pipeline. The section [Known deviations](#known-deviations) lists the places where the current code does not follow this guide.
 
@@ -127,7 +127,9 @@ FR7 has six child requirements. The table gives each one its mechanism.
 | FR7.5: Keep at most one actor per slice | Import refuses a slice with two or more actors. Export refuses a workflow whose screens name two or more actors. | DP7.5: Actor gate | `rejectMultipleActors` in `import.go`, `slice` in `export.go` |
 | FR7.6: Disclose each loss | Each value that a conversion drops produces a warning. | DP7.6: Warnings at the point of loss | `warn` calls in `import.go`, `import_policy.go`, `export.go` |
 
-The actor gate follows from the language. Specification v0.6.0 gives a screen one optional actor and gives a workflow no actor attribute. A JSON slice lists actors without links to screens. Thus a slice with two actors has no correct native form. The gate stops the conversion instead of guessing. If only some screens of a workflow name the actor, export drops the actor and writes a warning.
+The actor gate follows from the language. Specification v0.7.0 gives a screen one optional actor and gives a workflow no actor attribute. A JSON slice lists actors without links to screens. Thus a slice with two actors has no correct native form. The gate stops the conversion instead of guessing. If only some screens of a workflow name the actor, export drops the actor and writes a warning.
+
+The JSON schema has no field for the screen kind. Export writes an API screen as a `SCREEN` with `apiEndpoint` and a warning. Import writes no `kind`, so the screen is a `"ui"` screen. The JSON round trip stays stable, because the JSON never holds the kind.
 
 The native language has no translation keyword. Export writes slice type `TRANSLATION` for an `automation` that has at least one edge with `External` set, and `AUTOMATION` otherwise. Import writes `TRANSLATION` as `automation`. Import writes a `board` that lists the slices in the order of their `index` value. Slices without an `index` come last, in document order. Export writes `index` as the position of the slice. Export writes off-board workflows after the board workflows, in ID order, with a warning.
 
@@ -297,7 +299,7 @@ FR10 has eight child requirements. Each DP is a formalism that the skill states 
 
 | Child FR | Acceptance criterion | DP |
 | --- | --- | --- |
-| FR10.3: Write only legal scenarios | Each scenario matches the production for its workflow kind | DP10.3: The EBNF scenario productions, copied from the specification into `references/language-v0.6.md` |
+| FR10.3: Write only legal scenarios | Each scenario matches the production for its workflow kind | DP10.3: The EBNF scenario productions, copied from the specification into `references/language-v0.7.md` |
 | FR10.5: Give each field a source | Each field has a source, a written derivation, or an open hotspot | DP10.5: The `@requires`, `@ensures`, and `@invariant` contracts in `SKILL.md` section 5 |
 | FR10.4: Leave locked workflows unchanged | No edit to a locked workflow without a confirmation that names it | DP10.4: The status state table in `SKILL.md` section 1 |
 | FR10.1: Claim a gate only after the tool passed it | A gate is claimed only when its command exited 0 | DP10.1: The Makefile gate graph (`formatted`, `valid`, `implementation-ready`). In this repository, `make model-ready MODEL=<path>`. |

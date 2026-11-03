@@ -516,6 +516,47 @@ automation "react" {
 	}
 }
 
+func TestExport_APIScreenKeepsEndpointAndWarnsAboutKind(t *testing.T) {
+	source := []byte(`board { workflows = [workflow.register] }
+bounded_context "clinic" {
+  event "registered" {}
+}
+state_change "register" {
+  screen "request" {
+    kind         = "api"
+    api_endpoint = "POST /pets"
+    to           = [command.register]
+  }
+  screen "form" {}
+  command "register" {
+    to = [event.clinic.registered]
+  }
+}`)
+	exported := app.Export("register.em.hcl", source)
+	if exported.Diagnostics.HasErrors() {
+		t.Fatalf("export diagnostics: %+v", exported.Diagnostics)
+	}
+	screens := parsed(t, exported.JSON).Slices[0].Screens
+	var request *interchange.Element
+	for index := range screens {
+		if strings.HasSuffix(screens[index].ID, "request") {
+			request = &screens[index]
+		}
+	}
+	if request == nil || request.Type != "SCREEN" || request.APIEndpoint != "POST /pets" {
+		t.Fatalf("screens = %+v, want SCREEN request with apiEndpoint POST /pets", screens)
+	}
+	var kindWarnings []string
+	for _, warning := range exported.Warnings {
+		if strings.Contains(warning, "kind") {
+			kindWarnings = append(kindWarnings, warning)
+		}
+	}
+	if len(kindWarnings) != 1 || !strings.Contains(kindWarnings[0], "request") {
+		t.Fatalf("kind warnings = %v, want one for the API screen only", kindWarnings)
+	}
+}
+
 func TestExport_OffBoardWorkflowsFollowTheBoardInIDOrder(t *testing.T) {
 	source := []byte(`board { workflows = [workflow.middle] }
 state_change "zeta" {

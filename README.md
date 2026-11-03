@@ -4,8 +4,8 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`emhcl` implements Event Modeling HCL Specification v0.6.0. Releases v0.12.0
-and v0.13.0 implement v0.5.0. A model can
+`emhcl` implements Event Modeling HCL Specification v0.7.0. Releases v0.14.0
+and v0.15.0 implement v0.6.0; v0.12.0 and v0.13.0 implement v0.5.0. A model can
 be one `.em.hcl` file or a folder of `.em.hcl` files.
 This repository provides a strict validator, canonical formatter, typed semantic model,
 normative language documentation, and executable examples. The domain reference is the upstream [Event Modeling
@@ -76,8 +76,10 @@ A valid document prints `<path> valid`. Diagnostics use the form
 profile. The profile sets only the severity of modeling judgment (EM401–EM406):
 the default `valid` profile reports it as warnings, `workshop` as information,
 and `strict` makes unreasoned commands (EM404) and open hotspots (EM406)
-errors. A profile never hides the model: when there are no core errors, the
-typed model is built in every profile. A `strict` error still makes `validate`
+errors. A command's reason is an incoming flow or `external_trigger = true`;
+`api_endpoint` on a command is not a reason. A profile never hides the model:
+when there are no core errors, the typed model is built in every profile. A
+`strict` error still makes `validate`
 exit 1.
 
 Model files must use the `.em.hcl` extension. HCL is the language; the suffix
@@ -311,7 +313,7 @@ that the tool implements.
 ## Migrate a v0.4.0 model
 
 Specification v0.5.0 is a breaking revision. A v0.4.0 model does not validate
-under v0.5.0 or v0.6.0 rules. `emhcl migrate` converts it without changing its
+under v0.5.0 or later rules. `emhcl migrate` converts it without changing its
 meaning:
 
 ```bash
@@ -356,7 +358,7 @@ required properties (such as `sliceType`, element `fields`/`dependencies` or
 specification `linkedId`), values outside an enum, mistyped values and trailing
 content are import errors that name the offending JSON path.
 
-The native language is Specification **v0.6.0**. Actors are declared at
+The native language is Specification **v0.7.0**. Actors are declared at
 the top level and referenced by screens; workflows have no actor attribute
 or actor inheritance.
 
@@ -435,7 +437,7 @@ If only some screens reference the sole actor, export omits slice associations
 with a warning instead of assigning that actor to previously unassigned screens.
 Chapters, hotspots, teams/systems, aggregate catalog identities, unused actor
 declarations, context/aggregate/actor descriptions, non-context workflow
-owners, read-model questions, `external_trigger`, error-step titles that differ
+owners, read-model questions, `external_trigger`, screen `kind = "api"`, error-step titles that differ
 from the error text, explicit context titles equal to their label, bounded
 contexts no slice exposes and events no workflow references also have no
 equivalent and produce warnings. An event is exported as a copy only when
@@ -507,6 +509,31 @@ state_change "add_pet" {
   }
 }
 ```
+
+A screen is the interface of the system at one step. `kind = "api"` marks a
+request that a client program sends, or a response that it reads; omitted,
+the kind is `"ui"`. An API screen uses the same edges and names the actor that
+decides:
+
+```hcl
+state_change "register_pet" {
+  screen "register_pet_request" {
+    kind         = "api"
+    api_endpoint = "POST /pets"
+    actor        = actor.clinic_staff
+    to           = [command.register_pet]
+  }
+
+  command "register_pet" {
+    to = [event.clinic.pet_registered]
+  }
+}
+```
+
+The typed model stores the effective kind as `screen_kind`. Diagrams draw an
+API screen with its route instead of a wireframe. JSON export keeps
+`apiEndpoint` and warns that the kind has no equivalent, so import yields a
+`"ui"` screen.
 
 Every `field` and `subfield` needs a `type`: a built-in type string, or a
 `field_type` traversal. Inside a bounded context, `field_type.<id>` names that
@@ -657,7 +684,7 @@ exhaustiveness, vulnerability, example-validation, and release checks.
 
 ## Boundaries
 
-The supported HCL Specification v0.6.0 resolves references within one model,
+The supported HCL Specification v0.7.0 resolves references within one model,
 one file or one folder, and enforces scoped identity, the board, canonical
 typed flows, scenario shape, explicit field types, field examples, and workflow
 patterns, as the

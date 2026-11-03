@@ -136,7 +136,7 @@
   function cardNode(e){
     const isEvent = e.kind === "event";
     const parts = [];
-    parts.push(`<div class="kind"><span class="kdot"></span><span class="kn">${EMC.KIND_LABEL[e.kind]}</span>` +
+    parts.push(`<div class="kind"><span class="kdot"></span><span class="kn">${EMC.kindLabel(e)}</span>` +
       (isEvent ? `` : (e.agg ? `<span class="agg">◈ ${EMC.esc(e.agg)}</span>` : (e.ctx ? `<span class="agg">${e.external?"↗ ":""}${EMC.esc(e.ctx)}</span>` : ``))) +
       `</div>`);
 
@@ -147,7 +147,7 @@
     }
     if(e.question) parts.push(`<div class="q">“${EMC.esc(e.question)}”</div>`);
     if(e.api) parts.push(`<div class="api">${EMC.esc(e.api)}</div>`);
-    if(e.kind==="screen"){
+    if(EMC.hasWireframe(e)){
       parts.push(`<div class="wire-frame"></div>`);
     }
     if(e.kind==="screen_image"){

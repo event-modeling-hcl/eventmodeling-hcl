@@ -442,6 +442,9 @@ func (e *exporter) element(id, elementType, title string, semantic model.Semanti
 	if semantic.ExternalTrigger {
 		e.warn("%s external_trigger has no interchange equivalent and was not exported", id)
 	}
+	if semantic.ScreenKind == "api" {
+		e.warn("%s kind = \"api\" has no interchange equivalent and was not exported; importing yields a ui screen", id)
+	}
 	if semantic.Question != "" {
 		e.warn("%s question has no interchange equivalent; importing derives a question from description or title", id)
 	}
