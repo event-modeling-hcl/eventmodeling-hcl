@@ -632,6 +632,24 @@ field "pets" {
 - [Architecture guide](architecture-guide.md): package responsibilities,
   pipeline contracts, and the repository's Axiomatic Design rationale.
 
+### Agent skills
+
+Use [event-modeling](.agents/skills/event-modeling/SKILL.md) for business
+discovery, workshop drafts, and business-quality review. It establishes facts,
+ownership, flows, field sources, scenarios, and unresolved questions without
+requiring HCL or the CLI.
+
+Use [event-modeling-hcl](.agents/skills/event-modeling-hcl/SKILL.md) to encode,
+review, repair, format, validate, split, migrate, import, or export `.em.hcl`
+models. For a request that turns domain prose into HCL, use business modeling
+first, then HCL encoding. A syntax-only repair does not restart discovery.
+
+Both skills use one [edit policy](.agents/skills/event-modeling/references/edit-policy.md).
+It protects locked workflows and shared contracts used by locked workflows.
+Install or copy both skill directories together so their relative links work.
+Review is a mode within each skill, not a separate skill.
+
+
 ## Verification
 
 Run the complete local verification suite before submitting a change:

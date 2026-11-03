@@ -16,12 +16,12 @@ board {
 }
 ```
 
-Shapes below are legal HCL. Methodology additions (todo-list read models, one
-command per screen, translation before domain work) are judgment: follow them
-unless the user asked for a minimal legal workflow. Do not add `linked_copy`,
-`storyline`, or `mapping` attributes. Scenario grammar here is HCL, not the
-canvas automation form (empty When, Then command, or "nothing dispatched").
-Every `field` carries an explicit `type`.
+These examples encode the business patterns owned by
+[event-modeling](../../event-modeling/SKILL.md). Use that skill for pattern
+selection and business-quality review. This reference owns HCL examples only.
+Do not add `linked_copy`, `storyline`, or `mapping` attributes. Scenario grammar
+here is HCL, not the canvas automation form with an empty When and a Then
+command or no dispatch. Every `field` carries an explicit `type`.
 
 ## State Change
 

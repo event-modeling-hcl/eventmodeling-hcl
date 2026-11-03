@@ -1,0 +1,37 @@
+Clinic registration workshop model
+
+Scope: reception registers pets and sees their registration details. Communications requests an owner notice after registration.
+
+Story order: Register Pet -> Pet Directory -> Notify Owner.
+Owner: Clinic domain. Reception owns Register Pet and Pet Directory; Communications owns Notify Owner.
+Actor: Receptionist, authenticated.
+
+Facts and data:
+- Pet Registered: pet_id, owner_email.
+- Owner Notice Requested: pet_id, owner_email.
+- Pet ID is supplied by the receptionist at registration.
+- The receptionist supplies owner_email. There is no supplied source for vaccination_status.
+
+Register Pet (status: done):
+- Registration screen issues both Register Pet and Correct Owner Email.
+- Register Pet receives pet_id and owner_email and records Pet Registered.
+- Correct Owner Email has no specified result or scenarios.
+- Scenario: When the receptionist registers pet P-17 with owner_email lee@example.test, Then Pet Registered records exactly those values.
+
+Pet Directory (status: created):
+- Question: Which pets are registered, with what owner email and vaccination status?
+- Inputs: Pet Registered only.
+- Output fields: pet_id, owner_email, vaccination_status.
+- Audience: Receptionist.
+- No scenarios yet.
+
+Notify Owner (status: review):
+- Input: Pet Registered.
+- Pending-work list: Which registered pets still need an owner notice request? Fields: pet_id and owner_email.
+- Processor issues Request Owner Notice using those values.
+- Request Owner Notice records Owner Notice Requested using those values.
+- The pending-work list has no defined completion/removal fact.
+- No scenarios yet.
+- Open question on the processor: How soon after registration should the owner notice be requested?
+
+No rule or source for vaccination_status, notice timing, or the outcome of Correct Owner Email has been agreed.

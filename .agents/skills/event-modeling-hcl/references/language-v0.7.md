@@ -311,6 +311,10 @@ copies are one catalog event referenced from many workflows. Storylines are
 multiple scenarios or ordered `given` steps. There is no backward-edge form;
 a todo list includes its completion event in `readmodel.from`.
 
+The CLI accepts `mapping` and `schema` as unchecked strings. They are not a
+field-source language or a specification contract. Do not add them to new or
+repaired models. Leave existing values unless metadata repair is requested.
+
 ## Scenarios
 
 Each step has exactly one target. `error` is a literal string. These
@@ -388,6 +392,42 @@ scenario "success" {
 A step may target `event`, `command`, `readmodel`, `processor`, or `error` only
 as allowed by its workflow and step kind. There is no `query` target. Normal HCL
 comments are non-semantic.
+
+Use `expect_empty_list = true` only for an intentionally empty read-model
+result, never as an error or a no-dispatch assertion. A scenario cannot assert
+that one selected row is absent. Show concrete remaining rows or an empty
+list. Include the completion event in a worker todo list's `from` events
+when it closes the work. A translation relays an external fact and does not
+use its internal result as a completion closer.
+
+Check scenario targets against the actual flow. The CLI does not establish
+that the command or processor produces the asserted event. Do not combine an
+event and an error as if both occurred. Encode compensation as its own
+state change or automation, not an event in When and a command in Then.
+
+If a supplied duplicate-trigger rule requires harmless repetition, record
+that intent in a semantic `comment`. A target command's supplied
+already-done rejection can have its own scenario. HCL cannot mark that
+rejection as a successful no-op and has no `expect_no_dispatch` target.
+Report any remaining representation gap instead of changing the rule.
+
+Business scenario coverage and field-source review belong to
+[event-modeling](../../event-modeling/SKILL.md). For HCL output, encode at
+least one supplied view example for each read model, including todo lists.
+Do not invent examples or failure wording to fill a checklist.
+
+## Diagnostic signals and business judgment
+
+`EM401` signals a screen with more than one command. `EM402` signals a command
+with more than one event. `EM403` signals a read model with more than one
+input event. `EM405` signals uneven scenario coverage. These signals do not
+replace the business thresholds in the sibling skill. Do not automatically
+split a workflow merely to remove a fan-in or fan-out warning.
+
+`EM404` checks for a command reason: an incoming canonical flow or a justified
+`external_trigger`. `api_endpoint` on a command is not a reason. The business
+method separately requires a real issuer. Do not add `external_trigger` or
+`triggers` to hide missing causality.
 
 ## Workshop notation
 

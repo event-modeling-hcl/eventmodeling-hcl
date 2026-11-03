@@ -1,22 +1,20 @@
 ---
 name: event-modeling-hcl
 description: >-
-  Turn product ideas, requirements, workshop notes, user stories, domain prose,
-  existing behavior, or event-driven designs into valid Event Modeling HCL
-  v0.7.0 models: one `.em.hcl` file or a folder of `.em.hcl` files. Use this
-  skill whenever the user asks to create, extend, split, repair, review,
-  validate, format, migrate, import, export, or explain an Event Model or
-  `.em.hcl` file, or mentions Events, Commands, Read Models, State Change,
-  State View, Automation, Translation, the board, Event Modeling slices,
-  information completeness, or Given/When/Then scenarios—even if they do not
-  name HCL.
+  Author, extend, repair, review, validate, format, split, migrate, import,
+  export, or explain Event Modeling HCL v0.7.0 files and folder models.
+  Use for `.em.hcl` syntax, references, scenarios, diagnostics, and emhcl
+  commands. For business discovery or business-quality review, use the sibling
+  event-modeling skill. When a request turns domain prose into HCL, use
+  event-modeling first, then this skill. Do not use this skill for a
+  workshop-only discussion with no HCL deliverable.
 compatibility: >-
   Targets Event Modeling HCL Specification v0.7.0. For machine verification,
   use emhcl v0.16.0 or newer. v0.14.0 and v0.15.0 implement v0.6.0 and reject
   a screen `kind`. v0.12.0 and v0.13.0 implement v0.5.0. Older releases
   implement v0.4.0.
 metadata:
-  version: "2.5.0"
+  version: "3.0.0"
   spec_version: "v0.7.0"
   emhcl_min: "v0.16.0"
   author: workspace
@@ -25,393 +23,209 @@ metadata:
 
 # Event Modeling HCL
 
-Create one coherent, hand-authored Event Modeling HCL model from the user's
-domain input. The model is one `.em.hcl` file or one folder of `.em.hcl`
-files. Preserve Event Modeling's business-first discovery process: model facts
-and information flow before implementation structure, then encode the result in
-the strict native HCL language.
+Produce or update the requested `.em.hcl` file or model folder. This skill
+owns representation and tool operations, not business decisions. A diagram or
+prose explanation does not replace a requested model file.
 
-## Load only the references needed
+## Load the owning rules
 
-- Read [references/methodology.md](references/methodology.md) when discovering a
-  new model, interpreting prose, choosing slice boundaries, reviewing model
-  quality, honoring status locks, or recording evidence provenance.
-- Read [references/language-v0.7.md](references/language-v0.7.md) before writing
-  or repairing HCL, splitting a model into a folder, migrating a v0.4.0 model,
-  or converting JSON. It is the local syntax and validation reference.
-- Read [references/patterns.md](references/patterns.md) when a pattern shape or
-  scenario form is uncertain. Adapt examples to the domain; never copy their
-  placeholder vocabulary into the output.
+Read these references for the requested operation:
 
-For conflicts, the normative Event Modeling HCL v0.7.0 specification wins over
-examples, existing files, or general HCL knowledge.
+- Read [the language reference](references/language-v0.7.md) before writing,
+  repairing, reviewing, splitting, migrating, importing, or exporting HCL.
+- Read [the shared edit policy](../event-modeling/references/edit-policy.md)
+  before any mutation, including formatting, conversion, and repair. It is the
+  single source for workflow locks and shared-contract permissions.
+- Read [canonical HCL patterns](references/patterns.md) when the encoding of a
+  pattern or scenario is uncertain. Adapt vocabulary to the domain.
 
-## Rules that are not syntax
+Use [event-modeling](../event-modeling/SKILL.md) when business meaning is
+incomplete or the user requests business-quality review. Do not rerun discovery
+for a syntax-only repair whose meaning is already clear.
 
-Apply three layers, in this order when they conflict:
+The normative v0.7.0 specification wins over examples, existing files, and
+general HCL knowledge. Legal syntax does not prove business quality. Do not
+change business meaning to satisfy the grammar. Report a representation gap
+and return the unresolved decision to business modeling.
 
-1. Validator and v0.7.0 grammar. Illegal HCL is never "more faithful".
-2. Methodology judgment in `references/methodology.md`. A valid file can still
-   be a poor model.
-3. Canvas layout (columns, lanes, stickies). It has no attributes. Encode the
-   intent with existing blocks, or record the gap.
+## Establish the handoff and edit scope
 
-Do not invent `linked_copy`, `element_copy`, `storyline`, `query`, `note`, or
-a lineage DSL (`mapping = "session:…"`, `latest:`, `derived:`, `aggregate:`).
-The current CLI accepts an unchecked `mapping` string; do not add one.
+For domain prose, establish the business model with the sibling skill first.
+Carry its scope, vocabulary, owned facts, flows, fields and their sources,
+scenario intent, evidence, unknowns, and permitted changes into HCL. The
+handoff can be the existing conversation or model. Do not require a new file
+format or duplicate artifact.
 
-## Deliverable
+Preserve supplied behavior and every named acceptance criterion. If a business
+fact is missing, ask a focused question or retain an attached open `hotspot`.
+Never invent a rule, field source, error message, or implementation detail.
+An unresolved material question prevents a claim of implementation readiness.
 
-Produce or update the requested `.em.hcl` file or model folder. A model is not
-complete merely because a diagram or prose explanation looks plausible.
+For existing models, inspect every member file before adding global IDs or
+changing shared contracts. Apply the shared edit policy before planning the
+change. A formatter or migration command is a mutation too. Do not run a
+whole-model rewrite when its changes exceed the permitted scope.
 
-Unless the user asks for a workshop-only draft, the delivered model must:
+On review-only requests, report findings without editing files. Business
+review uses the sibling skill. Syntax review uses this skill and the CLI.
+For review-and-fix requests, make only authorized changes.
 
-1. encode all supplied business behavior and every named acceptance criterion;
-2. use one workflow per pattern-sized capability. Never combine an independent state change and state view into one workflow. An automation (including one that translates external facts) includes its own todo-list read model and command;
-3. include precise fields where the input supplies them;
-4. include scenarios for supplied business rules and important success/error
-   paths;
-5. reach the `valid` target of the gate graph in section 9 when the CLI is
-   available;
-6. reach the `implementation-ready` target before being called
-   implementation-ready;
-7. retain genuine unknowns as attached `hotspot` blocks instead of inventing
-   facts.
+## Preserve model structure
 
-Strict validation treats an open hotspot as an error. Keep the hotspot on a
-workshop draft. Do not invent the missing rule to make strict pass, and do not
-call the model implementation-ready while a material hotspot is open.
+Keep the existing file or folder shape unless the user requests a change.
+Write a new model as one file unless the user requests a folder or the model
+has many workflows or several owners.
 
-Choose the model shape:
+Every model has exactly one `board`. Its `workflows` list records the business
+story order. Include every workflow that belongs in that story. A workflow
+omitted from the board is valid but is not part of the story.
 
-- Keep an existing model in its current shape. Do not split a file or merge a
-  folder unless the user asks.
-- Write a new model as one file, unless the user asks for a folder or the
-  model has many workflows or several owners.
-- Every model has one `board` block whose `workflows` list is the story order,
-  in business time. List every workflow that belongs in the story. A workflow
-  left off the board is valid but is not part of the story.
-- In a folder model, put the `board` and catalog blocks in one file, chapter
-  blocks in any file, and each workflow in its own file. File names have no
-  meaning to the tool; a number prefix only helps people read. See "Folder
-  models" in `references/language-v0.7.md`.
-- A v0.4.0 model (no `board`, typeless fields, or `translation` blocks) must be
-  converted first with `emhcl migrate -w <model>`; then review the result.
+In a folder model, put the board and catalog blocks in one file, chapter
+blocks in any member file, and each workflow in its own file. Move blocks
+whole. IDs are global across member files. File names do not define story
+order. Follow the folder rules in the language reference.
 
-Do not create implementation code, database schemas, brokers, APIs, retries, or
-framework architecture unless the user explicitly asks. A supplied API route
-goes in `api_endpoint` on an API screen (`kind = "api"`), but implementation
-details do not drive the model.
+When adding a workflow, update the board at its business-time position and its
+chapter membership. Carry authorized renames through every affected reference.
+Do not leave obsolete aliases or duplicate contracts.
 
-## Workflow
+For a v0.4.0 model, use `emhcl migrate -w <model>` within the permitted scope
+before editing the migrated source. Read its report and review the result.
+Remove migrated titles that only repeat the ID. Preserve meaningful titles.
+For JSON input, use `emhcl import` to obtain a draft, then review it. Read every
+conversion warning. Import does not preserve canvas IDs or invent missing
+targets. Export is lossy. Do not use export and import as a repair loop.
 
-### 1. Ground in available evidence
+## Encode the business model
 
-Read the user's prose and relevant project requirements, tests, domain types,
-existing `.em.hcl` files, and examples. Reuse the repository's vocabulary.
-Separate:
-
-- explicit facts and rules;
-- reasonable naming or ownership deductions;
-- unresolved business questions.
-
-Do not ask for information already present in files. If a missing decision
-would materially change the model, either ask a focused question or—when useful
-work can continue—record an open hotspot and proceed. Do not guess silently.
-Label a non-obvious deduction in `description` as stated, implied, or assumed,
-and name the source (requirement, test, type, or UI). Code and screens are
-hypotheses; an explicit stakeholder rule outranks them. Keep document
-thresholds and dates verbatim.
-
-When extending an existing model, preserve its valid identity vocabulary and
-business-time story. In a folder model, IDs are global across files, so search
-every member file before you add an ID. Add a new workflow to `board.workflows`
-at its business-time position, and to the chapter where it belongs. Migrate
-every affected reference; do not leave obsolete aliases or duplicate contracts.
-
-When the input is Event Modeling JSON, run `emhcl import` to get a first draft.
-Then review it with this skill as you would review any other model. Read each
-import warning. Import does not keep canvas IDs, and it does not invent missing
-targets.
-
-Honor workflow `status` before editing. Each workflow follows this state table:
-
-| Status | You plan an edit | The user confirms this workflow and these changes |
-| --- | --- | --- |
-| absent or `created` | Edit. | Edit. |
-| `planned`, `assigned`, `in_progress`, `review`, `blocked`, `informational` | Do not edit. Report it as locked. | Make only the confirmed changes. |
-| `done` | Do not edit. Report it as locked. | Make only the confirmed changes, and say that the edit reopens the workflow. |
-
-A chain edit (a rename or field carried along connected workflows) that
-includes a locked workflow is locked as a whole. A confirmation unlocks only
-the workflow that it names, not its siblings. Say exactly what stayed locked.
-
-### 2. Discover the Event Model before authoring HCL
-
-Use business time, left to right:
-
-1. Brainstorm concrete domain Events as past-tense facts.
-2. Put Events in the order in which the business observes them. Ask: what is the
-   first Event, what is the last Event, and what happens next?
-3. Group the story into small capabilities; do not force final boundaries yet.
-4. Add rough Screens for actor-visible interactions.
-5. Add Commands, Read Models, and machine Processors to explain input and
-   output.
-6. Identify actors, teams, systems, bounded contexts, and external ownership.
-7. Detail one flow at a time with fields and scenarios.
-
-One well-specified slice is better than several speculative slices.
-
-### 3. Choose exactly one pattern per capability
-
-- **State Change** — a person, or a client program through an API, expresses
-  intent: `Screen -> Command -> Event`. One screen state issues one command.
-  A request through an API is a screen with `kind = "api"`; it names the actor
-  that decides.
-- **State View** — existing facts answer one question:
-  `Event(s) -> Read Model -> Screen`. An API response is a screen with
-  `kind = "api"`.
-- **Automation** — the system reacts to facts:
-  `Event(s) -> pending-work Read Model -> Processor -> Command -> Event`.
-  When the consumed facts come from an external context, the automation is a
-  **translation**: it turns the external fact into the receiving context's
-  language. Write it as an `automation`; tools derive the translation from its
-  external edges. There is no `translation` keyword.
-
-Do not invent a fourth pattern. A visual gear maps to a workflow-local
-`processor`; `automation` is the top-level workflow kind. The validator allows
-a processor to consume events directly; the method still wants the pending-work
-read model unless the user asked for a minimal legal workflow. Record that
-exception. Do not use `external_trigger` or `triggers` to hide a missing issuer
-or an invisible signal, and do not put `api_endpoint` on a command in place of
-an API screen. A fact that another system reports, such as a webhook, is not an
-API screen: it is an event of an `external = true` context, translated by an
-`automation`.
-
-### 4. Establish ownership and contracts
-
-Declare stable lower-snake-case identities. Put canonical `event`, `aggregate`,
+Use stable lower-snake-case identities. Put canonical `event`, `aggregate`,
 and reusable `field_type` blocks inside their owning `bounded_context`.
+Represent external ownership with `external = true` on the supplied systems
+and contexts. Use `title` only when the literal text differs from the ID.
 
-Treat an aggregate as a consistency boundary, not as every noun in the domain.
-A command that must atomically modify several aggregates is a boundary smell:
-revisit the aggregate boundary or model eventual consistency as separate
-slices.
+Encode each selected capability as its matching workflow kind. Translation
+uses `automation` over external facts, not a `translation` keyword. Preserve
+the business model's pending-work read model. If the user requests only a
+minimal legal automation, record any omission of that methodological element.
+A client request or response uses a screen with `kind = "api"`. A reported
+external fact uses an external event, not a pseudo-screen. Put a supplied API
+route on the API screen as `api_endpoint`, not on the command as its reason.
 
-Mark third-party systems and their bounded contexts `external = true`. An
-automation may consume internal events, external events, or both.
+Every `field` and `subfield` needs an explicit `type` (`EM009`). Use reusable
+`field_type` declarations for recurring domain concepts, referenced as
+`field_type.<context>.<id>` outside the owning context or `field_type.<id>`
+inside it. Use built-in types for one-off fields. Encode identifiers, PII,
+optionality, technical data, cardinality, and examples only when known.
+Use `generated = true` only for system-filled values, never for user input.
 
-Titles are optional literal text and are never derived from labels. Choose
-labels that read well, and write `title` only when the text should differ from
-the ID.
+Preserve field sources from the business model. Document renames and
+derivations on the owning element or in a scenario `comment`. A `field` has
+no `description` attribute (`EM000`). Do not add a `mapping` lineage language.
+The CLI accepts unchecked strings that do not establish a source contract.
 
-### 5. Add fields using ubiquitous language
+Relationships are unquoted HCL traversals, not strings. Write an edge once:
+use `to` on a workflow source, or `from` on the receiving workflow element
+when a catalog event is the source. Use fully qualified context-owned
+references outside the context and local references inside a workflow.
+Do not write reverse edges such as `command.from = [screen...]`,
+`screen.from = [readmodel...]`, or `processor.from = [readmodel...]`.
 
-Every `field` and `subfield` needs an explicit `type`; the tool never infers it
-from the field name (`EM009`). Use reusable `field_type` declarations for
-recurring domain concepts and reference them as `field_type.<context>.<id>`
-(`field_type.<id>` inside the owning context). Use a
-plain built-in type only for one-off fields. Mark identifiers, PII, optionality,
-technical data, list cardinality, and examples only when known. Use
-`generated = true` only for system-filled values, never for user input.
+Keep scenarios inside their workflow. Follow the productions in the language
+reference, not canvas notation. An automation action scenario has one `when`.
+An automation view scenario has no `when` and states its read-model content.
+Each step has exactly one typed target. State views have no query step.
+Encode rejection as `then { error = "..." }` with supplied error wording.
+A recorded business failure is an event. Use semantic `comment` blocks for
+notes, not ordinary HCL comments.
 
-Check information completeness for every edge and scenario. Each line below is
-a contract in Design-by-Contract form. `@requires` must hold before the
-element can work, `@ensures` must hold after, and `@invariant` must always
-hold:
+Do not invent `linked_copy`, `element_copy`, `storyline`, `query`, `note`,
+`expect_no_dispatch`, or a lineage DSL. Do not add implementation code,
+database schemas, brokers, retries, or framework architecture unless asked.
 
-```text
-@invariant command -> event:
-    every event field is a command field (same name, or a rename written in
-    the event description), or has generated = true, or has a derivation
-    written in the event description
-@invariant event(s) -> readmodel:
-    every read model field is a field of a `from` event, or a derivation of
-    those fields written in the readmodel description
-@requires  issuer -> command  (issuer: screen, readmodel, or processor):
-    the issuer supplies every command field that is not generated = true
-@ensures   model:
-    every field has a traceable source or an explicit domain rule, or an
-    open hotspot names the gap
-```
+## Format, validate, and repair
 
-Lineage is the same field name, or a documented rename, across a real edge,
-plus `description`, `comment`, or `hotspot` when the value is derived. A
-`field` block has no `description` attribute (`EM000`). Write the note on the
-element that owns the field, or in a scenario `comment`. Do not
-encode it with a `mapping` attribute. Do not silently add data because an
-implementation might need it. Use a hotspot when provenance is unresolved.
+Prefer a compatible repository-local binary, then a PATH-installed binary.
+Check `emhcl version`. v0.7.0 needs v0.16.0 or newer. A checkout's `dev` build
+counts as current only if `emhcl version --format json` reports
+`"spec": "v0.7.0"`. Do not install tooling or run untrusted downloads without
+the user's request.
 
-### 6. Encode canonical flows
-
-Relationships are unquoted HCL traversals, never strings. Write each edge once:
-
-- when a workflow element is the source, write `to` on that source;
-- when a catalog Event is the source, write `from` on the receiving workflow
-  element.
-
-Never write reverse edges such as `command.from = [screen...]`,
-`screen.from = [readmodel...]`, `processor.from = [readmodel...]`, or
-`command.from = [processor...]`.
-
-Use fully qualified context-owned references outside their context, for example
-`event.orders.order_placed`, and local workflow references inside a workflow,
-for example `command.place_order`.
-
-### 7. Specify observable business behavior
-
-Keep each `scenario` inside its workflow. Write it by the EBNF productions in
-the "Scenarios" section of `references/language-v0.7.md`, one production for
-each workflow kind. Do not use canvas Given/When/Then variants.
-
-An `automation` scenario has two forms. An action form scenario has one `when`
-step. A view form scenario has no `when` step and states the content of a read
-model of that automation, for example a to-do list. Methodology notes that put
-the issued command in Then, or assert "nothing dispatched", match neither form,
-so they are not legal scenarios. Prose givens and `storyline` blocks are not
-legal either. See `references/methodology.md`.
-
-Each step has exactly one typed target. There is no Query concept and no
-`query` attribute. Use `comment { description = ... }` for semantic notes;
-ordinary HCL comments are non-semantic. Rejection is `then { error = "..." }`,
-not `expect_empty_list`. A tracked business failure is an event.
-
-Model supplied success and failure rules. Do not fabricate error wording or
-business decisions. Record missing rules as hotspots.
-
-### 8. Review modeling quality
-
-Before validation, inspect the model as a business story. On a review request,
-report these findings; do not silently restructure. When authoring a requested
-model, fix them.
-
-- **Bed:** one Screen's `to` lists more than one Command. Any extra command is
-  the problem, not only an "unrelated" one. Split into separate screen states.
-  `EM401` warns at that threshold; it is not a hard error.
-- **Left chair:** one Command produces more than one Event (`EM402`). The method
-  treats more than two as a candidate to discuss, not an automatic split.
-- **Right chair:** one Read Model consumes more than one Event (`EM403`). The
-  method investigates fan-in above three, field by field.
-- **Shelf:** scenarios concentrated in one workflow while other workflows have
-  none (`EM405`). Also ask when one workflow has noticeably more cases than
-  its neighbors.
-
-Also check that every Command has one issuer and a validator reason—an incoming
-canonical flow or a justified `external_trigger`—and every Read Model answers
-one concrete question. `api_endpoint` on a command is not a reason (`EM404`).
-A valid file can still be a poor model.
-
-Write each review finding as one line. Keep the lines that `emhcl` printed
-apart from your own findings, so that a reader can see which tool made each
-line. The first form is a line that `emhcl` printed. The second form is your
-own finding:
-
-```text
-<file>:<line>:<column>: <Error|Warning> <code>: <title>: <detail>
-<file>:<line>:<column>: Review: <detail>
-```
-
-Only `emhcl` writes `Error` or `Warning` lines. Copy them unchanged from the
-output of `emhcl validate --profile strict`, and do not count the `EM401`–`EM406`
-signals again by hand. Never put an EM code on your own finding, and never write
-your own finding as `Error` or `Warning`. A finding in the user's input text,
-not in a file, uses `input` as the file and has no line or column.
-
-### 9. Format, validate, and repair the source
-
-Prefer a repository-local compatible binary, then a PATH-installed binary.
-Check the version with `emhcl version`. v0.7.0 models need v0.16.0 or newer.
-From v0.15.0, `emhcl version --format json` also prints the specification
-version. The front matter of this skill states the same facts in
-`metadata.spec_version` and `metadata.emhcl_min`.
-v0.14.0 and v0.15.0 implement v0.6.0, and v0.12.0 and v0.13.0 implement
-v0.5.0, so they cannot confirm a v0.7.0 model.
-A `dev` build from a repository checkout counts as current only when
-`emhcl version --format json` prints `"spec": "v0.7.0"`.
-Do not install tooling or execute untrusted downloads without the user's
-request.
-
-Run the gates as this Makefile dependency graph. `MODEL` is one `.em.hcl` file
-or one folder. `FILES` are its member files. A target is done only when its
-command exits 0. `emhcl` exits 0 on success, 1 when the model has problems,
-and 2 when the command line is wrong.
+Run these gates in order, within the permitted edit scope. `MODEL` is one
+file or folder. Each target completes only when its command exits 0:
 
 ```make
-implementation-ready: valid             # strict fails on an open hotspot (EM406)
+implementation-ready: valid
 	emhcl validate --profile strict $(MODEL)
 valid: formatted
 	emhcl validate $(MODEL)
-formatted: $(FILES)
-	for f in $?; do emhcl fmt -w "$$f"; done   # v0.15.0 also accepts the folder
+formatted:
+	emhcl fmt -w $(MODEL)
 ```
 
-A workshop draft is done at `valid`. Call a model implementation-ready only
-when `implementation-ready` is done. When a target fails, the targets after it
-do not run. After you edit a member file, run the graph again from
-`formatted`. In the `emhcl` repository, `make model-ready MODEL=<path>` runs
-the same graph, but it only checks formatting with `emhcl fmt --check`. Run
-`emhcl fmt -w` first.
+Compatible releases accept folder formatting. When a whole-model format is
+not authorized, format only permitted member files and use `fmt --check` on
+the whole model. Do not claim the formatted gate if that check fails.
+For review-only requests, use `emhcl fmt --check MODEL` instead of `fmt -w`.
+Run read-only validation without attempting repairs. If a requested strict
+diagnostic review follows a failed earlier gate, report its output without
+claiming that the later gate completed.
 
-Repair source errors rather than suppressing diagnostics. Stable diagnostic
-families are: `EM0xx` structure, `EM1xx` references, `EM2xx` flow, `EM3xx`
-scenarios, and `EM4xx` modeling judgment. In a folder model, each diagnostic
-names its member file. Board and chapter codes: `EM015` (no `board`, or more
-than one), `EM016` (workflow listed twice on the board), `EM014` (workflow in
-two chapters), `EM005` (empty chapter). Core codes are errors in every
-profile; the profile only sets the severity of `EM401`–`EM406`.
+A workshop HCL draft completes at `valid`. Strict validation treats an open
+hotspot as an error. Keep genuine unknowns instead of inventing rules to pass.
+Call a model implementation-ready only after the strict gate completes and
+material business findings are resolved. After a source change, start again
+at formatting. Stop later gates after a failure. Exit 1 means model problems.
+Exit 2 means command-line misuse. `make model-ready MODEL=<path>` runs the
+repository's equivalent graph but checks formatting instead of rewriting it.
 
-Limit the repair loop with a circuit breaker: one breaker for each diagnostic
-code on one element, with threshold k = 2.
+Repair source errors, not diagnostic severity. Diagnostic families are
+`EM0xx` structure, `EM1xx` references, `EM2xx` flow, `EM3xx` scenarios, and
+`EM4xx` modeling judgment. Core errors apply in every profile. Profiles change
+only `EM401`–`EM406`. Folder diagnostics name their member file. Board and
+chapter codes include `EM015` missing or repeated board, `EM016` repeated
+board workflow, `EM014` workflow in two chapters, and `EM005` empty chapter.
 
-```text
-CLOSED    x repair, code still reported, failures < 2  -> CLOSED     repair again
-CLOSED    x repair, code still reported, failures = 2  -> OPEN       stop editing for this code
-CLOSED    x code no longer reported                    -> done
-OPEN      x user supplies the missing rule or decision -> HALF_OPEN  make one repair
-HALF_OPEN x code no longer reported                    -> done
-HALF_OPEN x code still reported                        -> OPEN
-```
+Use a separate repair counter for each diagnostic code on each element.
+After two unsuccessful repairs, stop editing for that code. Report its
+location and both attempts. Only a new user-supplied rule or decision permits
+one further repair. If that attempt fails, stop again. Never suppress the
+code or invent a business rule. Check permission before each repair.
 
-In `OPEN`, do not make a third edit for that code. Report the code, the
-location, and the two attempts. If a business fact is missing, record an open
-hotspot on a workshop draft. Never suppress the diagnostic or invent a rule to
-clear it.
+If no compatible CLI exists, complete the static checklist in the language
+reference. State that machine validation did not run. Inspection is not
+machine validation.
 
-If no compatible CLI is available, perform the complete static checklist in
-`references/language-v0.7.md` and report that machine validation was not run.
-Never claim validation from inspection alone.
+## Report observed results
 
-### 10. Report precisely
+Keep CLI diagnostics separate from business-review findings. Copy tool lines
+unchanged. Only tool output uses `Error`, `Warning`, or an EM code. Write your
+own file findings as `<file>:<line>:<column>: Review: <detail>`. For prose
+input, use `input: Review: <detail>`. Do not count tool signals again by hand.
+When strict diagnostics are requested, use `emhcl validate --profile strict`.
 
-Start the final report with a `Key: Value` header block in the style of RFC
-822. Repeat `Ran:` once for each `fmt`, `validate`, `import`, or `migrate`
-command, in the order you ran them. After the exit code, list each reported
-code with its count, warnings too:
+For file operations, start the final report with a `Key: Value` block. Repeat
+`Ran:` for every `fmt`, `validate`, `import`, `export`, or `migrate` command in
+execution order. Include the exit code and counts of every reported EM code,
+including warnings:
 
 ```text
 Model: <model.em.hcl>
 Member-Files: none
-Bounded-Contexts: <context>, <context>
-Workflows: <workflow>, <workflow>, <workflow>
-Open-Hotspots: <hotspot>
+Bounded-Contexts: <context>
+Workflows: <workflow>
+Open-Hotspots: none
 Locked-Workflows: none
 Gate: valid
 Ran: emhcl fmt -w <model.em.hcl> => exit 0
-Ran: emhcl validate <model.em.hcl> => exit 1 (EM009 x1, EM406 x1)
-Ran: emhcl fmt -w <model.em.hcl> => exit 0
-Ran: emhcl validate <model.em.hcl> => exit 0 (EM406 x1)
-Ran: emhcl validate --profile strict <model.em.hcl> => exit 1 (EM406 x1)
+Ran: emhcl validate <model.em.hcl> => exit 0
 ```
 
-`Member-Files` lists the files of a folder model, or `none` for one file.
-`Gate` is the last target of the graph in section 9 that is done: `none`,
-`formatted`, `valid`, or `implementation-ready`. It states only what `emhcl`
-accepted. If `Review:` findings remain, say so after the header block, even at
-`implementation-ready`. Without a compatible CLI,
-write `Gate: none` and `Ran: none (no compatible emhcl; static checklist only)`.
+`Member-Files` lists folder members or `none`. `Gate` is the last completed
+target: `none`, `formatted`, `valid`, or `implementation-ready`. It reports
+only tool acceptance. List any remaining business findings after the block.
+Without a compatible CLI, write `Gate: none` and
+`Ran: none (no compatible emhcl; static checklist only)`.
 
-On a request to review and also fix a model, author the fix, then list the
-findings that it resolved as diagnostic lines (section 8) after the header
-block. Then write at most a short paragraph. The model file or
-folder is the primary artifact.
+For review-and-fix work, list resolved findings after the block, then add at
+most a short paragraph. For explanation-only requests, answer directly without
+pretending that commands ran or requiring a model-operation report.

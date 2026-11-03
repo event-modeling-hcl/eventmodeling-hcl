@@ -283,9 +283,9 @@ Two risks remain:
 - `internal/compare` lists the collections of `model.Model`. `TestModels_CoversEveryTopLevelCollectionOfTheModel` fails when the model gets a collection that `compare` does not read.
 - `AddressAt` treats the empty range at the model start as outside every declaration, because `EM015` uses it. A future diagnostic with the same empty range at byte 0 gets no address. A block header at byte 0 is not empty, so it keeps its address.
 
-## Requirements for the agent skill
+## Requirements for the agent skills
 
-The repository ships an agent skill in `.agents/skills/event-modeling-hcl`. An AI agent reads it when it writes or reviews a model. The skill is a client of the tool. It adds one need, one FR, and one DP:
+The repository ships two agent skills. `event-modeling` owns business discovery and business-quality review. `event-modeling-hcl` owns HCL representation and CLI operations. A domain-to-HCL request uses them in that order. Both read the shared edit policy in `event-modeling/references/edit-policy.md`. The HCL skill is a client of the tool. It adds one need, one FR, and one DP:
 
 | Need | Functional requirement | Acceptance criterion | Design parameter |
 | --- | --- | --- | --- |
@@ -300,12 +300,12 @@ FR10 has eight child requirements. Each DP is a formalism that the skill states 
 | Child FR | Acceptance criterion | DP |
 | --- | --- | --- |
 | FR10.3: Write only legal scenarios | Each scenario matches the production for its workflow kind | DP10.3: The EBNF scenario productions, copied from the specification into `references/language-v0.7.md` |
-| FR10.5: Give each field a source | Each field has a source, a written derivation, or an open hotspot | DP10.5: The `@requires`, `@ensures`, and `@invariant` contracts in `SKILL.md` section 5 |
-| FR10.4: Leave locked workflows unchanged | No edit to a locked workflow without a confirmation that names it | DP10.4: The status state table in `SKILL.md` section 1 |
+| FR10.5: Give each field a source | Each field has a source, a written derivation, or an open hotspot | DP10.5: The field-source contracts in `event-modeling/references/methodology.md`, carried into HCL element descriptions and scenarios |
+| FR10.4: Leave locked workflows unchanged | No direct edit or shared-contract change affecting a locked workflow without confirmation that names it and the change | DP10.4: The shared policy in `event-modeling/references/edit-policy.md` |
 | FR10.1: Claim a gate only after the tool passed it | A gate is claimed only when its command exited 0 | DP10.1: The Makefile gate graph (`formatted`, `valid`, `implementation-ready`). In this repository, `make model-ready MODEL=<path>`. |
-| FR10.2: Stop a repair loop that does not converge | No third edit for the same code on the same element without a new user decision | DP10.2: The circuit breaker with threshold k = 2 in `SKILL.md` section 9 |
-| FR10.7: Report review findings and show which tool made each one | Each finding is one line. `Error` and `Warning` lines are copied unchanged from the CLI output. The agent's own findings use `Review:` and carry no EM code. | DP10.7: The two line formats in `SKILL.md` section 8 |
-| FR10.6: Report the result in a form that a program can read | The report starts with a `Key: Value` header block | DP10.6: The RFC 822 style header block in `SKILL.md` section 10 |
+| FR10.2: Stop a repair loop that does not converge | No third edit for the same code on the same element without a new user decision | DP10.2: The repair counter with threshold k = 2 in the HCL skill's “Format, validate, and repair” section |
+| FR10.7: Report review findings and show which tool made each one | Each finding is one line. `Error` and `Warning` lines are copied unchanged from the CLI output. The agent's own findings use `Review:` and carry no EM code. | DP10.7: The line formats in the HCL skill's “Report observed results” section |
+| FR10.6: Report the result in a form that a program can read | A file-operation report starts with a `Key: Value` header block | DP10.6: The header block in the HCL skill's “Report observed results” section |
 | FR10.8: State the supported tool range as data | `make skill-version-check` fails when `metadata.spec_version` differs from the `spec` value of `emhcl version --format json` | DP10.8: The keys `spec_version` and `emhcl_min` under `metadata` in `SKILL.md`, and the Makefile target `skill-version-check` |
 
 | FR \ DP | DP10.3 Productions | DP10.5 Contracts | DP10.4 Status table | DP10.1 Gate graph | DP10.2 Breaker | DP10.7 Diagnostics | DP10.6 Header | DP10.8 Versions |
