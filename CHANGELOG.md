@@ -6,6 +6,8 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+## [v0.16.0] - 2026-11-03
+
 This release implements Event Modeling HCL Specification v0.7.0 ([spec RFC 0006](https://github.com/event-modeling-hcl/spec/blob/main/rfcs/0006-api-screens.md), API Screens). Core validity does not change. One judgment signal changes: a command whose only reason is `api_endpoint` now gets `EM404`, a warning in the `valid` profile and an error in the `strict` profile. Add an API screen that names the actor and flows to the command.
 
 ### Added

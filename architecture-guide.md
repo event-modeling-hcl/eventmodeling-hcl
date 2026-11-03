@@ -406,7 +406,7 @@ A change breaks the Independence Axiom when, for example:
 
 ## Known deviations
 
-The code at release v0.15.0 does not follow this guide in six places. Each one keeps the matrices triangular, but each one gives a fact two owners. Two owners make a change more likely to break one of the FRs.
+The code at release v0.16.0 does not follow this guide in six places. Each one keeps the matrices triangular, but each one gives a fact two owners. Two owners make a change more likely to break one of the FRs.
 
 | ID | Deviation | Rule | Effect | Correction |
 | --- | --- | --- | --- | --- |

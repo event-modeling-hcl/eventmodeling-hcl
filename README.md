@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`emhcl` implements Event Modeling HCL Specification v0.7.0. Releases v0.14.0
+`emhcl` v0.16.0 implements Event Modeling HCL Specification v0.7.0. Releases v0.14.0
 and v0.15.0 implement v0.6.0; v0.12.0 and v0.13.0 implement v0.5.0. A model can
 be one `.em.hcl` file or a folder of `.em.hcl` files.
 This repository provides a strict validator, canonical formatter, typed semantic model,
@@ -25,7 +25,7 @@ preserve the rules and durable artifacts of an Event Modeling session.
 Install the tagged command with Go 1.25 or newer:
 
 ```bash
-go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.15.0
+go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.16.0
 ```
 
 Go writes the executable to `GOBIN`, or to `$(go env GOPATH)/bin` when
