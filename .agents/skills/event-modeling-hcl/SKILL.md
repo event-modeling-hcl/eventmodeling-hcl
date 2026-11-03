@@ -3,7 +3,7 @@ name: event-modeling-hcl
 description: >-
   Turn product ideas, requirements, workshop notes, user stories, domain prose,
   existing behavior, or event-driven designs into valid Event Modeling HCL
-  v0.6.0 models: one `.em.hcl` file or a folder of `.em.hcl` files. Use this
+  v0.7.0 models: one `.em.hcl` file or a folder of `.em.hcl` files. Use this
   skill whenever the user asks to create, extend, split, repair, review,
   validate, format, migrate, import, export, or explain an Event Model or
   `.em.hcl` file, or mentions Events, Commands, Read Models, State Change,
@@ -11,13 +11,14 @@ description: >-
   information completeness, or Given/When/Then scenarios—even if they do not
   name HCL.
 compatibility: >-
-  Targets Event Modeling HCL Specification v0.6.0. For machine verification,
-  use emhcl v0.14.0 or newer. v0.12.0 and v0.13.0 implement v0.5.0 and reject
-  view form automation scenarios. Older releases implement v0.4.0.
+  Targets Event Modeling HCL Specification v0.7.0. For machine verification,
+  use emhcl v0.16.0 or newer. v0.14.0 and v0.15.0 implement v0.6.0 and reject
+  a screen `kind`. v0.12.0 and v0.13.0 implement v0.5.0. Older releases
+  implement v0.4.0.
 metadata:
-  version: "2.4.0"
-  spec_version: "v0.6.0"
-  emhcl_min: "v0.14.0"
+  version: "2.5.0"
+  spec_version: "v0.7.0"
+  emhcl_min: "v0.16.0"
   author: workspace
   specification: "https://github.com/event-modeling-hcl/spec"
 ---
@@ -35,21 +36,21 @@ the strict native HCL language.
 - Read [references/methodology.md](references/methodology.md) when discovering a
   new model, interpreting prose, choosing slice boundaries, reviewing model
   quality, honoring status locks, or recording evidence provenance.
-- Read [references/language-v0.6.md](references/language-v0.6.md) before writing
+- Read [references/language-v0.7.md](references/language-v0.7.md) before writing
   or repairing HCL, splitting a model into a folder, migrating a v0.4.0 model,
   or converting JSON. It is the local syntax and validation reference.
 - Read [references/patterns.md](references/patterns.md) when a pattern shape or
   scenario form is uncertain. Adapt examples to the domain; never copy their
   placeholder vocabulary into the output.
 
-For conflicts, the normative Event Modeling HCL v0.6.0 specification wins over
+For conflicts, the normative Event Modeling HCL v0.7.0 specification wins over
 examples, existing files, or general HCL knowledge.
 
 ## Rules that are not syntax
 
 Apply three layers, in this order when they conflict:
 
-1. Validator and v0.6.0 grammar. Illegal HCL is never "more faithful".
+1. Validator and v0.7.0 grammar. Illegal HCL is never "more faithful".
 2. Methodology judgment in `references/methodology.md`. A valid file can still
    be a poor model.
 3. Canvas layout (columns, lanes, stickies). It has no attributes. Encode the
@@ -94,14 +95,14 @@ Choose the model shape:
 - In a folder model, put the `board` and catalog blocks in one file, chapter
   blocks in any file, and each workflow in its own file. File names have no
   meaning to the tool; a number prefix only helps people read. See "Folder
-  models" in `references/language-v0.6.md`.
+  models" in `references/language-v0.7.md`.
 - A v0.4.0 model (no `board`, typeless fields, or `translation` blocks) must be
   converted first with `emhcl migrate -w <model>`; then review the result.
 
 Do not create implementation code, database schemas, brokers, APIs, retries, or
-framework architecture unless the user explicitly asks. `api_endpoint` may
-record a supplied API trigger, but implementation details do not drive the
-model.
+framework architecture unless the user explicitly asks. A supplied API route
+goes in `api_endpoint` on an API screen (`kind = "api"`), but implementation
+details do not drive the model.
 
 ## Workflow
 
@@ -164,10 +165,13 @@ One well-specified slice is better than several speculative slices.
 
 ### 3. Choose exactly one pattern per capability
 
-- **State Change** — a human or API trigger expresses intent:
-  `Screen/API -> Command -> Event`. One screen state issues one command.
+- **State Change** — a person, or a client program through an API, expresses
+  intent: `Screen -> Command -> Event`. One screen state issues one command.
+  A request through an API is a screen with `kind = "api"`; it names the actor
+  that decides.
 - **State View** — existing facts answer one question:
-  `Event(s) -> Read Model -> Screen`.
+  `Event(s) -> Read Model -> Screen`. An API response is a screen with
+  `kind = "api"`.
 - **Automation** — the system reacts to facts:
   `Event(s) -> pending-work Read Model -> Processor -> Command -> Event`.
   When the consumed facts come from an external context, the automation is a
@@ -180,7 +184,10 @@ Do not invent a fourth pattern. A visual gear maps to a workflow-local
 a processor to consume events directly; the method still wants the pending-work
 read model unless the user asked for a minimal legal workflow. Record that
 exception. Do not use `external_trigger` or `triggers` to hide a missing issuer
-or an invisible signal.
+or an invisible signal, and do not put `api_endpoint` on a command in place of
+an API screen. A fact that another system reports, such as a webhook, is not an
+API screen: it is an event of an `external = true` context, translated by an
+`automation`.
 
 ### 4. Establish ownership and contracts
 
@@ -255,7 +262,7 @@ for example `command.place_order`.
 ### 7. Specify observable business behavior
 
 Keep each `scenario` inside its workflow. Write it by the EBNF productions in
-the "Scenarios" section of `references/language-v0.6.md`, one production for
+the "Scenarios" section of `references/language-v0.7.md`, one production for
 each workflow kind. Do not use canvas Given/When/Then variants.
 
 An `automation` scenario has two forms. An action form scenario has one `when`
@@ -291,9 +298,9 @@ model, fix them.
   its neighbors.
 
 Also check that every Command has one issuer and a validator reason—an incoming
-canonical flow, `api_endpoint`, or a justified `external_trigger`—and every
-Read Model answers one concrete question. A valid file can still be a poor
-model.
+canonical flow or a justified `external_trigger`—and every Read Model answers
+one concrete question. `api_endpoint` on a command is not a reason (`EM404`).
+A valid file can still be a poor model.
 
 Write each review finding as one line. Keep the lines that `emhcl` printed
 apart from your own findings, so that a reader can see which tool made each
@@ -314,14 +321,14 @@ not in a file, uses `input` as the file and has no line or column.
 ### 9. Format, validate, and repair the source
 
 Prefer a repository-local compatible binary, then a PATH-installed binary.
-Check the version with `emhcl version`. v0.6.0 models need v0.14.0 or newer.
+Check the version with `emhcl version`. v0.7.0 models need v0.16.0 or newer.
 From v0.15.0, `emhcl version --format json` also prints the specification
 version. The front matter of this skill states the same facts in
 `metadata.spec_version` and `metadata.emhcl_min`.
-v0.12.0 and v0.13.0 implement v0.5.0, so they cannot confirm a v0.6.0 model.
-A `dev` build from a repository checkout counts as current only when it
-accepts a view form automation scenario (an `automation` scenario with given
-events, no `when` step, and a `then` read model of that automation).
+v0.14.0 and v0.15.0 implement v0.6.0, and v0.12.0 and v0.13.0 implement
+v0.5.0, so they cannot confirm a v0.7.0 model.
+A `dev` build from a repository checkout counts as current only when
+`emhcl version --format json` prints `"spec": "v0.7.0"`.
 Do not install tooling or execute untrusted downloads without the user's
 request.
 
@@ -372,7 +379,7 @@ hotspot on a workshop draft. Never suppress the diagnostic or invent a rule to
 clear it.
 
 If no compatible CLI is available, perform the complete static checklist in
-`references/language-v0.6.md` and report that machine validation was not run.
+`references/language-v0.7.md` and report that machine validation was not run.
 Never claim validation from inspection alone.
 
 ### 10. Report precisely

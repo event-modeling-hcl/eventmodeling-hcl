@@ -1,10 +1,11 @@
-# Event Modeling HCL v0.6.0 reference
+# Event Modeling HCL v0.7.0 reference
 
-This is a compact authoring checklist derived from the normative v0.6.0
+This is a compact authoring checklist derived from the normative v0.7.0
 specification. A model is one `.em.hcl` file or a folder of `.em.hcl` files.
-v0.6.0 adds view form `automation` scenarios to v0.5.0. v0.5.0 was a breaking
-revision: a v0.4.0 model does not validate until `emhcl migrate` converts it
-(see "Tooling").
+v0.7.0 adds a screen `kind` (`"ui"` or `"api"`) and stops counting
+`api_endpoint` as a command reason. v0.6.0 added view form `automation`
+scenarios. v0.5.0 was a breaking revision: a v0.4.0 model does not validate
+until `emhcl migrate` converts it (see "Tooling").
 
 ## Language principles
 
@@ -164,7 +165,7 @@ field "customer_id" {
 ```
 
 The current CLI also accepts unchecked `mapping` and `schema` strings. They are
-not v0.6.0 contracts and not methodology lineage. `emhcl import` can write them
+not v0.7.0 contracts and not methodology lineage. `emhcl import` can write them
 to keep JSON data. Keep them in an imported file, but do not add new ones. Do not write
 `session:`, `latest:`, `derived:`, or `aggregate:` expressions. Record a
 derivation in `description`, a scenario `comment`, or a `hotspot`.
@@ -204,8 +205,17 @@ from, to, fields, nested field blocks
 ```
 
 A Read Model additionally requires `question`. A Screen additionally accepts
-`actor`. Use only attributes with actual known meaning; do not fill metadata for
-completeness.
+`actor` and `kind`. Use only attributes with actual known meaning; do not fill
+metadata for completeness.
+
+A Screen is the interface of the system at one step: what one actor sees or
+sends. A page with several actions is several screens. `kind` is `"ui"`
+(default when omitted) or `"api"`: a request that a client program sends, or a
+response that it reads. Another string is `EM008`, a non-string is `EM007`, and
+`kind` on any other block is `EM000`. An API screen uses the same edges and
+rules (`EM201`, `EM401`) as a UI screen. Its `actor` is the person or partner
+system that decides; its `api_endpoint` is the route, for example
+`"POST /pets"`. `fmt` never adds `kind`.
 
 Presentation blocks:
 
@@ -264,11 +274,31 @@ a translation: tools derive it from the edges (the IR marks such edges
 `External`) and may show it as one. Name the workflow for the translation it
 performs.
 
-A Command should have an incoming edge, an `api_endpoint`, or
-`external_trigger = true`; otherwise validation reports a modeling diagnostic.
+A Command should have an incoming edge or `external_trigger = true`; otherwise
+validation reports `EM404`. `api_endpoint` on a Command records where code
+receives it; it is not a reason. A command sent through an API gets an API
+screen as its issuer:
+
+```hcl
+state_change "add_pet" {
+  screen "add_pet_request" {
+    kind         = "api"
+    api_endpoint = "POST /owners/{ownerId}/pets"
+    actor        = actor.clinic_staff
+    to           = [command.add_pet]
+  }
+
+  command "add_pet" {
+    to = [event.pet_management.pet_added]
+  }
+}
+```
+
 The validator does not count issuers. Methodology still requires exactly one
 screen or processor issuer. `external_trigger` does not replace that issuer
-when the trigger can be modeled.
+when the trigger can be modeled. A fact that another system reports, such as a
+webhook, is not an API screen: model it as an Event of an `external = true`
+context and translate it with an `automation`.
 
 `triggers` is an unchecked string list. It does not create an issuer and does
 not replace an event. Do not use it as an invisible signal.
@@ -441,8 +471,9 @@ you add the workflow to `board.workflows`.
 - All references are unquoted, resolvable, correctly qualified, and right-kind.
 - Every edge appears once in canonical direction.
 - Every Read Model has one concrete `question`.
-- Every Command has a validator reason (incoming flow, `api_endpoint`, or
-  `external_trigger`). Exactly one issuer is methodology, not a counted check.
+- Every Command has a validator reason (incoming flow or `external_trigger`).
+  `api_endpoint` alone is not a reason. Exactly one issuer is methodology, not
+  a counted check.
 - No invented `linked_copy`, `storyline`, `query`, or lineage `mapping` DSL.
 - Scenario cardinality and targets match the workflow pattern.
 - Every `field` and `subfield` has an explicit `type`. Field examples match the
@@ -454,7 +485,8 @@ you add the workflow to `board.workflows`.
 
 ## Tooling
 
-Use emhcl v0.14.0 or newer. It implements specification v0.6.0. v0.12.0 and
+Use emhcl v0.16.0 or newer. It implements specification v0.7.0. v0.14.0 and
+v0.15.0 implement v0.6.0 and reject a screen `kind` with `EM000`. v0.12.0 and
 v0.13.0 implement v0.5.0 and reject view form automation scenarios. Older
 releases implement v0.4.0 and reject a `board` block.
 
@@ -512,7 +544,8 @@ emhcl export model.em.hcl -o model.json
   external edge, and writes off-board workflows after the board, with a
   warning.
 - Conversion is not lossless. Read each warning. `export` drops chapters,
-  hotspots, teams, systems, and read-model questions. `import` drops the
-  original canvas IDs and field-name spellings.
+  hotspots, teams, systems, read-model questions, and screen `kind = "api"`
+  (the screen keeps `apiEndpoint`; import makes it a `"ui"` screen). `import`
+  drops the original canvas IDs and field-name spellings.
 - Both commands fail when one workflow or slice has two or more actors.
 - Do not use `export` and `import` to repair a model. Edit the HCL.
