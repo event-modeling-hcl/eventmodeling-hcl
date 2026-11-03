@@ -468,8 +468,9 @@ emhcl serve model.em.hcl
 ```
 
 `validate`, `diagram`, `serve`, `export`, and `migrate` accept a file or a
-folder in place of `model.em.hcl`. `fmt` formats one file and refuses a folder.
-For a folder model, run `fmt -w` on each member file. `serve` reloads the page
+folder in place of `model.em.hcl`. From v0.15.0, `fmt` also accepts a folder
+and formats each member file. v0.14.0 formats one file and refuses a folder,
+so with v0.14.0 run `fmt -w` on each member file. `serve` reloads the page
 when a member file is added, removed, renamed, or edited.
 
 Profiles assign severity to the judgment signals `EM401`–`EM406` only:

@@ -15,7 +15,9 @@ compatibility: >-
   use emhcl v0.14.0 or newer. v0.12.0 and v0.13.0 implement v0.5.0 and reject
   view form automation scenarios. Older releases implement v0.4.0.
 metadata:
-  version: "2.3.0"
+  version: "2.4.0"
+  spec_version: "v0.6.0"
+  emhcl_min: "v0.14.0"
   author: workspace
   specification: "https://github.com/event-modeling-hcl/spec"
 ---
@@ -313,6 +315,9 @@ not in a file, uses `input` as the file and has no line or column.
 
 Prefer a repository-local compatible binary, then a PATH-installed binary.
 Check the version with `emhcl version`. v0.6.0 models need v0.14.0 or newer.
+From v0.15.0, `emhcl version --format json` also prints the specification
+version. The front matter of this skill states the same facts in
+`metadata.spec_version` and `metadata.emhcl_min`.
 v0.12.0 and v0.13.0 implement v0.5.0, so they cannot confirm a v0.6.0 model.
 A `dev` build from a repository checkout counts as current only when it
 accepts a view form automation scenario (an `automation` scenario with given
@@ -331,14 +336,15 @@ implementation-ready: valid             # strict fails on an open hotspot (EM406
 valid: formatted
 	emhcl validate $(MODEL)
 formatted: $(FILES)
-	for f in $?; do emhcl fmt -w "$$f"; done   # fmt takes one file, never a folder
+	for f in $?; do emhcl fmt -w "$$f"; done   # v0.15.0 also accepts the folder
 ```
 
 A workshop draft is done at `valid`. Call a model implementation-ready only
 when `implementation-ready` is done. When a target fails, the targets after it
 do not run. After you edit a member file, run the graph again from
 `formatted`. In the `emhcl` repository, `make model-ready MODEL=<path>` runs
-the same graph, but it only checks formatting. Run `emhcl fmt -w` first.
+the same graph, but it only checks formatting with `emhcl fmt --check`. Run
+`emhcl fmt -w` first.
 
 Repair source errors rather than suppressing diagnostics. Stable diagnostic
 families are: `EM0xx` structure, `EM1xx` references, `EM2xx` flow, `EM3xx`
