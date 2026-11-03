@@ -6,6 +6,29 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+## [v0.15.0] - 2026-11-03
+
+This release implements [RFC 0001](rfcs/0001-machine-readable-tool-contracts.md) (Machine-Readable Tool Contracts). Programs can now read the results of `emhcl` as data. The Event Modeling HCL language is unchanged (Specification v0.6.0). Text output and exit codes stay the same, except as "Changed" lists.
+
+### Added
+
+- `emhcl validate --format json` writes one JSON object with `path`, `profile`, `has_errors`, `has_core_errors`, and `diagnostics`. Each diagnostic has `code`, `severity`, `summary`, `detail`, `line`, `column`, `judgment`, and `file`. A diagnostic inside a declaration also has `address`, the reference form of the innermost declaration with one, for example `command.place_order.submit`.
+- `emhcl diff [--format text|json] <base> <head>` lists the declarations that a change added, removed, or changed. It compares the typed models, so a block that moves to another member file, or a new layout, gives no entry. It exits 0 when both models load and 1 when a model has a core error.
+- `emhcl fmt` accepts a folder and formats each member file. `emhcl fmt --check` writes no file, prints each member file whose layout differs, and exits 1 when one differs. A syntax error in any member changes no file.
+- `emhcl diagram --title <text>` sets the diagram title in the page header and the browser tab.
+- `emhcl version --format json` prints the tool version and the specification version, for example `{"tool": "v0.15.0", "spec": "v0.6.0"}`.
+- The agent skill (v2.4.0) states `metadata.spec_version` and `metadata.emhcl_min` in its front matter. `make skill-version-check` fails when `spec_version` differs from the specification that `emhcl` implements. `make verify` runs it.
+
+### Changed
+
+- `emhcl fmt` now rejects a path that is neither a `.em.hcl` file nor a folder with the same message as the other commands. The message is "model path must be a .em.hcl file or a folder".
+- `emhcl validate` accepts `--profile` and `--format` in any order. A repeated option is still a usage error.
+- The Makefile targets `model-fmt-check` and `examples-fmt-check` run `emhcl fmt --check`. They no longer select member files in shell.
+- The playground receives each diagnostic in the JSON form of `validate --format json`, so it also gets `address`.
+- The architecture guide adds the requirements FR2.1, FR6.1 to FR6.5, and FR10.8 with their matrices, and change rules 22 and 23.
+
+## [v0.14.0] - 2026-11-02
+
 ### Added
 
 - Specification v0.6.0 (RFC 0005, View Scenarios in Automations). An `automation` scenario without a `when` step is a view form scenario: one or more `given` events, then a read model of the same automation or an error. A missing `given` is `EM301`, a target that the view form does not allow is `EM303`, and a `then` read model of another workflow is `EM101`. Every v0.5.0 model stays valid. `version.Spec` is `v0.6.0`.
