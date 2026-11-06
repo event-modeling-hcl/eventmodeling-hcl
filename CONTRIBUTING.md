@@ -21,9 +21,7 @@ make verify
   - `staticcheck`,
   - `govulncheck`,
   - validation of every example in `examples/`,
-  - a check that every example file is `emhcl fmt` formatted (`emhcl fmt --check`),
-  - and a check that the agent skill names the specification that `emhcl`
-    implements (`make skill-version-check`).
+  - and a check that every example file is `emhcl fmt` formatted (`emhcl fmt --check`).
 
 ## Code conventions
 

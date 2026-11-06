@@ -312,56 +312,9 @@ The matrix is lower triangular. RFC 0007 section 6.3 gives the one influence acr
 
 ## Requirements for the agent skills
 
-The repository ships two agent skills. `event-modeling` owns business discovery and business-quality review. `event-modeling-hcl` owns HCL representation and CLI operations. A domain-to-HCL request uses them in that order. Both read the shared edit policy in `event-modeling/references/edit-policy.md`. The HCL skill is a client of the tool. It adds one need, one FR, and one DP:
+The agent skills `event-modeling` and `event-modeling-hcl` moved to the plugin `emhcl-skills` in [emhcl-plugin](https://github.com/event-modeling-hcl/emhcl-plugin). That repository owns their need N7, the requirement FR10, its child requirements, and their design matrix. Its `scripts/sync-upstream.sh --check`, with `EMHCL` set to a binary, compares the `spec_version` of `event-modeling-hcl` with `emhcl version --format json`.
 
-| Need | Functional requirement | Acceptance criterion | Design parameter |
-| --- | --- | --- | --- |
-| N7: Authors who work with an AI agent get a model that the tool accepts | FR10: Guide an agent to a model that passes the gates, and to a true report of the gate that it reached | The agent claims a gate only when `emhcl` exited 0 for that gate. Its report names each command and its exit code. | DP10: The skill (`SKILL.md` and `references/`) and the Makefile targets `model-fmt-check`, `model-valid`, and `model-ready` |
-
-In the tool matrix, the FR10 row has `X` under DP1, DP8, DP2, DP3, DP5, DP7, DP9, and DP6. The skill copies grammar facts from DP1 and DP2, the folder rules from DP8, and the scenario productions and diagnostic codes from DP3. It runs `emhcl fmt`, `import`, `migrate`, and `validate`, so it reads the results of DP5, DP7, DP9, and DP6. FR10 has `0` under DP4, because the skill does not read the typed model.
-
-The DP10 column has `0` in every other row. The skill and the Makefile targets only call the CLI and read its exit code. They cannot change what the parser, the validator, the formatter, or an adapter accepts. Thus the FR10 row and the DP10 column go at the end of the matrix, and the matrix stays lower triangular.
-
-FR10 has eight child requirements. Each DP is a formalism that the skill states in a few lines, in place of a prose rule.
-
-| Child FR | Acceptance criterion | DP |
-| --- | --- | --- |
-| FR10.3: Write only legal scenarios | Each scenario matches the production for its workflow kind | DP10.3: The EBNF scenario productions, copied from the specification into `references/language-v0.8.md` |
-| FR10.5: Give each field a source | Each field has a source, a written derivation, or an open hotspot | DP10.5: The field-source contracts in `event-modeling/references/methodology.md`, carried into HCL `field_source` blocks and scenarios |
-| FR10.4: Leave locked workflows unchanged | No direct edit or shared-contract change affecting a locked workflow without confirmation that names it and the change | DP10.4: The shared policy in `event-modeling/references/edit-policy.md` |
-| FR10.1: Claim a gate only after the tool passed it | A gate is claimed only when its command exited 0 | DP10.1: The Makefile gate graph (`formatted`, `valid`, `implementation-ready`). In this repository, `make model-ready MODEL=<path>`. |
-| FR10.2: Stop a repair loop that does not converge | No third edit for the same code on the same element without a new user decision | DP10.2: The repair counter with threshold k = 2 in the HCL skill's “Format, validate, and repair” section |
-| FR10.7: Report review findings and show which tool made each one | Each finding is one line. `Error` and `Warning` lines are copied unchanged from the CLI output. The agent's own findings use `Review:` and carry no EM code. | DP10.7: The line formats in the HCL skill's “Report observed results” section |
-| FR10.6: Report the result in a form that a program can read | A file-operation report starts with a `Key: Value` header block | DP10.6: The header block in the HCL skill's “Report observed results” section |
-| FR10.8: State the supported tool range as data | `make skill-version-check` fails when `metadata.spec_version` differs from the `spec` value of `emhcl version --format json` | DP10.8: The keys `spec_version` and `emhcl_min` under `metadata` in `SKILL.md`, and the Makefile target `skill-version-check` |
-
-| FR \ DP | DP10.3 Productions | DP10.5 Contracts | DP10.4 Status table | DP10.1 Gate graph | DP10.2 Breaker | DP10.7 Diagnostics | DP10.6 Header | DP10.8 Versions |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| FR10.3 Legal scenarios | X | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| FR10.5 Field sources | 0 | X | 0 | 0 | 0 | 0 | 0 | 0 |
-| FR10.4 Locked workflows | 0 | 0 | X | 0 | 0 | 0 | 0 | 0 |
-| FR10.1 True gates | X | X | X | X | 0 | 0 | 0 | 0 |
-| FR10.2 Bounded repair | 0 | 0 | 0 | X | X | 0 | 0 | 0 |
-| FR10.7 Review findings | 0 | X | 0 | X | 0 | X | 0 | 0 |
-| FR10.6 Report | 0 | 0 | X | X | X | 0 | X | 0 |
-| FR10.8 Supported range | 0 | 0 | 0 | 0 | 0 | 0 | 0 | X |
-
-The matrix is lower triangular, so the skill is decoupled. Set the DPs in this order: productions, contracts, status table, gate graph, breaker, diagnostics, header, versions. Outside the skill, FR10.8 depends on DP6.5, because `skill-version-check` reads `emhcl version --format json`.
-
-The off-diagonal entries are these influences:
-
-- FR10.1 depends on DP10.3, because a scenario that breaks a production fails `validate`. It depends on DP10.5, because a `field_source` block that breaks a rule fails `validate` with `EM202`. It depends on DP10.4, because a lock can stop the repair that a gate needs.
-- FR10.2 depends on DP10.1, because the breaker counts the failures that the gate commands report.
-- FR10.7 depends on DP10.1 for the `EM4xx` lines, and on DP10.5 for the findings that have no code.
-- FR10.6 reports the gate (DP10.1), an open breaker (DP10.2), and the locked workflows (DP10.4).
-
-The important zeros are these:
-
-- FR10.1 does not depend on a missing field source. The validator checks only the `field_source` blocks that a model has, so a field without a source never changes a gate.
-- FR10.3 has `0` under DP10.1. The gate graph finds an illegal scenario, but only the productions and the validator decide what is legal. A gate never makes an illegal scenario legal.
-- No DP of the skill has an `X` in a row of the tool matrix.
-
-The Makefile targets keep one owner for each fact. `model-fmt-check` runs `emhcl fmt --check`, so the formatter owns the layout and the loader owns the member files. `model-valid` and `model-ready` run `emhcl validate`, so the validator owns validity and the profiles. The targets only fix the order of the three calls. `examples-fmt-check` runs `emhcl fmt --check` on each model in `examples/`. `skill-version-check` compares the skill metadata with `emhcl version --format json`, so `internal/version` owns the specification version.
+This repository keeps one obligation to the skills: the CLI contract of RFC 0001. The skills read the exit codes, the text and JSON diagnostics, and `emhcl version --format json`. A change to one of them is a change to that contract.
 
 ## Module contracts
 
@@ -415,7 +368,7 @@ The CLI owns output-file safety. `emhcl export` refuses an `-o` target that has 
 17. Change the fragment with `location.hash` or `replaceHash`. Do not let the browser follow a fragment link, because inside the `srcdoc` frame of the playground the link loads the playground page.
 18. Keep v0.4.0 rules inside `internal/migrate`. No other package can infer field types, derive titles, or read the `translation` keyword.
 19. A profile assigns only the severity of a judgment signal. Do not let a profile, a judgment signal, or a renderer decide whether a model, HTML, or JSON is produced. Only core errors decide it.
-20. If you change a scenario rule in `validator/scenarios.go`, a diagnostic code, a profile severity, or an exit code of `internal/cli`, change the specification first (rule 1). Then change the copy in `.agents/skills/event-modeling-hcl` in the same change.
+20. If you change a scenario rule in `validator/scenarios.go`, a diagnostic code, a profile severity, or an exit code of `internal/cli`, change the specification first (rule 1). Then open the matching change of `event-modeling-hcl` in emhcl-plugin.
 21. Keep the Makefile model targets as calls to `emhcl`. Do not add a rule to them that the CLI does not check.
 22. Add a diagnostic key only as a JSON tag of `app.Diagnostic`. The CLI, the WASM module, and `serve` all encode that type.
 23. If you add a collection to `model.Model`, add its unit to `internal/compare` in the same change.
@@ -442,7 +395,7 @@ The code at release v0.17.0 does not follow this guide in six places. Each one k
 | D3 | The resolved-hotspot check (the class, the mark, and the label) is copied into `viewer.js`, `viewer.compact.js`, and `viewer.eventstorming.js`. The slides do not use it. | 16 | A change to the meaning of a hotspot status needs three edits, and the slides can disagree. | Add one hotspot-status helper to `EMC` and use it in the boards and the slides. |
 | D4 | The interchange module repeats three validator flow rules (see [Influences across branches](#influences-across-branches)). | 11 | The importer can write a flow that the validator refuses. `app.Import` then reports the error, so the user sees it. | Move the flow tables to a package that both modules import. |
 | D5 | A new board needs edits in `showPage`, `relayoutAll`, and `render.go`. | 15 | Each board name has three owners. | Let each board register its render and layout functions with `EMC`. |
-| D6 | The agent skill copies the scenario productions, the diagnostic codes, the profile severities, and the exit codes (see [Requirements for the agent skill](#requirements-for-the-agent-skill)). | 20 | The skill can teach a rule that the validator no longer has. The gate graph still reports the real result, so the agent cannot claim a gate that the tool refused. | Generate the skill copy from the specification, or check it in `make verify`. |
+| D6 | The agent skill `event-modeling-hcl` in emhcl-plugin copies the scenario productions, the diagnostic codes, the profile severities, and the exit codes (see [Requirements for the agent skills](#requirements-for-the-agent-skills)). | 20 | The skill can teach a rule that the validator no longer has. The gate graph still reports the real result, so the agent cannot claim a gate that the tool refused. | Generate the skill copy from the specification. Until then, `scripts/sync-upstream.sh --check` in emhcl-plugin compares the specification version. |
 
 ## Information Axiom and evidence
 
@@ -456,7 +409,7 @@ The repository does not give a number for information content. It does not measu
 
 `make verify` runs a repeatable set of steps. They cover formatting, module tidiness, `go vet`, unit tests, the race detector, Staticcheck, switch exhaustiveness, vulnerabilities, a compile of the WASM module, the validation and the `emhcl fmt` layout of the shipped examples, and three checks of the release tag and version.
 
-The agent skill has less evidence. `evals/evals.json` holds six prompts with expectations. The formalisms in DP10 come from a published A/B benchmark on Gemini models (Randal L. Schwartz, "What LLMs 'Know' That You Don't Know They Know", DEV Community, 2026). That benchmark does not measure this skill.
+The agent skill had less evidence when it lived in this repository. Its `evals/evals.json`, now in emhcl-plugin, holds six prompts with expectations. The formalisms in DP10 come from a published A/B benchmark on Gemini models (Randal L. Schwartz, "What LLMs 'Know' That You Don't Know They Know", DEV Community, 2026). That benchmark does not measure this skill.
 
 One manual run on 2026-10-31 compared the versions of the skill, with one run for each eval and blind graders. E1 is a true report: each claim matches what `emhcl` prints, and no line looks like `emhcl` output unless `emhcl` printed it.
 

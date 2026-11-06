@@ -4,12 +4,11 @@ EXAMPLES := $(wildcard examples/*.em.hcl) $(patsubst %/,%,$(wildcard examples/*/
 # MODEL is one .em.hcl file or one folder model. emhcl selects the member
 # files of a folder.
 MODEL ?=
-SKILL := .agents/skills/event-modeling-hcl/SKILL.md
 WASM_DIR := web/playground
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build test test-race vet fmt-check tidy-check staticcheck exhaustive vulncheck validate-examples examples-fmt-check model-fmt-check model-valid model-ready skill-version-check build-wasm wasm-check release-tag-check release-annotation-check release-version-check verify clean
+.PHONY: help build test test-race vet fmt-check tidy-check staticcheck exhaustive vulncheck validate-examples examples-fmt-check model-fmt-check model-valid model-ready build-wasm wasm-check release-tag-check release-annotation-check release-version-check verify clean
 
 help: ## List available commands.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -70,11 +69,6 @@ model-valid: model-fmt-check ## Validate MODEL with the default (valid) profile.
 model-ready: model-valid ## Validate MODEL with the strict profile: the implementation-ready gate.
 	$(BINARY) validate --profile strict "$(MODEL)"
 
-skill-version-check: build ## Fail if the skill's spec_version differs from the specification that emhcl implements.
-	@skill=$$(sed -n 's/^  spec_version: "\(.*\)"$$/\1/p' $(SKILL)); \
-	tool=$$($(BINARY) version --format json | sed -n 's/^  "spec": "\(.*\)",*$$/\1/p'); \
-	test -n "$$skill" && test "$$skill" = "$$tool" || { echo "$(SKILL): spec_version \"$$skill\" differs from emhcl spec \"$$tool\"" >&2; exit 1; }
-
 build-wasm: ## Build the WebAssembly playground module into web/playground/.
 	@mkdir -p $(WASM_DIR)
 	$(GO) run ./cmd/playground-seed examples/minimal.em.hcl > $(WASM_DIR)/seed.js
@@ -105,7 +99,7 @@ release-version-check: ## Verify the linker-injected release version is reported
 	$(GO) build -ldflags '-X main.buildVersion=v0.16.0' -o "$$temporary/emhcl" ./cmd/emhcl; \
 	test "$$($$temporary/emhcl version)" = 'emhcl v0.16.0'
 
-verify: fmt-check tidy-check vet test test-race staticcheck exhaustive vulncheck validate-examples examples-fmt-check skill-version-check wasm-check release-tag-check release-annotation-check release-version-check ## Run the complete local verification suite.
+verify: fmt-check tidy-check vet test test-race staticcheck exhaustive vulncheck validate-examples examples-fmt-check wasm-check release-tag-check release-annotation-check release-version-check ## Run the complete local verification suite.
 
 clean: ## Remove locally built artifacts.
 	rm -rf bin dist $(WASM_DIR)/emhcl.wasm $(WASM_DIR)/wasm_exec.js $(WASM_DIR)/seed.js

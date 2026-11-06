@@ -701,21 +701,11 @@ field "pets" {
 
 ### Agent skills
 
-Use [event-modeling](.agents/skills/event-modeling/SKILL.md) for business
-discovery, workshop drafts, and business-quality review. It establishes facts,
-ownership, flows, field sources, scenarios, and unresolved questions without
-requiring HCL or the CLI.
-
-Use [event-modeling-hcl](.agents/skills/event-modeling-hcl/SKILL.md) to encode,
-review, repair, format, validate, split, migrate, import, or export `.em.hcl`
-models. For a request that turns domain prose into HCL, use business modeling
-first, then HCL encoding. A syntax-only repair does not restart discovery.
-
-Both skills use one [edit policy](.agents/skills/event-modeling/references/edit-policy.md).
-It protects locked workflows and shared contracts used by locked workflows.
-Install or copy both skill directories together so their relative links work.
-Review is a mode within each skill, not a separate skill.
-
+The agent skills for emhcl live in the plugin `emhcl-skills` of
+[emhcl-plugin](https://github.com/event-modeling-hcl/emhcl-plugin). It holds `event-modeling`, `event-modeling-hcl`, and
+the Event Modeling method skills. Install it with
+`claude plugin install emhcl-skills@event-modeling-hcl` after
+`claude plugin marketplace add event-modeling-hcl/emhcl-plugin`.
 
 ## Verification
 
@@ -741,11 +731,8 @@ make model-ready     MODEL=examples/pet-clinic   # and it passes the strict prof
 ```
 
 `make model-ready` is the gate for an implementation-ready model. It fails while
-the model has an open hotspot. The agent skill in
-`.agents/skills/event-modeling-hcl` uses the same order. Its front matter names
-the specification that it teaches (`metadata.spec_version`) and the oldest
-`emhcl` release that implements it (`metadata.emhcl_min`).
-`make skill-version-check` fails when `spec_version` differs from the tool.
+the model has an open hotspot. The agent skill `event-modeling-hcl` in
+emhcl-plugin uses the same order.
 
 ### Pre-commit Hooks
 
