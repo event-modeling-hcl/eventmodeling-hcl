@@ -41,6 +41,9 @@ func Export(m *model.Model) (*Document, []string, error) {
 			slice.SliceType = "TRANSLATION"
 		}
 		document.Slices = append(document.Slices, slice)
+		if len(workflow.FieldSources) > 0 {
+			e.warn("workflow.%s field_source blocks have no interchange equivalent and were not exported", workflow.ID)
+		}
 	}
 	if len(m.OffBoard) > 0 {
 		offBoard := make([]string, 0, len(m.OffBoard))
@@ -63,6 +66,9 @@ func Export(m *model.Model) (*Document, []string, error) {
 	for _, context := range m.Contexts {
 		for _, aggregate := range context.Aggregates {
 			e.warn("aggregate.%s.%s catalog identity has no interchange equivalent; only referenced titles are exported in slices", context.ID, aggregate.ID)
+			if aggregate.Identity != "" {
+				e.warn("aggregate.%s.%s identity has no interchange equivalent and was not exported", context.ID, aggregate.ID)
+			}
 			if aggregate.Description != "" {
 				e.warn("aggregate.%s.%s description has no interchange equivalent and was not exported", context.ID, aggregate.ID)
 			}
@@ -101,6 +107,15 @@ func Export(m *model.Model) (*Document, []string, error) {
 	}
 	if len(m.Hotspots) > 0 {
 		e.warn("hotspots have no interchange equivalent and were not exported")
+	}
+	if len(m.Lifecycles) > 0 {
+		e.warn("lifecycles have no interchange equivalent and were not exported")
+	}
+	if len(m.EvidenceSources) > 0 || len(m.Evidence) > 0 {
+		e.warn("evidence sources and evidence records have no interchange equivalent and were not exported")
+	}
+	if len(m.Decisions) > 0 {
+		e.warn("decisions have no interchange equivalent and were not exported")
 	}
 	return document, e.warnings, nil
 }
@@ -339,7 +354,9 @@ func (e *exporter) slice(index int, workflow model.Workflow) (Slice, error) {
 	// order of its own, and sorting by id keeps the export a fixpoint.
 	sort.SliceStable(slice.Events, func(left, right int) bool { return slice.Events[left].ID < slice.Events[right].ID })
 	for _, scenario := range workflow.Scenarios {
-		slice.Specifications = append(slice.Specifications, e.specification(slice, workflow, scenario))
+		if specification, ok := e.specification(slice, workflow, scenario); ok {
+			slice.Specifications = append(slice.Specifications, specification)
+		}
 	}
 	if len(screenActors) > 1 {
 		names := make([]string, 0, len(screenActors))
@@ -527,6 +544,9 @@ func (e *exporter) fields(fields []model.Field, contextID string) []Field {
 // self-describing interchange field; attributes set on the field win.
 func (e *exporter) field(field model.Field, contextID string) Field {
 	exported := Field{Name: field.Name, Type: field.Type, Cardinality: field.Cardinality, Mapping: field.Mapping, Optional: field.Optional, TechnicalAttribute: field.TechnicalAttribute, Generated: field.Generated, IDAttribute: field.IDAttribute, PII: field.PII, Schema: field.Schema, Example: exportExample(field.Example)}
+	if field.CorrelationKey || field.DeduplicationKey {
+		e.warn("field %q correlation_key and deduplication_key have no interchange equivalent and were not exported", field.Name)
+	}
 	subfields, subfieldContext := field.Fields, contextID
 	if parts := strings.Split(field.Type, "."); parts[0] == "field_type" {
 		address := strings.Join(parts[1:], ".")
@@ -599,11 +619,28 @@ func exportExample(example json.RawMessage) json.RawMessage {
 	return encoded
 }
 
-func (e *exporter) specification(slice Slice, workflow model.Workflow, scenario model.Scenario) Specification {
+// specification converts one scenario. It reports false, with a warning, for
+// a scenario that the interchange format cannot carry: an empty-history
+// scenario, whose missing given steps import would reject, and a scenario
+// whose only then steps state that no command is issued.
+func (e *exporter) specification(slice Slice, workflow model.Workflow, scenario model.Scenario) (Specification, bool) {
 	id := "scenario." + workflow.ID + "." + scenario.ID
+	if scenario.EmptyHistory {
+		e.warn("%s states the read model before any event with empty_history; the interchange format has no such mark, so the scenario was not exported", id)
+		return Specification{}, false
+	}
 	specification := Specification{ID: id, SliceName: slice.Title, Title: labelOf(scenario.Title, scenario.ID, scenario.TitlePresent), Given: []SpecificationStep{}, When: []SpecificationStep{}, Then: []SpecificationStep{}, LinkedID: slice.ID}
 	counts := map[model.StepKind]int{}
+	omittedThen := false
+	if scenario.Case != "" {
+		e.warn("%s case has no interchange equivalent and was not exported", id)
+	}
 	for _, step := range scenario.Steps {
+		if step.ExpectNoDispatch {
+			e.warn("%s %s step for %s states that no command is issued; the interchange format has no such step, so it was not exported", id, step.Kind, step.Ref)
+			omittedThen = true
+			continue
+		}
 		exported := e.step(id, workflow.ID, counts[step.Kind], step)
 		counts[step.Kind]++
 		switch step.Kind {
@@ -621,7 +658,11 @@ func (e *exporter) specification(slice Slice, workflow model.Workflow, scenario 
 	if scenario.Description != "" {
 		specification.Comments = append(specification.Comments, Comment{Description: scenario.Description})
 	}
-	return specification
+	if omittedThen && len(specification.Then) == 0 {
+		e.warn("%s has no then step that the interchange format can carry; the scenario was not exported", id)
+		return Specification{}, false
+	}
+	return specification, true
 }
 
 // step converts one given/when/then step. The schema has no processor step

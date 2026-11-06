@@ -25,18 +25,6 @@ func (v *modelValidator) validateOwnerReference(attribute *hcl.Attribute) hcl.Di
 	return nil
 }
 
-func (v *modelValidator) validateGlobalReference(attribute *hcl.Attribute) hcl.Diagnostics {
-	traversal, diagnostics := absoluteTraversal(attribute)
-	if diagnostics.HasErrors() {
-		return diagnostics
-	}
-	parts, ok := traversalParts(traversal)
-	if !ok || !v.referenceExists(parts, "") {
-		return hcl.Diagnostics{unresolvedReference(attribute, parts)}
-	}
-	return nil
-}
-
 func (v *modelValidator) validateReference(attribute *hcl.Attribute, expectedKind, workflowID string) hcl.Diagnostics {
 	traversal, diagnostics := absoluteTraversal(attribute)
 	if diagnostics.HasErrors() {
@@ -142,6 +130,10 @@ func (v *modelValidator) validateFlowReferences(attribute *hcl.Attribute, workfl
 			continue
 		}
 		parts, ok := traversalParts(traversal)
+		if ok && len(parts) > 0 && parts[0] == "state" {
+			diagnostics = append(diagnostics, errorDiagnostic(codeInvalidReference, expression.Range(), "Invalid reference", "state.<id> resolves only inside a lifecycle."))
+			continue
+		}
 		if !ok || len(parts) < 2 || !slices.Contains(allowedRoots, parts[0]) {
 			diagnostics = append(diagnostics, errorDiagnostic(codeInvalidFlowReference, expression.Range(), "Invalid flow reference", flowReferenceDetail(ownerKind, direction, workflowType, allowedRoots, parts)))
 			continue

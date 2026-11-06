@@ -23,15 +23,20 @@ const (
 	codeWorkflowInSeveralChapters diagnosticCode = "EM014"
 	codeInvalidBoard              diagnosticCode = "EM015"
 	codeBoardRepeatsWorkflow      diagnosticCode = "EM016"
+	codeInvalidLifecycle          diagnosticCode = "EM017"
+	codeMissingIdentityField      diagnosticCode = "EM018"
 
 	codeInvalidReference    diagnosticCode = "EM101"
 	codeUnresolvedReference diagnosticCode = "EM102"
 
 	codeInvalidFlowReference diagnosticCode = "EM201"
+	codeInvalidFieldSource   diagnosticCode = "EM202"
 
-	codeInvalidScenario       diagnosticCode = "EM301"
-	codeInvalidScenarioStep   diagnosticCode = "EM302"
-	codeInvalidScenarioTarget diagnosticCode = "EM303"
+	codeInvalidScenario         diagnosticCode = "EM301"
+	codeInvalidScenarioStep     diagnosticCode = "EM302"
+	codeInvalidScenarioTarget   diagnosticCode = "EM303"
+	codeScenarioAttributeMisfit diagnosticCode = "EM304"
+	codeContradictoryDispatch   diagnosticCode = "EM305"
 
 	codeBedAntiPattern        diagnosticCode = "EM401"
 	codeLeftChairAntiPattern  diagnosticCode = "EM402"

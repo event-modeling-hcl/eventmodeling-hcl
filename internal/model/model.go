@@ -55,15 +55,19 @@ const (
 // order, then the off-board workflows in ID byte order. Board and OffBoard name
 // the same workflows by ID.
 type Model struct {
-	Actors    []Actor    `json:"actors,omitempty"`
-	Owners    []Owner    `json:"owners,omitempty"`
-	Contexts  []Context  `json:"contexts,omitempty"`
-	Board     []string   `json:"board,omitempty"`
-	OffBoard  []string   `json:"off_board,omitempty"`
-	Workflows []Workflow `json:"workflows,omitempty"`
-	Chapters  []Chapter  `json:"chapters,omitempty"`
-	Hotspots  []Hotspot  `json:"hotspots,omitempty"`
-	Edges     []Edge     `json:"edges,omitempty"`
+	Actors          []Actor          `json:"actors,omitempty"`
+	Owners          []Owner          `json:"owners,omitempty"`
+	Contexts        []Context        `json:"contexts,omitempty"`
+	Board           []string         `json:"board,omitempty"`
+	OffBoard        []string         `json:"off_board,omitempty"`
+	Workflows       []Workflow       `json:"workflows,omitempty"`
+	Chapters        []Chapter        `json:"chapters,omitempty"`
+	Hotspots        []Hotspot        `json:"hotspots,omitempty"`
+	Lifecycles      []Lifecycle      `json:"lifecycles,omitempty"`
+	EvidenceSources []EvidenceSource `json:"evidence_sources,omitempty"`
+	Evidence        []Evidence       `json:"evidence,omitempty"`
+	Decisions       []Decision       `json:"decisions,omitempty"`
+	Edges           []Edge           `json:"edges,omitempty"`
 }
 
 type Actor struct {
@@ -100,6 +104,9 @@ type Aggregate struct {
 	Title        string `json:"title,omitempty"`
 	TitlePresent bool   `json:"title_present,omitempty"`
 	Description  string `json:"description,omitempty"`
+	// Identity is the qualified field_type.<context>.<id> that names one
+	// stream of the aggregate, or empty when the aggregate states none.
+	Identity string `json:"identity,omitempty"`
 }
 
 type FieldType struct {
@@ -127,15 +134,36 @@ type Event struct {
 }
 
 type Workflow struct {
-	Kind         WorkflowKind `json:"kind"`
-	ID           string       `json:"id"`
-	Title        string       `json:"title,omitempty"`
-	TitlePresent bool         `json:"title_present,omitempty"`
-	Status       string       `json:"status,omitempty"`
-	Owner        string       `json:"owner,omitempty"`
-	Description  string       `json:"description,omitempty"`
-	Elements     []Element    `json:"elements,omitempty"`
-	Scenarios    []Scenario   `json:"scenarios,omitempty"`
+	Kind         WorkflowKind  `json:"kind"`
+	ID           string        `json:"id"`
+	Title        string        `json:"title,omitempty"`
+	TitlePresent bool          `json:"title_present,omitempty"`
+	Status       string        `json:"status,omitempty"`
+	Owner        string        `json:"owner,omitempty"`
+	Description  string        `json:"description,omitempty"`
+	Elements     []Element     `json:"elements,omitempty"`
+	Scenarios    []Scenario    `json:"scenarios,omitempty"`
+	FieldSources []FieldSource `json:"field_sources,omitempty"`
+}
+
+// FieldSource states that the value of the target field comes from the input
+// fields along the canonical edges of its workflow. Description holds the
+// rule of a derived value as prose. The model never executes it.
+type FieldSource struct {
+	Description string           `json:"description,omitempty"`
+	Inputs      []FieldReference `json:"inputs"`
+	Target      FieldReference   `json:"target"`
+}
+
+// FieldReference names one field definition. Reference is the source text.
+// Element is the qualified element ID (event.<context>.<id> or
+// <kind>.<workflow>.<id>). Path lists the field names from the top-level
+// field to the last subfield. A list ancestor names the field definition
+// inside each item, not a row.
+type FieldReference struct {
+	Reference string   `json:"reference"`
+	Element   string   `json:"element"`
+	Path      []string `json:"path"`
 }
 
 type Element struct {
@@ -186,6 +214,8 @@ type Field struct {
 	TechnicalAttribute bool            `json:"technical_attribute,omitempty"`
 	Generated          bool            `json:"generated,omitempty"`
 	IDAttribute        bool            `json:"id_attribute,omitempty"`
+	CorrelationKey     bool            `json:"correlation_key,omitempty"`
+	DeduplicationKey   bool            `json:"deduplication_key,omitempty"`
 	PII                bool            `json:"pii,omitempty"`
 	Schema             string          `json:"schema,omitempty"`
 	Example            json.RawMessage `json:"example,omitempty"`
@@ -195,26 +225,34 @@ type Field struct {
 	Overrides []string `json:"-"`
 }
 
+// Scenario holds Case, the stated scenario case, empty when omitted, and
+// EmptyHistory, which states the read model before any event.
 type Scenario struct {
 	ID           string   `json:"id"`
 	Title        string   `json:"title,omitempty"`
 	TitlePresent bool     `json:"title_present,omitempty"`
 	Description  string   `json:"description,omitempty"`
+	Case         string   `json:"case,omitempty"`
+	EmptyHistory bool     `json:"empty_history,omitempty"`
 	Steps        []Step   `json:"steps,omitempty"`
 	Comments     []string `json:"comments,omitempty"`
 }
 
+// Step is one given, when, or then step. A then step with Target "command"
+// states that the processor issues the command, or with ExpectNoDispatch
+// that it does not issue it.
 type Step struct {
-	Kind            StepKind        `json:"kind"`
-	Title           string          `json:"title,omitempty"`
-	TitlePresent    bool            `json:"title_present,omitempty"`
-	Tags            []string        `json:"tags,omitempty"`
-	Target          string          `json:"target"`
-	Ref             string          `json:"ref,omitempty"`
-	Error           string          `json:"error,omitempty"`
-	Examples        json.RawMessage `json:"examples,omitempty"`
-	ExpectEmptyList bool            `json:"expect_empty_list,omitempty"`
-	Fields          []Field         `json:"fields,omitempty"`
+	Kind             StepKind        `json:"kind"`
+	Title            string          `json:"title,omitempty"`
+	TitlePresent     bool            `json:"title_present,omitempty"`
+	Tags             []string        `json:"tags,omitempty"`
+	Target           string          `json:"target"`
+	Ref              string          `json:"ref,omitempty"`
+	Error            string          `json:"error,omitempty"`
+	Examples         json.RawMessage `json:"examples,omitempty"`
+	ExpectEmptyList  bool            `json:"expect_empty_list,omitempty"`
+	ExpectNoDispatch bool            `json:"expect_no_dispatch,omitempty"`
+	Fields           []Field         `json:"fields,omitempty"`
 }
 
 // Chapter is a membership set: Workflows lists workflow.<id> references sorted
@@ -227,12 +265,99 @@ type Chapter struct {
 	Workflows    []string `json:"workflows,omitempty"`
 }
 
+// Hotspot is an open record. HotspotKind is the effective kind: "question"
+// when the source omits kind.
 type Hotspot struct {
-	ID          string `json:"id"`
-	Question    string `json:"question"`
-	Description string `json:"description,omitempty"`
-	On          string `json:"on,omitempty"`
-	Status      string `json:"status,omitempty"`
+	ID          string   `json:"id"`
+	Question    string   `json:"question"`
+	Description string   `json:"description,omitempty"`
+	On          string   `json:"on,omitempty"`
+	Status      string   `json:"status,omitempty"`
+	HotspotKind string   `json:"hotspot_kind"`
+	Category    string   `json:"category,omitempty"`
+	Options     []string `json:"options,omitempty"`
+	Concerns    string   `json:"concerns,omitempty"`
+}
+
+// Lifecycle holds the states of the streams of one aggregate and the moves
+// between them. States, Transitions, and InvalidTransitions are in ID byte
+// order. A lifecycle adds no flow edge.
+type Lifecycle struct {
+	ID                 string              `json:"id"`
+	Title              string              `json:"title,omitempty"`
+	TitlePresent       bool                `json:"title_present,omitempty"`
+	Description        string              `json:"description,omitempty"`
+	Aggregate          string              `json:"aggregate"`
+	States             []State             `json:"states,omitempty"`
+	Transitions        []Transition        `json:"transitions,omitempty"`
+	InvalidTransitions []InvalidTransition `json:"invalid_transitions,omitempty"`
+}
+
+type State struct {
+	ID           string `json:"id"`
+	Title        string `json:"title,omitempty"`
+	TitlePresent bool   `json:"title_present,omitempty"`
+	Description  string `json:"description,omitempty"`
+	End          bool   `json:"end,omitempty"`
+	Path         string `json:"path,omitempty"`
+}
+
+// Transition is a valid move. An empty Before states that the transition
+// starts the stream. Before and Events keep source order.
+type Transition struct {
+	ID           string   `json:"id"`
+	Title        string   `json:"title,omitempty"`
+	TitlePresent bool     `json:"title_present,omitempty"`
+	Description  string   `json:"description,omitempty"`
+	Command      string   `json:"command"`
+	Events       []string `json:"events"`
+	Before       []string `json:"before"`
+	After        string   `json:"after"`
+}
+
+type InvalidTransition struct {
+	ID           string   `json:"id"`
+	Title        string   `json:"title,omitempty"`
+	TitlePresent bool     `json:"title_present,omitempty"`
+	Description  string   `json:"description,omitempty"`
+	Command      string   `json:"command"`
+	Reason       string   `json:"reason"`
+	Before       []string `json:"before"`
+}
+
+type EvidenceSource struct {
+	ID           string `json:"id"`
+	Title        string `json:"title,omitempty"`
+	TitlePresent bool   `json:"title_present,omitempty"`
+	Description  string `json:"description,omitempty"`
+	SourceKind   string `json:"source_kind"`
+	Location     string `json:"location,omitempty"`
+}
+
+type Evidence struct {
+	ID           string `json:"id"`
+	Title        string `json:"title,omitempty"`
+	TitlePresent bool   `json:"title_present,omitempty"`
+	Description  string `json:"description,omitempty"`
+	Certainty    string `json:"certainty"`
+	Location     string `json:"location,omitempty"`
+	Source       string `json:"source,omitempty"`
+	On           string `json:"on"`
+}
+
+// Decision is one choice that shapes the model. DecisionKind is the effective
+// kind: "choice" when the source omits kind. A decision never changes a
+// diagnostic.
+type Decision struct {
+	ID           string `json:"id"`
+	Title        string `json:"title,omitempty"`
+	TitlePresent bool   `json:"title_present,omitempty"`
+	Description  string `json:"description,omitempty"`
+	DecisionKind string `json:"decision_kind"`
+	Signal       string `json:"signal,omitempty"`
+	Statement    string `json:"statement"`
+	Reason       string `json:"reason"`
+	On           string `json:"on,omitempty"`
 }
 
 // Edge is one canonical flow edge of a workflow. External is true iff From is
@@ -270,6 +395,14 @@ func Build(doc *validator.ValidatedDocument) *Model {
 			model.Chapters = append(model.Chapters, decodeChapter(block))
 		case "hotspot":
 			model.Hotspots = append(model.Hotspots, decodeHotspot(block))
+		case "lifecycle":
+			model.Lifecycles = append(model.Lifecycles, decodeLifecycle(block))
+		case "evidence_source":
+			model.EvidenceSources = append(model.EvidenceSources, decodeEvidenceSource(block))
+		case "evidence":
+			model.Evidence = append(model.Evidence, decodeEvidence(block))
+		case "decision":
+			model.Decisions = append(model.Decisions, decodeDecision(block))
 		case "state_change", "state_view", "automation":
 			workflows = append(workflows, decodeWorkflow(block, sourceDocument))
 		}
@@ -279,6 +412,10 @@ func Build(doc *validator.ValidatedDocument) *Model {
 	slices.SortFunc(model.Contexts, func(a, b Context) int { return cmp.Compare(a.ID, b.ID) })
 	slices.SortFunc(model.Chapters, func(a, b Chapter) int { return cmp.Compare(a.ID, b.ID) })
 	slices.SortFunc(model.Hotspots, func(a, b Hotspot) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(model.Lifecycles, func(a, b Lifecycle) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(model.EvidenceSources, func(a, b EvidenceSource) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(model.Evidence, func(a, b Evidence) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(model.Decisions, func(a, b Decision) int { return cmp.Compare(a.ID, b.ID) })
 	model.Workflows, model.OffBoard = orderWorkflows(workflows, model.Board)
 	model.Edges = buildEdges(model.Workflows, externalContexts(model.Contexts))
 	return model
@@ -380,7 +517,7 @@ func decodeContext(block *hcl.Block, document *sourcepkg.Document) Context {
 	for _, child := range content.Blocks {
 		switch child.Type {
 		case "aggregate":
-			context.Aggregates = append(context.Aggregates, decodeAggregate(child))
+			context.Aggregates = append(context.Aggregates, decodeAggregate(child, block.Labels[0]))
 		case "field_type":
 			context.FieldTypes = append(context.FieldTypes, decodeFieldType(child, fc))
 		case "event":
@@ -393,13 +530,13 @@ func decodeContext(block *hcl.Block, document *sourcepkg.Document) Context {
 	return context
 }
 
-func decodeAggregate(block *hcl.Block) Aggregate {
+func decodeAggregate(block *hcl.Block, contextID string) Aggregate {
 	content, _ := syntax.Content(block.Body, syntax.AggregateSchema())
-	return Aggregate{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Description: stringValue(content.Attributes["description"])}
+	return Aggregate{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Description: stringValue(content.Attributes["description"]), Identity: sourcepkg.CanonicalFieldTypeReference(contextID, traversalValue(content.Attributes["identity"]))}
 }
 
 func decodeFieldType(block *hcl.Block, fc fieldContext) FieldType {
-	content, _ := syntax.Content(block.Body, syntax.FieldSchema())
+	content, _ := syntax.Content(block.Body, syntax.FieldTypeSchema())
 	idAttribute, _ := boolValue(content.Attributes["id_attribute"])
 	pii, _ := boolValue(content.Attributes["pii"])
 	optional, _ := boolValue(content.Attributes["optional"])
@@ -422,8 +559,11 @@ func decodeWorkflow(block *hcl.Block, document *sourcepkg.Document) Workflow {
 			workflow.Elements = append(workflow.Elements, decodeElement(child, document))
 		case "scenario":
 			workflow.Scenarios = append(workflow.Scenarios, decodeScenario(child, document))
+		case "field_source":
+			workflow.FieldSources = append(workflow.FieldSources, decodeFieldSource(child, block.Labels[0]))
 		}
 	}
+	slices.SortFunc(workflow.FieldSources, func(a, b FieldSource) int { return cmp.Compare(a.Target.Reference, b.Target.Reference) })
 	slices.SortFunc(workflow.Elements, func(a, b Element) int {
 		return cmp.Compare(string(a.Kind)+"."+a.ID, string(b.Kind)+"."+b.ID)
 	})
@@ -442,7 +582,8 @@ func decodeElement(block *hcl.Block, document *sourcepkg.Document) Element {
 
 func decodeScenario(block *hcl.Block, document *sourcepkg.Document) Scenario {
 	content, _ := syntax.Content(block.Body, syntax.ScenarioSchema())
-	scenario := Scenario{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Description: stringValue(content.Attributes["description"])}
+	emptyHistory, _ := boolValue(content.Attributes["empty_history"])
+	scenario := Scenario{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Description: stringValue(content.Attributes["description"]), Case: stringValue(content.Attributes["case"]), EmptyHistory: emptyHistory}
 	for _, child := range content.Blocks {
 		if child.Type == "comment" {
 			comment, _ := syntax.Content(child.Body, syntax.CommentSchema())
@@ -457,7 +598,7 @@ func decodeScenario(block *hcl.Block, document *sourcepkg.Document) Scenario {
 
 func decodeStep(block *hcl.Block, document *sourcepkg.Document) Step {
 	content, _ := syntax.Content(block.Body, syntax.ScenarioStepSchema())
-	step := Step{Kind: mustStepKind(block.Type), Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Tags: stringList(content.Attributes["tags"]), Examples: jsonValue(content.Attributes["examples"], document.Parsed()), ExpectEmptyList: boolValueOrFalse(content.Attributes["expect_empty_list"]), Fields: decodeElementFields(content, fieldContext{document: document})}
+	step := Step{Kind: mustStepKind(block.Type), Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Tags: stringList(content.Attributes["tags"]), Examples: jsonValue(content.Attributes["examples"], document.Parsed()), ExpectEmptyList: boolValueOrFalse(content.Attributes["expect_empty_list"]), ExpectNoDispatch: boolValueOrFalse(content.Attributes["expect_no_dispatch"]), Fields: decodeElementFields(content, fieldContext{document: document})}
 	for _, target := range []string{"event", "command", "readmodel", "processor", "error"} {
 		attribute := content.Attributes[target]
 		if attribute == nil {
@@ -629,7 +770,70 @@ func decodeChapter(block *hcl.Block) Chapter {
 
 func decodeHotspot(block *hcl.Block) Hotspot {
 	content, _ := syntax.Content(block.Body, syntax.HotspotSchema())
-	return Hotspot{ID: block.Labels[0], Question: stringValue(content.Attributes["question"]), Description: stringValue(content.Attributes["description"]), On: traversalValue(content.Attributes["on"]), Status: stringValue(content.Attributes["status"])}
+	return Hotspot{ID: block.Labels[0], Question: stringValue(content.Attributes["question"]), Description: stringValue(content.Attributes["description"]), On: traversalValue(content.Attributes["on"]), Status: stringValue(content.Attributes["status"]), HotspotKind: cmp.Or(stringValue(content.Attributes["kind"]), "question"), Category: stringValue(content.Attributes["category"]), Options: stringList(content.Attributes["options"]), Concerns: stringValue(content.Attributes["concerns"])}
+}
+
+func decodeLifecycle(block *hcl.Block) Lifecycle {
+	content, _ := syntax.Content(block.Body, syntax.LifecycleSchema())
+	lifecycle := Lifecycle{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Description: stringValue(content.Attributes["description"]), Aggregate: traversalValue(content.Attributes["aggregate"])}
+	for _, child := range content.Blocks {
+		switch child.Type {
+		case "state":
+			state, _ := syntax.Content(child.Body, syntax.StateSchema())
+			lifecycle.States = append(lifecycle.States, State{ID: child.Labels[0], Title: stringValue(state.Attributes["title"]), TitlePresent: state.Attributes["title"] != nil, Description: stringValue(state.Attributes["description"]), End: boolValueOrFalse(state.Attributes["end"]), Path: stringValue(state.Attributes["path"])})
+		case "transition":
+			transition, _ := syntax.Content(child.Body, syntax.TransitionSchema())
+			lifecycle.Transitions = append(lifecycle.Transitions, Transition{ID: child.Labels[0], Title: stringValue(transition.Attributes["title"]), TitlePresent: transition.Attributes["title"] != nil, Description: stringValue(transition.Attributes["description"]), Command: traversalValue(transition.Attributes["command"]), Events: nonNil(traversalList(transition.Attributes["events"])), Before: nonNil(traversalList(transition.Attributes["before"])), After: traversalValue(transition.Attributes["after"])})
+		case "invalid_transition":
+			invalid, _ := syntax.Content(child.Body, syntax.InvalidTransitionSchema())
+			lifecycle.InvalidTransitions = append(lifecycle.InvalidTransitions, InvalidTransition{ID: child.Labels[0], Title: stringValue(invalid.Attributes["title"]), TitlePresent: invalid.Attributes["title"] != nil, Description: stringValue(invalid.Attributes["description"]), Command: traversalValue(invalid.Attributes["command"]), Reason: stringValue(invalid.Attributes["reason"]), Before: nonNil(traversalList(invalid.Attributes["before"]))})
+		}
+	}
+	slices.SortFunc(lifecycle.States, func(a, b State) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(lifecycle.Transitions, func(a, b Transition) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(lifecycle.InvalidTransitions, func(a, b InvalidTransition) int { return cmp.Compare(a.ID, b.ID) })
+	return lifecycle
+}
+
+// nonNil returns an empty list for nil, so that an empty before list (the
+// start of a stream) stays a stated empty list in the JSON IR.
+func nonNil(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
+}
+
+func decodeEvidenceSource(block *hcl.Block) EvidenceSource {
+	content, _ := syntax.Content(block.Body, syntax.EvidenceSourceSchema())
+	return EvidenceSource{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Description: stringValue(content.Attributes["description"]), SourceKind: stringValue(content.Attributes["kind"]), Location: stringValue(content.Attributes["location"])}
+}
+
+func decodeEvidence(block *hcl.Block) Evidence {
+	content, _ := syntax.Content(block.Body, syntax.EvidenceSchema())
+	return Evidence{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Description: stringValue(content.Attributes["description"]), Certainty: stringValue(content.Attributes["certainty"]), Location: stringValue(content.Attributes["location"]), Source: traversalValue(content.Attributes["source"]), On: traversalValue(content.Attributes["on"])}
+}
+
+func decodeDecision(block *hcl.Block) Decision {
+	content, _ := syntax.Content(block.Body, syntax.DecisionSchema())
+	return Decision{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Description: stringValue(content.Attributes["description"]), DecisionKind: cmp.Or(stringValue(content.Attributes["kind"]), "choice"), Signal: stringValue(content.Attributes["signal"]), Statement: stringValue(content.Attributes["statement"]), Reason: stringValue(content.Attributes["reason"]), On: traversalValue(content.Attributes["on"])}
+}
+
+// decodeFieldSource decodes one field_source of the workflow workflowID. Each
+// reference keeps its source text and its qualified element and field path.
+func decodeFieldSource(block *hcl.Block, workflowID string) FieldSource {
+	content, _ := syntax.Content(block.Body, syntax.FieldSourceSchema())
+	fieldSource := FieldSource{Description: stringValue(content.Attributes["description"]), Inputs: []FieldReference{}}
+	for _, input := range traversalList(content.Attributes["inputs"]) {
+		fieldSource.Inputs = append(fieldSource.Inputs, fieldReference(input, workflowID))
+	}
+	fieldSource.Target = fieldReference(traversalValue(content.Attributes["target"]), workflowID)
+	return fieldSource
+}
+
+func fieldReference(reference, workflowID string) FieldReference {
+	element, path, _ := sourcepkg.SplitFieldReference(strings.Split(reference, "."))
+	return FieldReference{Reference: reference, Element: sourcepkg.QualifiedElement(element, workflowID), Path: path}
 }
 
 func semanticFrom(attributes hcl.Attributes) Semantic {
@@ -687,6 +891,8 @@ func decodeFields(blocks hcl.Blocks, fc fieldContext) []Field {
 		generated, _ := boolValue(content.Attributes["generated"])
 		idAttribute, _ := boolValue(content.Attributes["id_attribute"])
 		pii, _ := boolValue(content.Attributes["pii"])
+		correlationKey, _ := boolValue(content.Attributes["correlation_key"])
+		deduplicationKey, _ := boolValue(content.Attributes["deduplication_key"])
 		fieldType := typeValue(content.Attributes["type"])
 		var overrides []string
 		if strings.HasPrefix(fieldType, "field_type.") {
@@ -696,7 +902,7 @@ func decodeFields(blocks hcl.Blocks, fc fieldContext) []Field {
 				}
 			}
 		}
-		fields = append(fields, Field{Name: block.Labels[0], Type: fieldType, Cardinality: stringValue(content.Attributes["cardinality"]), Mapping: stringValue(content.Attributes["mapping"]), Optional: optional, TechnicalAttribute: technical, Generated: generated, IDAttribute: idAttribute, PII: pii, Schema: stringValue(content.Attributes["schema"]), Example: jsonValue(content.Attributes["example"], fc.document.Parsed()), Fields: decodeFields(content.Blocks, fc), Overrides: overrides})
+		fields = append(fields, Field{Name: block.Labels[0], Type: fieldType, Cardinality: stringValue(content.Attributes["cardinality"]), Mapping: stringValue(content.Attributes["mapping"]), Optional: optional, TechnicalAttribute: technical, Generated: generated, IDAttribute: idAttribute, CorrelationKey: correlationKey, DeduplicationKey: deduplicationKey, PII: pii, Schema: stringValue(content.Attributes["schema"]), Example: jsonValue(content.Attributes["example"], fc.document.Parsed()), Fields: decodeFields(content.Blocks, fc), Overrides: overrides})
 	}
 	return fields
 }

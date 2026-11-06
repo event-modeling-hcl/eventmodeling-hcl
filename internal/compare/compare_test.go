@@ -13,7 +13,7 @@ import (
 func TestModels_CoversEveryTopLevelCollectionOfTheModel(t *testing.T) {
 	// OffBoard is derived from Board and Workflows. Edges are part of the
 	// value of their workflow.
-	covered := []string{"Actors", "Owners", "Contexts", "Board", "OffBoard", "Workflows", "Chapters", "Hotspots", "Edges"}
+	covered := []string{"Actors", "Owners", "Contexts", "Board", "OffBoard", "Workflows", "Chapters", "Hotspots", "Lifecycles", "EvidenceSources", "Evidence", "Decisions", "Edges"}
 	fields := reflect.TypeFor[model.Model]()
 	for index := range fields.NumField() {
 		if name := fields.Field(index).Name; !slices.Contains(covered, name) {

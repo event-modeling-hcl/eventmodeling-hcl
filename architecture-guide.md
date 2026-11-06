@@ -1,6 +1,6 @@
 # Architecture Guide
 
-This guide describes how `emhcl` is organized. It also shows how the design uses Axiomatic Design to keep changes predictable. The guide describes the current repository. The language contract is in the [Event Modeling HCL specification](https://github.com/event-modeling-hcl/spec). The tool implements Specification v0.7.0: a model is one file or one folder, a `board` block sets the story order, file layout has no meaning, an `automation` scenario has an action form and a view form, and a screen has a kind, `"ui"` or `"api"`.
+This guide describes how `emhcl` is organized. It also shows how the design uses Axiomatic Design to keep changes predictable. The guide describes the current repository. The language contract is in the [Event Modeling HCL specification](https://github.com/event-modeling-hcl/spec). The tool implements Specification v0.8.0: a model is one file or one folder, a `board` block sets the story order, file layout has no meaning, an `automation` scenario has an action form and a view form, a screen has a kind, `"ui"` or `"api"`, and a model can state the method facts of RFC 0007.
 
 The [v0.5.0 review record](v0.5.0-review.md) records the status before the fixes, the conformance defects that the review reproduced, and the difference between the local diagonal authoring controls and the decoupled semantic pipeline. The section [Known deviations](#known-deviations) lists the places where the current code does not follow this guide.
 
@@ -82,7 +82,7 @@ The DP8 column has an `X` in every row from FR8 down, and a `0` in the FR1 row. 
 
 - FR2: The loader decides which files `syntax.Document.Body()` merges with `hcl.MergeFiles`. `source.Decode` only wraps that document, but every reference that DP2 interprets comes from the merged body.
 - FR3: No rule depends on the number of files. One-file and folder models use the same rules. The byte order of member files fixes only three things: which declaration a duplicate diagnostic reports as the first one, where a repeated `board` is reported, and where a missing `board` (EM015) is reported. A missing board is reported at the start of the first file.
-- FR4: The model does not depend on file order. `Model.Workflows` is the board sequence, then the off-board workflows (`Model.OffBoard`) in ID byte order. Catalog items, chapters, chapter members, hotspots, workflow elements, tables, screen images, and scenarios are sorted by ID. Elements sort by kind and then ID. Scenario step order and explicit reference lists (`to`, `from`, the board) keep their source order. The fields of an element are the entries of the `fields` list in source order, then the `field` blocks in source order. Edges follow the workflow order, then element ID order. Inside one element, all `to` edges come before all `from` edges, each in list order. An edge whose source is an event of an external bounded context has `External` set. `TitlePresent` distinguishes omission from a literal empty `Title`. No title is derived.
+- FR4: The model does not depend on file order. `Model.Workflows` is the board sequence, then the off-board workflows (`Model.OffBoard`) in ID byte order. Catalog items, chapters, chapter members, hotspots, lifecycles, evidence sources, evidence, decisions, workflow elements, tables, screen images, and scenarios are sorted by ID. The states, transitions, and invalid transitions of a lifecycle are sorted by ID. The field sources of a workflow are sorted by the text of the target reference. Elements sort by kind and then ID. Scenario step order and explicit reference lists (`to`, `from`, the board) keep their source order. The fields of an element are the entries of the `fields` list in source order, then the `field` blocks in source order. Edges follow the workflow order, then element ID order. Inside one element, all `to` edges come before all `from` edges, each in list order. An edge whose source is an event of an external bounded context has `External` set. `TitlePresent` distinguishes omission from a literal empty `Title`. No title is derived.
 - FR5, FR7, and FR6: These rows depend on DP8 through DP2, DP3, and DP4, in the same way that the guide treats DP1.
 
 FR9 is included even though migration is separate from the native pipeline. DP9 reads raw syntax through DP1 and DP8 and checks its output through DP2 and DP3. The application adapters expose migration, so FR6 also depends on DP9. The reverse influence is absent: migration does not alter the native validator's acceptance rules.
@@ -127,9 +127,11 @@ FR7 has six child requirements. The table gives each one its mechanism.
 | FR7.5: Keep at most one actor per slice | Import refuses a slice with two or more actors. Export refuses a workflow whose screens name two or more actors. | DP7.5: Actor gate | `rejectMultipleActors` in `import.go`, `slice` in `export.go` |
 | FR7.6: Disclose each loss | Each value that a conversion drops produces a warning. | DP7.6: Warnings at the point of loss | `warn` calls in `import.go`, `import_policy.go`, `export.go` |
 
-The actor gate follows from the language. Specification v0.7.0 gives a screen one optional actor and gives a workflow no actor attribute. A JSON slice lists actors without links to screens. Thus a slice with two actors has no correct native form. The gate stops the conversion instead of guessing. If only some screens of a workflow name the actor, export drops the actor and writes a warning.
+The actor gate follows from the language. Specification v0.8.0 gives a screen one optional actor and gives a workflow no actor attribute. A JSON slice lists actors without links to screens. Thus a slice with two actors has no correct native form. The gate stops the conversion instead of guessing. If only some screens of a workflow name the actor, export drops the actor and writes a warning.
 
 The JSON schema has no field for the screen kind. Export writes an API screen as a `SCREEN` with `apiEndpoint` and a warning. Import writes no `kind`, so the screen is a `"ui"` screen. The JSON round trip stays stable, because the JSON never holds the kind.
+
+The JSON schema also has no field for the method facts of Specification v0.8.0. Export writes a warning and drops aggregate `identity`, lifecycles, evidence sources, evidence, decisions, `field_source` blocks, key flags, and scenario `case`. It omits an `empty_history` scenario, because import rejects a view specification without given steps. It omits a `then` step with `expect_no_dispatch`. When that leaves no `then` step, it omits the scenario. Import accepts a `then` command (`SPEC_COMMAND`) in an automation specification whose one `when` step resolves to a processor. This is a copy of the validator rule (change rule 11).
 
 The native language has no translation keyword. Export writes slice type `TRANSLATION` for an `automation` that has at least one edge with `External` set, and `AUTOMATION` otherwise. Import writes `TRANSLATION` as `automation`. Import writes a `board` that lists the slices in the order of their `index` value. Slices without an `index` come last, in document order. Export writes `index` as the position of the slice. Export writes off-board workflows after the board workflows, in ID order, with a warning.
 
@@ -164,7 +166,7 @@ DP3 influences FR7.4. The interchange module repeats three flow rules of `intern
 
 - `allowedFlowRoots` in `import.go` repeats the flow grammar in `validator/references.go`.
 - `workflowAllows` in `import_policy.go` repeats the workflow element rules in `validator/structure.go`.
-- `scenarioRules` and `scenarioAllows` in `import_policy.go` repeat `scenarioRules` and `scenarioTargetAllowed` in `validator/scenarios.go`. Both copies select the form of an `automation` scenario by the count of `when` steps. A scenario without a `when` step uses the view form, which has the step rules of a `state_view` scenario. Both copies also refuse a view form read model of another workflow: the validator with `EM101`, the importer with a warning.
+- `scenarioRules` and `scenarioAllows` in `import_policy.go` repeat `scenarioRules` and `scenarioTargetAllowed` in `validator/scenarios.go`. Both copies select the form of an `automation` scenario by the count of `when` steps. A scenario without a `when` step uses the view form, which has the step rules of a `state_view` scenario. Both copies also refuse a view form read model of another workflow: the validator with `EM101`, the importer with a warning. Both copies accept a `then` command step only in an action form scenario whose one `when` step targets a processor.
 
 No shared code ties these copies together. Two tests tie the scenario copy partly. The round-trip test exports and imports `examples/pet-clinic`, which has a view form scenario, so a refused scenario would change the second export. `TestImport_AutomationViewFormSpecifications` checks that the importer keeps a view form scenario, omits a step that targets a read model of another slice, and omits a view form scenario without a `given` step. If you change one of these rules in the validator, you must change its copy in the same change.
 
@@ -244,7 +246,7 @@ The need adds one child of FR2 and five children of FR6:
 
 | FR | Acceptance criterion | DP |
 | --- | --- | --- |
-| FR2.1: Turn a source range into the address of a declaration | Each reference form gets its innermost declaration. A chapter, a hotspot, the board, and the model start (`Document.Start`) get no address. An offset in one member file never matches a block of another file. | DP2.1: `source.Address`, `source.ElementHasAddress`, and `(*source.Document).AddressAt`, with `syntax.BlockRange` for the extent of a block |
+| FR2.1: Turn a source range into the address of a declaration | Each reference form gets its innermost declaration. A chapter, an evidence record, the board, and the model start (`Document.Start`) get no address. A hotspot gets `hotspot.<id>`, and a state gets `state.<lifecycle>.<id>`. An offset in one member file never matches a block of another file. | DP2.1: `source.Address`, `source.ElementHasAddress`, and `(*source.Document).AddressAt`, with `syntax.BlockRange` for the extent of a block |
 | FR6.1: Report diagnostics as data | For every model in `examples/` and `testdata/` and each profile, `validate --format json` gives the text diagnostics in the same order | DP6.1: The JSON tags of `app.Diagnostic`, `Diagnostics.MarshalJSON`, and the one `--format` parser in `internal/cli` |
 | FR6.2: Compare two models by declaration | A block in another member file or a new layout gives no entry. Each edit gives exactly its entry. | DP6.2: `internal/compare`, `app.DiffPaths`, and the `diff` command |
 | FR6.3: Report the layout of each member file | `fmt --check` names exactly the member files that differ from `fmt` output | DP6.3: `app.FormatPath`, which reads the members through `app.ReadModel`, and the `--check` option |
@@ -283,6 +285,31 @@ Two risks remain:
 - `internal/compare` lists the collections of `model.Model`. `TestModels_CoversEveryTopLevelCollectionOfTheModel` fails when the model gets a collection that `compare` does not read.
 - `AddressAt` treats the empty range at the model start as outside every declaration, because `EM015` uses it. A future diagnostic with the same empty range at byte 0 gets no address. A block header at byte 0 is not empty, so it keeps its address.
 
+## Method facts in the pipeline
+
+Specification v0.8.0 ([spec RFC 0007](https://github.com/event-modeling-hcl/spec/blob/main/rfcs/0007-method-facts.md)) adds scenario facts, aggregate identity, lifecycles, evidence, decisions, hotspot kinds, field sources, and key flags. The change adds no top-level FR and no top-level DP. Each fact is a child of an existing DP, so the tool matrix keeps its rows, its columns, and its lower triangular form.
+
+| Parent DP | Children that RFC 0007 adds |
+| --- | --- |
+| DP1 Syntax | The schemas `LifecycleSchema`, `StateSchema`, `TransitionSchema`, `InvalidTransitionSchema`, `EvidenceSourceSchema`, `EvidenceSchema`, `DecisionSchema`, `FieldSourceSchema`, and `FieldTypeSchema`. `FieldTypeSchema` has no key flags. |
+| DP2 Source | `source.SplitFieldReference` and `source.QualifiedElement`, the one interpretation of field references (change rule 2). `AddressAt` gives an address inside a hotspot, a decision, an evidence source, and a lifecycle. |
+| DP3 Validation | `validator/fields.go` checks field references and `field_source` blocks (`EM202`). `validator/records.go` checks attach targets, aggregate identity (`EM018`), lifecycles (`EM017`), evidence, and decisions. `validator/scenarios.go` checks `case`, `empty_history` (`EM304`), and dispatch assertions (`EM303`, `EM304`, `EM305`). Each rule is one more term of the core-validity summation. A new core error prevents the IR, as each earlier core error does. |
+| DP4 Model | `Model.Lifecycles`, `Model.EvidenceSources`, `Model.Evidence`, and `Model.Decisions`, the field sources of a workflow, and the new scenario, step, hotspot, aggregate, and field values. Each new collection extends the canonical order of FR4. |
+| DP5 Output | The formatter writes the attribute order of RFC 0007 section 4.2. `on` sorts last only in `evidence` and `decision`. Every v0.7.0 file formats to the same text. The renderer shows a no-dispatch step with the flag `expect_no_dispatch` in the Model view and with "Expects that the command is not issued" in the slides. |
+| DP6.2 Diff | `internal/compare` compares lifecycles, evidence sources, evidence, and decisions, after hotspots (change rule 23). A hotspot change carries the address `hotspot.<id>`. |
+| DP7 Interchange | Export warnings for each fact without a JSON field, and the `then` command rule of import (see [Requirements for the interchange module](#requirements-for-the-interchange-module)). |
+
+Inside DP3, the new rules form four children. FR3.A is the scenario facts, FR3.B is identity and lifecycles, FR3.D is field references and field sources, and FR3.C is the record rules for attach targets, evidence, and decisions.
+
+| FR \ DP | DP3.B Identity and lifecycle | DP3.D Field references | DP3.A Scenario facts | DP3.C Records |
+| --- | ---: | ---: | ---: | ---: |
+| FR3.B Identity and lifecycle | X | 0 | 0 | 0 |
+| FR3.D Field sources | 0 | X | 0 | 0 |
+| FR3.A Scenario facts | 0 | 0 | X | 0 |
+| FR3.C Records | X | X | 0 | X |
+
+The matrix is lower triangular. RFC 0007 section 6.3 gives the one influence across the children: record attach targets read the lifecycle declarations and the field declarations. A rename or a removal of a state, a transition, or a field breaks each record that names it (`EM102`). The repair is a rename of the reference, as for every other identity. No scenario rule reads a lifecycle, and no lifecycle rule reads `identity` or the flow edges.
+
 ## Requirements for the agent skills
 
 The repository ships two agent skills. `event-modeling` owns business discovery and business-quality review. `event-modeling-hcl` owns HCL representation and CLI operations. A domain-to-HCL request uses them in that order. Both read the shared edit policy in `event-modeling/references/edit-policy.md`. The HCL skill is a client of the tool. It adds one need, one FR, and one DP:
@@ -299,8 +326,8 @@ FR10 has eight child requirements. Each DP is a formalism that the skill states 
 
 | Child FR | Acceptance criterion | DP |
 | --- | --- | --- |
-| FR10.3: Write only legal scenarios | Each scenario matches the production for its workflow kind | DP10.3: The EBNF scenario productions, copied from the specification into `references/language-v0.7.md` |
-| FR10.5: Give each field a source | Each field has a source, a written derivation, or an open hotspot | DP10.5: The field-source contracts in `event-modeling/references/methodology.md`, carried into HCL element descriptions and scenarios |
+| FR10.3: Write only legal scenarios | Each scenario matches the production for its workflow kind | DP10.3: The EBNF scenario productions, copied from the specification into `references/language-v0.8.md` |
+| FR10.5: Give each field a source | Each field has a source, a written derivation, or an open hotspot | DP10.5: The field-source contracts in `event-modeling/references/methodology.md`, carried into HCL `field_source` blocks and scenarios |
 | FR10.4: Leave locked workflows unchanged | No direct edit or shared-contract change affecting a locked workflow without confirmation that names it and the change | DP10.4: The shared policy in `event-modeling/references/edit-policy.md` |
 | FR10.1: Claim a gate only after the tool passed it | A gate is claimed only when its command exited 0 | DP10.1: The Makefile gate graph (`formatted`, `valid`, `implementation-ready`). In this repository, `make model-ready MODEL=<path>`. |
 | FR10.2: Stop a repair loop that does not converge | No third edit for the same code on the same element without a new user decision | DP10.2: The repair counter with threshold k = 2 in the HCL skill's “Format, validate, and repair” section |
@@ -313,7 +340,7 @@ FR10 has eight child requirements. Each DP is a formalism that the skill states 
 | FR10.3 Legal scenarios | X | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | FR10.5 Field sources | 0 | X | 0 | 0 | 0 | 0 | 0 | 0 |
 | FR10.4 Locked workflows | 0 | 0 | X | 0 | 0 | 0 | 0 | 0 |
-| FR10.1 True gates | X | 0 | X | X | 0 | 0 | 0 | 0 |
+| FR10.1 True gates | X | X | X | X | 0 | 0 | 0 | 0 |
 | FR10.2 Bounded repair | 0 | 0 | 0 | X | X | 0 | 0 | 0 |
 | FR10.7 Review findings | 0 | X | 0 | X | 0 | X | 0 | 0 |
 | FR10.6 Report | 0 | 0 | X | X | X | 0 | X | 0 |
@@ -323,14 +350,14 @@ The matrix is lower triangular, so the skill is decoupled. Set the DPs in this o
 
 The off-diagonal entries are these influences:
 
-- FR10.1 depends on DP10.3, because a scenario that breaks a production fails `validate`. It depends on DP10.4, because a lock can stop the repair that a gate needs.
+- FR10.1 depends on DP10.3, because a scenario that breaks a production fails `validate`. It depends on DP10.5, because a `field_source` block that breaks a rule fails `validate` with `EM202`. It depends on DP10.4, because a lock can stop the repair that a gate needs.
 - FR10.2 depends on DP10.1, because the breaker counts the failures that the gate commands report.
 - FR10.7 depends on DP10.1 for the `EM4xx` lines, and on DP10.5 for the findings that have no code.
 - FR10.6 reports the gate (DP10.1), an open breaker (DP10.2), and the locked workflows (DP10.4).
 
 The important zeros are these:
 
-- FR10.1 has `0` under DP10.5. The validator does not check field lineage, so a contract violation never changes a gate.
+- FR10.1 does not depend on a missing field source. The validator checks only the `field_source` blocks that a model has, so a field without a source never changes a gate.
 - FR10.3 has `0` under DP10.1. The gate graph finds an illegal scenario, but only the productions and the validator decide what is legal. A gate never makes an illegal scenario legal.
 - No DP of the skill has an `X` in a row of the tool matrix.
 
@@ -340,8 +367,8 @@ The Makefile targets keep one owner for each fact. `model-fmt-check` runs `emhcl
 
 | Module | Owns | Input | Output and failure contract |
 | --- | --- | --- | --- |
-| `internal/syntax` | HCL body schemas and parsing | One or more files, each with a filename and source bytes | Parsed document or HCL syntax diagnostics. Each diagnostic names its own file. Two files with the same name give a diagnostic and no document. |
-| `internal/source` | Reference interpretation shared by the validator and the model, and declaration addresses | Parsed document | A wrapper around the parsed document, helpers that turn reference expressions into addresses, and `AddressAt`, which turns a source range into the address of a declaration. It owns the element kinds that have a reference form. No I/O and no policy. |
+| `internal/syntax` | HCL body schemas, including the lifecycle, record, and field-source schemas of v0.8.0, and parsing | One or more files, each with a filename and source bytes | Parsed document or HCL syntax diagnostics. Each diagnostic names its own file. Two files with the same name give a diagnostic and no document. |
+| `internal/source` | Reference interpretation shared by the validator and the model, and declaration addresses | Parsed document | A wrapper around the parsed document, helpers that turn reference expressions into addresses, the split of a field reference into its element and its field path, and `AddressAt`, which turns a source range into the address of a declaration. It owns the element kinds that have a reference form. No I/O and no policy. |
 | `internal/validator` | Core language rules, the catalog index, and the judgment policy evaluator | Decoded source and a profile | Diagnostics. Without core errors, also a `ValidatedDocument`, in every profile. |
 | `internal/model` | Canonical model for renderers and interchange, with normalized edges | `ValidatedDocument` | The same `Model` for the same input. No parsing, no validation, no I/O. |
 | `internal/compare` | The declaration changes between two models | Two canonical `Model` values | Added, removed, and changed declarations in a fixed order, with addresses from `internal/source`. No parsing, no validation, no I/O. |
@@ -406,7 +433,7 @@ A change breaks the Independence Axiom when, for example:
 
 ## Known deviations
 
-The code at release v0.16.0 does not follow this guide in six places. Each one keeps the matrices triangular, but each one gives a fact two owners. Two owners make a change more likely to break one of the FRs.
+The code at release v0.17.0 does not follow this guide in six places. Each one keeps the matrices triangular, but each one gives a fact two owners. Two owners make a change more likely to break one of the FRs.
 
 | ID | Deviation | Rule | Effect | Correction |
 | --- | --- | --- | --- | --- |

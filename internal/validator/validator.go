@@ -68,6 +68,31 @@ type fieldTypeRef struct {
 
 type workflowIndex struct {
 	elements map[string]map[string]bool
+	// fields holds the field tree of each command, readmodel, screen, and
+	// processor, keyed by <kind>.<id>.
+	fields map[string]fieldNode
+}
+
+// fieldNode maps the name of each declared field or subfield to its own
+// subfields. A fields list entry has no subfields.
+type fieldNode map[string]fieldNode
+
+// lifecycleIndex holds the identities of one lifecycle: its aggregate
+// address, its states, and the shared ID space of its transitions and
+// invalid transitions.
+type lifecycleIndex struct {
+	states      map[string]bool
+	transitions map[string]bool
+	invalid     map[string]bool
+}
+
+// eventFacts are the facts of one catalog event that the identity rule reads:
+// the declared aggregate address and the field types of its top-level fields.
+type eventFacts struct {
+	address    string
+	definition hcl.Range
+	aggregate  string
+	fieldTypes map[string]bool
 }
 
 type modelIndex struct {
@@ -84,12 +109,24 @@ type modelIndex struct {
 	scenarioCounts   map[string]int
 	definitionRanges map[string]hcl.Range
 	declarations     map[string]hcl.Range
+	lifecycles       map[string]lifecycleIndex
+	evidenceSources  map[string]bool
+	evidence         map[string]bool
+	decisions        map[string]bool
+	// identities maps an aggregate address to the address of its identity
+	// field type, for aggregates whose identity names a field_type.
+	identities  map[string]string
+	events      []eventFacts
+	eventFields map[string]fieldNode
 }
 
 type modelValidator struct {
 	index modelIndex
 	// chaptered maps each workflow listed by a chapter to that chapter's id.
 	chaptered map[string]string
+	// lifecycleAggregates maps each aggregate named by a lifecycle to the
+	// first lifecycle that names it.
+	lifecycleAggregates map[string]string
 }
 
 type contextValidator struct {
@@ -104,7 +141,7 @@ type contextValidator struct {
 // and finally the whole-model shelf-anti-pattern smell check.
 func validateBody(document *source.Document) hcl.Diagnostics {
 	index, diagnostics := buildIndex(document)
-	validator := &modelValidator{index: index, chaptered: map[string]string{}}
+	validator := &modelValidator{index: index, chaptered: map[string]string{}, lifecycleAggregates: map[string]string{}}
 	content, contentDiagnostics := syntax.Content(document.Parsed().Body(), syntax.ModelSchema())
 	diagnostics = append(diagnostics, contentDiagnostics...)
 	var boards hcl.Blocks
@@ -123,11 +160,20 @@ func validateBody(document *source.Document) hcl.Diagnostics {
 			diagnostics = append(diagnostics, validator.validateChapter(block)...)
 		case "hotspot":
 			diagnostics = append(diagnostics, validator.validateHotspot(block)...)
+		case "lifecycle":
+			diagnostics = append(diagnostics, validator.validateLifecycle(block)...)
+		case "evidence_source":
+			diagnostics = append(diagnostics, validateSimpleBlock(block.Body, syntax.EvidenceSourceSchema(), evidenceSourceRule)...)
+		case "evidence":
+			diagnostics = append(diagnostics, validator.validateEvidence(block)...)
+		case "decision":
+			diagnostics = append(diagnostics, validator.validateDecision(block)...)
 		case "state_change", "state_view", "automation":
 			diagnostics = append(diagnostics, validator.validateWorkflow(block)...)
 		}
 	}
 	diagnostics = append(diagnostics, boardCountDiagnostics(document.Parsed().Start(), boards)...)
+	diagnostics = append(diagnostics, validator.validateIdentityFields()...)
 	diagnostics = append(diagnostics, validator.validateShelfSmell()...)
 	return diagnostics
 }

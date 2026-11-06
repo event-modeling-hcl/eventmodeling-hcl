@@ -123,13 +123,14 @@ type Scenario struct {
 }
 
 type Step struct {
-	Title     string          `json:"title"`
-	RefKind   string          `json:"refKind,omitempty"`
-	Ref       string          `json:"ref,omitempty"`
-	Examples  json.RawMessage `json:"examples,omitempty"`
-	Fields    []string        `json:"fields,omitempty"`
-	Error     string          `json:"error,omitempty"`
-	EmptyList bool            `json:"emptyList,omitempty"`
+	Title      string          `json:"title"`
+	RefKind    string          `json:"refKind,omitempty"`
+	Ref        string          `json:"ref,omitempty"`
+	Examples   json.RawMessage `json:"examples,omitempty"`
+	Fields     []string        `json:"fields,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	EmptyList  bool            `json:"emptyList,omitempty"`
+	NoDispatch bool            `json:"noDispatch,omitempty"`
 }
 
 type Edge struct {

@@ -18,6 +18,34 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
   formatting expectations match the supported CLI, and migration expectations
   distinguish meaningful titles from redundant ID-derived titles.
 
+## [v0.17.0] - 2026-11-06
+
+This release implements Event Modeling HCL Specification v0.8.0 ([spec RFC 0007](https://github.com/event-modeling-hcl/spec/blob/main/rfcs/0007-method-facts.md), Method Facts in the Model). The model can now state facts that earlier versions kept in descriptions, comments, or hotspots. Every v0.7.0 model stays valid with the same codes and the same severities, and `emhcl fmt` gives the same text for it. Each new rule applies only to new syntax. `version.Spec` is `v0.8.0`.
+
+### Added
+
+- Scenario facts. An optional `case` on a scenario names the pattern of the scenario, for example `"happy_path"` or `"appear"`. An unknown value is `EM008`, and a value from the wrong group for the scenario form is `EM304`. `empty_history = true` on a view scenario states the read model before any event. A `given` step in such a scenario is `EM301`, and `empty_history` on another scenario is `EM304`.
+- Dispatch assertions. A `then` step can target a command in an `automation` action form scenario whose one `when` step targets a processor. `expect_no_dispatch = true` on that step states that the processor does not issue the command. `expect_no_dispatch` on another step, or with fields, is `EM304`. A scenario that states both outcomes for one command is `EM305`. A `then` command step in another scenario is `EM303`. A command of another workflow is `EM101`.
+- Aggregate identity. `identity = field_type.<id>` on an `aggregate` names the field type of one stream. An event of that aggregate without a top-level field of the identity type is `EM018`.
+- Lifecycles. A top-level `lifecycle` with `state`, `transition`, and `invalid_transition` blocks states the states of the streams of one aggregate. An invalid lifecycle is `EM017`. `state.<id>` outside a lifecycle is `EM101`.
+- Evidence. A top-level `evidence_source` names a place that evidence comes from. An `evidence` record states that the source supports one attach target, with a `certainty` of `"stated"`, `"implied"`, or `"assumed"`. A `"stated"` or `"implied"` record without `source` is `EM000`.
+- Decisions. A top-level `decision` states one choice and its reason. `kind = "accepted_debt"` can name a judgment code in `signal`. A decision never changes a diagnostic.
+- Hotspot kinds. A hotspot accepts `kind`, `category`, `options`, and `concerns`. A request without `concerns` is `EM000`.
+- Field sources. A `field_source` block in a workflow states that one field takes its value from other fields. It uses field references such as `command.open_booking.field.guest_name`. An invalid field source is `EM202`. A field name that the lookup does not find is `EM102`, and an index step in a field reference is `EM101`.
+- Key flags. `correlation_key` and `deduplication_key` on a `field` or `subfield` mark outside values. On a `field_type` they are `EM000`.
+- Records (`hotspot`, `evidence`, `decision`) attach to lifecycles, states, transitions, field references, and other records as the specification lists. A target kind that the record does not accept is `EM101`.
+- The typed IR stores the new facts. The model has `lifecycles`, `evidence_sources`, `evidence`, and `decisions`. Workflows have `field_sources`. Scenarios have `case` and `empty_history`, and steps have `expect_no_dispatch`.
+- `examples/method-facts.em.hcl` uses every new construct.
+
+### Changed
+
+- `emhcl fmt` writes the new attributes in the order of RFC 0007 section 4.2. `on` sorts last only in `evidence` and `decision`. Every v0.7.0 file formats to the same text.
+- `emhcl export` warns and drops facts that have no interchange equivalent: `identity`, lifecycles, evidence sources, evidence, decisions, `field_source` blocks, key flags, and scenario `case`. It omits an `empty_history` scenario, because the import rejects a view specification without given steps. It omits a no-dispatch `then` step. When that leaves no `then` step, it omits the scenario.
+- `emhcl import` accepts a `then` command in an automation specification whose one `when` step is a processor.
+- `emhcl diff` compares lifecycles, evidence sources, evidence, and decisions. It reports a hotspot with the address `hotspot.<id>`. A diagnostic inside a hotspot, a decision, an evidence source, or a lifecycle now carries an address. A state has the address `state.<lifecycle>.<id>`.
+- Diagrams show a no-dispatch step with the flag `expect_no_dispatch` in the Model view. Slides show "Expects that the command is not issued".
+- The agent skill `event-modeling-hcl` (v3.1.0) targets Specification v0.8.0. Its language reference is now `references/language-v0.8.md`. The `event-modeling` skill names the HCL forms for field sources, lifecycles, evidence, decisions, and no-dispatch facts.
+
 ## [v0.16.0] - 2026-11-03
 
 This release implements Event Modeling HCL Specification v0.7.0 ([spec RFC 0006](https://github.com/event-modeling-hcl/spec/blob/main/rfcs/0006-api-screens.md), API Screens). Core validity does not change. One judgment signal changes: a command whose only reason is `api_endpoint` now gets `EM404`, a warning in the `valid` profile and an error in the `strict` profile. Add an API screen that names the actor and flows to the command.

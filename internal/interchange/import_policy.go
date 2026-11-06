@@ -25,10 +25,12 @@ func workflowAllows(kind, child string) bool {
 	return false
 }
 
-// automationViewForm and scenarioRules copy the scenario form selection in
-// validator/scenarios.go. Change both in the same change (architecture guide,
-// change rule 11). An automation specification without a when step is a view
-// form scenario with the step rules of a state_view scenario.
+// automationViewForm, scenarioRules, and scenarioAllows copy the scenario
+// rules in validator/scenarios.go. Change both in the same change
+// (architecture guide, change rule 11). An automation specification without a
+// when step is a view form scenario with the step rules of a state_view
+// scenario. A then step can name a command only when the one when step of an
+// action form scenario names a processor.
 const automationViewForm = "automation view form"
 
 func scenarioRules(kind string, whenCount int) string {
@@ -38,14 +40,14 @@ func scenarioRules(kind string, whenCount int) string {
 	return kind
 }
 
-func scenarioAllows(rules, phase, target string) bool {
+func scenarioAllows(rules, phase, target string, processorWhen bool) bool {
 	switch rules {
 	case "state_change":
 		return phase == "given" && target == "event" || phase == "when" && target == "command" || phase == "then" && (target == "event" || target == "error")
 	case "state_view", automationViewForm:
 		return phase == "given" && target == "event" || phase == "then" && (target == "readmodel" || target == "error")
 	case "automation":
-		return phase == "given" && (target == "event" || target == "readmodel") || phase == "when" && (target == "command" || target == "processor") || phase == "then" && (target == "event" || target == "error")
+		return phase == "given" && (target == "event" || target == "readmodel") || phase == "when" && (target == "command" || target == "processor") || phase == "then" && (target == "event" || target == "error" || target == "command" && processorWhen)
 	}
 	return false
 }
@@ -66,6 +68,11 @@ func (im *importer) prepareSpecification(workflow, kind string, specification Sp
 	result := specification
 	result.Given, result.When, result.Then = nil, nil, nil
 	rules := scenarioRules(kind, len(specification.When))
+	processorWhen := false
+	if len(specification.When) == 1 {
+		target, valid := im.stepTarget(workflow, specification.When[0])
+		processorWhen = valid && target.kind == "processor"
+	}
 	invalidWhen := false
 	for _, phase := range []struct {
 		name   string
@@ -88,11 +95,14 @@ func (im *importer) prepareSpecification(workflow, kind string, specification Sp
 			target, valid := im.stepTarget(workflow, step)
 			if !valid {
 				im.warn("specification %q: %s step %q (%s) cannot resolve linkedId %q to the declared target kind; step omitted", specification.Title, phase.name, step.Title, step.Type, step.LinkedID)
-			} else if !scenarioAllows(rules, phase.name, target.kind) {
+			} else if !scenarioAllows(rules, phase.name, target.kind, processorWhen) {
 				im.warn("specification %q: %s target %s is not allowed in %s; step omitted", specification.Title, phase.name, target.kind, rules)
 				valid = false
 			} else if rules == automationViewForm && target.kind == "readmodel" && target.scope != workflow {
 				im.warn("specification %q: %s step %q targets a read model of another slice; a view form scenario may target only its own read model; step omitted", specification.Title, phase.name, step.Title)
+				valid = false
+			} else if rules == "automation" && phase.name == "then" && target.kind == "command" && target.scope != workflow {
+				im.warn("specification %q: %s step %q targets a command of another slice; a dispatch assertion may target only a command of its own automation; step omitted", specification.Title, phase.name, step.Title)
 				valid = false
 			} else if target.kind != "event" && target.kind != "error" && !workflowAllows(kinds[target.scope], target.kind) {
 				im.warn("specification %q: %s step %q targets an element omitted from its incompatible workflow; step omitted", specification.Title, phase.name, step.Title)

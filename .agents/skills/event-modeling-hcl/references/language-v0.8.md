@@ -1,8 +1,12 @@
-# Event Modeling HCL v0.7.0 reference
+# Event Modeling HCL v0.8.0 reference
 
-This is a compact authoring checklist derived from the normative v0.7.0
+This is a compact authoring checklist derived from the normative v0.8.0
 specification. A model is one `.em.hcl` file or a folder of `.em.hcl` files.
-v0.7.0 adds a screen `kind` (`"ui"` or `"api"`) and stops counting
+v0.8.0 adds the method facts of RFC 0007: scenario `case`, `empty_history`,
+dispatch assertions, aggregate `identity`, `lifecycle`, `evidence_source` and
+`evidence`, `decision`, hotspot kinds, `field_source` with field references,
+and the key flags (see "Method facts"). Every v0.7.0 model stays valid.
+v0.7.0 added a screen `kind` (`"ui"` or `"api"`) and stopped counting
 `api_endpoint` as a command reason. v0.6.0 added view form `automation`
 scenarios. v0.5.0 was a breaking revision: a v0.4.0 model does not validate
 until `emhcl migrate` converts it (see "Tooling").
@@ -21,7 +25,8 @@ until `emhcl migrate` converts it (see "Tooling").
   derive one from the label and show the ID instead. Required semantic data:
   `readmodel.question`, `actor.auth_required`, `hotspot.question`, board and
   chapter `workflows`, and the `type` of every `field_type`, `field`, and
-  `subfield`.
+  `subfield`. The method facts have their own required attributes (see
+  "Method facts").
 
 ## Top-level blocks
 
@@ -29,6 +34,7 @@ until `emhcl migrate` converts it (see "Tooling").
 board,
 bounded_context, actor, team, system,
 chapter, hotspot,
+lifecycle, evidence_source, evidence, decision,
 state_change, state_view, automation
 ```
 
@@ -58,8 +64,8 @@ board {
 
 A bounded context may contain only `aggregate`, `field_type`, and canonical
 `event` blocks. A workflow may contain `command`, `readmodel`, `screen`,
-`processor`, `screen_image`, `table`, and `scenario` blocks, subject to its
-pattern's flow rules.
+`processor`, `screen_image`, `table`, `field_source`, and `scenario` blocks,
+subject to its pattern's flow rules.
 
 ## Catalog attributes
 
@@ -165,10 +171,10 @@ field "customer_id" {
 ```
 
 The current CLI also accepts unchecked `mapping` and `schema` strings. They are
-not v0.7.0 contracts and not methodology lineage. `emhcl import` can write them
+not v0.8.0 contracts and not methodology lineage. `emhcl import` can write them
 to keep JSON data. Keep them in an imported file, but do not add new ones. Do not write
 `session:`, `latest:`, `derived:`, or `aggregate:` expressions. Record a
-derivation in `description`, a scenario `comment`, or a `hotspot`.
+source or a derivation in a `field_source` block (see "Field sources").
 `generated = true` means the system fills the value; it is not a source link.
 
 Use `fields` for several reusable types with no per-field overrides:
@@ -246,7 +252,16 @@ These blocks have no flow edges.
 | Context aggregate | `aggregate.orders.order` |
 | Context field type | `field_type.orders.order_id` |
 | Local workflow element | `command.place_order` |
-| Qualified element for hotspot | `command.place_order.place_order` |
+| Qualified element for a record `on` | `command.place_order.place_order` |
+| State inside its lifecycle | `state.open` |
+| Lifecycle part for a record `on` | `lifecycle.order`, `state.order.open`, `transition.order.place`, `invalid_transition.order.ship_open` |
+| Field of an event | `event.orders.order_placed.field.order_id` |
+| Field of a local element | `command.place_order.field.order_id` |
+| Field of a qualified element | `command.place_order.place_order.field.order_id` |
+| Nested field | `command.place_order.field.address.field.city` |
+| Evidence source | `evidence_source.order_policy` |
+| Decision | `decision.one_order_list` |
+| Hotspot, for an evidence `on` | `hotspot.payment_authority` |
 
 Reference lists use native HCL lists. Never quote a reference:
 
@@ -305,14 +320,14 @@ not replace an event. Do not use it as an invisible signal.
 
 ## Attributes and blocks that do not exist
 
-Do not invent `linked_copy`, `element_copy`, `storyline`, `query`, `note`,
-`roles`, `expect_no_dispatch`, or a field-source traversal. Canvas linked
+Do not invent `linked_copy`, `element_copy`, `storyline`, `query`, `note`, or
+`roles`. Canvas linked
 copies are one catalog event referenced from many workflows. Storylines are
 multiple scenarios or ordered `given` steps. There is no backward-edge form;
 a todo list includes its completion event in `readmodel.from`.
 
 The CLI accepts `mapping` and `schema` as unchecked strings. They are not a
-field-source language or a specification contract. Do not add them to new or
+field-source language or a specification contract. Use `field_source`. Do not add them to new or
 repaired models. Leave existing values unless metadata repair is requested.
 
 ## Scenarios
@@ -323,31 +338,40 @@ EBNF notation: `{ x }` is zero or more, `|` is a choice, quoted text is
 literal, and `(* ... *)` is a comment. Steps may appear in any order. The
 specification wins if the two differ. The validator reports a wrong count as
 `EM301`, a step with zero or two targets as `EM302`, and a target that the
-workflow kind or the form does not allow as `EM303`. The count of `when` steps
-selects the form of an `automation` scenario: one `when` step gives the action
-form, no `when` step gives the view form. A view form `then` read model of
+workflow kind or the form does not allow as `EM303`. A `case`,
+`empty_history`, or `expect_no_dispatch` that does not fit the scenario is
+`EM304`. The count of `when` steps selects the form of an `automation`
+scenario: one `when` step gives the action form, no `when` step gives the view
+form. `empty_history` does not select a form. A view form `then` read model of
 another workflow (`readmodel.<other_workflow>.<id>`) is `EM101`.
 
 ```text
 state_change_scenario = 'scenario' id '{' { sc_given | sc_when | sc_then | comment | attribute } '}'
   (* zero or more sc_given, exactly one sc_when, one or more sc_then *)
+  (* optional case from the command cases, no empty_history *)
 sc_given              = 'given' '{' event_target step_body '}'
 sc_when               = 'when'  '{' command_target step_body '}'
 sc_then               = 'then'  '{' ( event_target | error_target ) step_body '}'
 
 state_view_scenario   = 'scenario' id '{' { sv_given | sv_then | comment | attribute } '}'
   (* one or more sv_given, no when step, one or more sv_then *)
+  (* with empty_history = true: no sv_given *)
+  (* optional case from the read model cases *)
 sv_given              = 'given' '{' event_target step_body '}'
 sv_then               = 'then'  '{' ( readmodel_target | error_target ) step_body '}'
 
 automation_scenario   = action_scenario | view_scenario
 action_scenario       = 'scenario' id '{' { au_given | au_when | au_then | comment | attribute } '}'
   (* zero or more au_given, exactly one au_when, one or more au_then *)
+  (* optional case from the command cases, no empty_history *)
 view_scenario         = 'scenario' id '{' { av_given | av_then | comment | attribute } '}'
   (* one or more av_given, no when step, one or more av_then *)
+  (* with empty_history = true: no av_given *)
+  (* optional case from the read model cases *)
 au_given              = 'given' '{' ( event_target | readmodel_target ) step_body '}'
 au_when               = 'when'  '{' ( processor_target | command_target ) step_body '}'
-au_then               = 'then'  '{' ( event_target | error_target ) step_body '}'
+au_then               = 'then'  '{' ( event_target | error_target | dispatch_target ) step_body '}'
+  (* dispatch_target only when the au_when step targets a processor *)
 av_given              = 'given' '{' event_target step_body '}'
 av_then               = 'then'  '{' ( readmodel_target | error_target ) step_body '}'
   (* the read model of av_then belongs to the same automation *)
@@ -357,15 +381,56 @@ command_target        = 'command' '=' command_ref
 readmodel_target      = 'readmodel' '=' readmodel_ref
 processor_target      = 'processor' '=' processor_ref
 error_target          = 'error' '=' string
+dispatch_target       = 'command' '=' command_ref
+  (* a command of the same automation, local form *)
 step_body             = { attribute | field | field_list }
   (* a step sets exactly one target attribute *)
+  (* expect_no_dispatch = true only on a dispatch_target step, with no field
+     and no fields list *)
 ```
 
-Canvas automation specs that put a command in Then or assert "nothing
-dispatched" are not this grammar. Do not encode them by inventing attributes.
+A canvas automation spec that puts a command in Then is a dispatch assertion:
+a `then` command step in an action form scenario whose `when` step targets the
+processor. A spec that asserts "nothing dispatched" adds
+`expect_no_dispatch = true` to that step. A `then` command step in another
+scenario is `EM303`. A command of another workflow is `EM101`. Two `then`
+steps that name one command, one with `expect_no_dispatch` and one without, are
+`EM305`. The validator does not require a `processor.to` edge to the command.
+
+```hcl
+then {
+  expect_no_dispatch = true
+  command            = command.record_deposit
+}
+```
+
 A scenario with no `when` step is legal only in the view form: given events,
 then a read model of the same automation. An empty `when {}` block is still
 illegal, because each step sets exactly one target (`EM302`).
+
+`case` names the pattern of a scenario. A `state_change` scenario and an
+`automation` action form scenario use the command cases: `happy_path`,
+`variant`, `refused_input`, `state_violation`, `business_duplicate`, `limit`,
+`authorization`, `alternative_path`, `external_failure`, `compensation`. A
+`state_view` scenario and an `automation` view form scenario use the read model
+cases: `appear`, `change`, `disappear`. An unknown string is `EM008`. A case of
+the other group is `EM304`. The validator does not compare the case with the
+steps. Write a case only when the business model states it.
+
+`empty_history = true` states a read model before any event. It is legal on a
+`state_view` scenario and an `automation` view form scenario. Such a scenario
+has no `given` step (`EM301`). On another scenario it is `EM304`.
+
+```hcl
+scenario "no_booking_yet" {
+  empty_history = true
+
+  then {
+    expect_empty_list = true
+    readmodel         = readmodel.open_bookings
+  }
+}
+```
 
 Scenario and step attributes:
 
@@ -394,7 +459,8 @@ as allowed by its workflow and step kind. There is no `query` target. Normal HCL
 comments are non-semantic.
 
 Use `expect_empty_list = true` only for an intentionally empty read-model
-result, never as an error or a no-dispatch assertion. A scenario cannot assert
+result, never as an error. Use `expect_no_dispatch` for a no-dispatch
+assertion. A scenario cannot assert
 that one selected row is absent. Show concrete remaining rows or an empty
 list. Include the completion event in a worker todo list's `from` events
 when it closes the work. A translation relays an external fact and does not
@@ -405,10 +471,11 @@ that the command or processor produces the asserted event. Do not combine an
 event and an error as if both occurred. Encode compensation as its own
 state change or automation, not an event in When and a command in Then.
 
-If a supplied duplicate-trigger rule requires harmless repetition, record
-that intent in a semantic `comment`. A target command's supplied
-already-done rejection can have its own scenario. HCL cannot mark that
-rejection as a successful no-op and has no `expect_no_dispatch` target.
+If a supplied duplicate-trigger rule requires harmless repetition, state it in
+an automation action form scenario with `case = "business_duplicate"` and a
+`then` command step with `expect_no_dispatch = true`. A target command's
+supplied already-done rejection can have its own `state_change` scenario with
+an `error` step. HCL cannot mark a command rejection as a successful no-op.
 Report any remaining representation gap instead of changing the rule.
 
 Business scenario coverage and field-source review belong to
@@ -428,6 +495,158 @@ split a workflow merely to remove a fan-in or fan-out warning.
 `external_trigger`. `api_endpoint` on a command is not a reason. The business
 method separately requires a real issuer. Do not add `external_trigger` or
 `triggers` to hide missing causality.
+
+## Core diagnostics of v0.8.0
+
+| Code | Condition |
+| --- | --- |
+| `EM017` | A lifecycle is not valid: a second lifecycle for one aggregate, no `state`, an empty `events` list or an empty invalid-transition `before` list, one state and command pair in a transition and in an invalid transition, or a transition event of another aggregate. |
+| `EM018` | An event of an aggregate with an `identity` has no top-level field of the identity type. |
+| `EM202` | A field source is not valid: an empty `inputs` list, an input that does not reach the target along one canonical edge of the workflow, an event or command field with more than one input, or a second field source with the same target. |
+| `EM304` | `case`, `empty_history`, or `expect_no_dispatch` does not fit the scenario or the step. |
+| `EM305` | A scenario states that the processor issues a command and also that it does not issue it. |
+
+Existing codes cover more cases. `EM007` is an empty required text, for
+example a decision `reason`. `EM101` is `state.<id>` outside a lifecycle, a
+`then` command of another workflow, an `identity` that is not a `field_type`
+traversal, an index step such as `x[0]` in a field reference, or a record `on`
+whose kind the record does not accept. `EM102` is a field name that the lookup
+does not find. `EM000` is a missing `source` on `"stated"` or `"implied"`
+evidence, `signal` on a `"choice"` decision, a missing or misplaced hotspot
+`concerns`, or a key flag on a `field_type`. Core codes are `EM000` to
+`EM305`.
+
+## Method facts
+
+Each method fact is optional. Write one only when the business model states
+it. None of them adds a flow edge, a board position, or a chapter membership.
+
+### Aggregate identity and key flags
+
+```hcl
+aggregate "booking" {
+  identity = field_type.booking_id
+}
+```
+
+- `identity` is a `field_type` traversal (`EM101` otherwise).
+- Each event with `aggregate` set to that aggregate has a top-level field of
+  the identity type: a `field` block with that `type`, or a `fields` entry.
+  A built-in type with the same name does not count (`EM018`).
+- `correlation_key = true` on a `field` or `subfield` states that the value
+  links an outside fact to an entity of the model. `deduplication_key = true`
+  states that a second delivery with the same value records no new fact.
+  Neither flag adds a rule. On a `field_type` they are `EM000`.
+
+### Lifecycles
+
+```hcl
+lifecycle "booking" {
+  aggregate = aggregate.booking.booking
+
+  state "open" {
+    path = "main"
+  }
+
+  state "confirmed" {
+    end  = true
+    path = "main"
+  }
+
+  state "canceled" {
+    end  = true
+    path = "cancel"
+  }
+
+  transition "confirm_booking" {
+    command = command.confirm_booking.confirm_booking
+    events  = [event.booking.booking_confirmed]
+    before  = [state.open]
+    after   = state.confirmed
+  }
+
+  invalid_transition "confirm_canceled_booking" {
+    command = command.confirm_booking.confirm_booking
+    reason  = "A canceled booking cannot be confirmed."
+    before  = [state.canceled]
+  }
+}
+```
+
+- `aggregate` is `aggregate.<context>.<id>`. `command` is
+  `command.<workflow>.<id>`. Each `events` entry is `event.<context>.<id>`.
+  Another form is `EM101`.
+- `state` accepts `end` (Boolean) and `path` (`"main"`, `"cancel"`,
+  `"failure"`, `"compensation"`).
+- `transition` requires `command`, a non-empty `events` list, `before` (a list
+  of `state.<id>`, empty when the transition starts the stream), and `after`.
+- `invalid_transition` requires `command`, a non-empty `before` list, and a
+  non-empty `reason` in business words.
+- One lifecycle for each aggregate. The rules of `EM017` apply.
+- The validator does not compare a transition with flow edges or scenarios.
+
+### Field sources
+
+```hcl
+field_source {
+  inputs = [screen.booking_form.field.name]
+  target = command.open_booking.field.guest_name
+}
+```
+
+- A `field_source` is an unlabeled block inside a workflow. It requires
+  `target` (one field reference) and `inputs` (a non-empty list of field
+  references). `description` states the rule of a derived value.
+- Elements of the same workflow use the local form. Events use
+  `event.<context>.<id>`. A qualified element of another workflow is `EM101`.
+- Each input element connects to the target element by one canonical edge of
+  the workflow, from input to target. An event or command target has exactly
+  one input. A second source for the same target is `EM202`.
+- The lookup reads the `field` blocks and the `fields` entries of the element,
+  then the `subfield` blocks of the field itself. It does not read the
+  subfields of a `field_type`. A name that the lookup does not find is `EM102`.
+- The validator does not compare types or units, and the language has no
+  formula language.
+
+### Records and attach targets
+
+`hotspot`, `evidence`, and `decision` are records. Each `on` names one attach
+target: a catalog item, a workflow, an owner, an actor, a workflow-qualified
+element, a lifecycle part, or a field reference. Evidence also accepts
+`decision.<id>` and `hotspot.<id>`. A hotspot also accepts `decision.<id>`.
+Another kind is `EM101`. An undeclared target is `EM102`.
+
+```hcl
+evidence_source "booking_policy" {
+  kind     = "document"
+  location = "docs/booking-policy.pdf"
+}
+
+evidence "canceled_booking_rule" {
+  certainty = "stated"
+  location  = "section 2, page 3"
+  source    = evidence_source.booking_policy
+  on        = invalid_transition.booking.confirm_canceled_booking
+}
+
+decision "one_open_bookings_list" {
+  kind      = "accepted_debt"
+  signal    = "EM403"
+  statement = "The open bookings list reads two events."
+  reason    = "The guest sees one list. A split gives two lists with one purpose."
+  on        = readmodel.open_bookings.open_bookings
+}
+```
+
+- `evidence_source.kind` is `"document"`, `"code"`, `"application"`, or
+  `"person"`. `location` is optional.
+- `evidence` requires `on` and `certainty` (`"stated"`, `"implied"`,
+  `"assumed"`). `"stated"` and `"implied"` require `source` (`EM000`). Evidence
+  never changes validity or severity.
+- `decision` requires `statement` and `reason`. `kind` is `"choice"` (default)
+  or `"accepted_debt"`. `signal` names one code from `"EM401"` to `"EM406"`,
+  only with `"accepted_debt"`. A decision never removes or changes a
+  diagnostic. Without `on`, it is about the whole model.
 
 ## Workshop notation
 
@@ -453,8 +672,31 @@ hotspot "payment_authority" {
 }
 ```
 
-`hotspot.on` can reference catalog/workshop declarations, a workflow, or a
-workflow-qualified element such as `processor.capture_payment.gateway`.
+`hotspot.on` names one attach target (see "Records and attach targets"), for
+example a workflow-qualified element such as
+`processor.capture_payment.gateway`.
+
+A hotspot accepts four optional attributes for its kind:
+
+```hcl
+hotspot "refund_rule" {
+  kind     = "assumption"
+  category = "rule"
+  question = "Does the guest lose the deposit after a cancellation?"
+  options  = ["The guest loses the deposit.", "The guest gets the deposit back."]
+  on       = command.cancel_booking.cancel_booking
+}
+```
+
+- `kind` is `"question"` (default), `"assumption"`, or `"request"`.
+- `category` is `"action"`, `"data"`, `"next"`, `"rule"`, `"example"`,
+  `"view"`, `"who"`, or `"time"`.
+- `options` is a list of non-empty strings: the answers that the author
+  offers.
+- `concerns` names the kind of model part that a request concerns, for
+  example `"scenario"` or `"field_source"`. A request requires it, and another
+  kind must not have it (`EM000`).
+- Only `status` controls `EM406`.
 
 ## Folder models
 
@@ -496,7 +738,7 @@ model/
   01-chapters.em.hcl     # chapter blocks
   10-register-pet.em.hcl # one workflow per file
   11-pet-directory.em.hcl
-  90-hotspots.em.hcl     # hotspot blocks
+  90-hotspots.em.hcl     # hotspot, lifecycle, evidence, and decision blocks
 ```
 
 Move each block whole. A new workflow file changes nothing on the board until
@@ -521,12 +763,17 @@ you add the workflow to `board.workflows`.
 - One `board`; it lists each story workflow once, in business-time order.
 - No workflow is in two chapters, and no chapter lists a workflow twice.
 - Genuine unknowns are hotspots, not weakened or invented contracts.
+- Each method fact comes from the business model. No `case`, lifecycle,
+  evidence, decision, or field source is invented to fill a checklist.
+- Each `field_source` follows one canonical edge, and each event or command
+  target has one input.
 - Titles are written only where the text differs from what the ID conveys.
 
 ## Tooling
 
-Use emhcl v0.16.0 or newer. It implements specification v0.7.0. v0.14.0 and
-v0.15.0 implement v0.6.0 and reject a screen `kind` with `EM000`. v0.12.0 and
+Use emhcl v0.17.0 or newer. It implements specification v0.8.0. v0.16.0
+implements v0.7.0 and rejects the method facts. v0.14.0 and v0.15.0 implement
+v0.6.0 and reject a screen `kind` with `EM000`. v0.12.0 and
 v0.13.0 implement v0.5.0 and reject view form automation scenarios. Older
 releases implement v0.4.0 and reject a `board` block.
 
@@ -585,7 +832,11 @@ emhcl export model.em.hcl -o model.json
   warning.
 - Conversion is not lossless. Read each warning. `export` drops chapters,
   hotspots, teams, systems, read-model questions, and screen `kind = "api"`
-  (the screen keeps `apiEndpoint`; import makes it a `"ui"` screen). `import`
+  (the screen keeps `apiEndpoint`; import makes it a `"ui"` screen). It also
+  drops `identity`, lifecycles, evidence sources, evidence, decisions,
+  `field_source` blocks, key flags, and scenario `case`. It omits an
+  `empty_history` scenario and a no-dispatch `then` step, and a scenario that
+  then has no `then` step. `import`
   drops the original canvas IDs and field-name spellings.
 - Both commands fail when one workflow or slice has two or more actors.
 - Do not use `export` and `import` to repair a model. Edit the HCL.

@@ -21,7 +21,7 @@ func (v *modelValidator) validateBoundedContext(block *hcl.Block) hcl.Diagnostic
 	for _, child := range content.Blocks {
 		switch child.Type {
 		case "aggregate":
-			diagnostics = append(diagnostics, validateSimpleBlock(child.Body, syntax.AggregateSchema(), aggregateRule)...)
+			diagnostics = append(diagnostics, context.validateAggregateBlock(child)...)
 		case "field_type":
 			diagnostics = append(diagnostics, context.validateField(child, true)...)
 		case "event":
@@ -79,12 +79,36 @@ func (v *modelValidator) validateHotspot(block *hcl.Block) hcl.Diagnostics {
 	content, diagnostics := syntax.Content(block.Body, schema)
 	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, hotspotRule)...)
 	if on := content.Attributes["on"]; on != nil {
-		diagnostics = append(diagnostics, v.validateGlobalReference(on)...)
+		diagnostics = append(diagnostics, v.validateAttachTarget(on, "hotspot")...)
 	}
+	diagnostics = append(diagnostics, nonEmptyText(content.Attributes["options"])...)
+	diagnostics = append(diagnostics, hotspotConcerns(content)...)
 	if status, ok := literalString(content.Attributes["status"]); !ok || status != "resolved" {
 		diagnostics = append(diagnostics, judgmentSignal(codeOpenHotspot, block.DefRange, "Open hotspot", fmt.Sprintf("hotspot %q is unresolved.", block.Labels[0])))
 	}
 	return diagnostics
+}
+
+// hotspotConcerns requires concerns on a request hotspot and rejects it on
+// another kind. The effective kind is "question" when kind is omitted. An
+// unknown kind is reported as EM008 and skips this rule.
+func hotspotConcerns(content *hcl.BodyContent) hcl.Diagnostics {
+	kind := "question"
+	if attribute := content.Attributes["kind"]; attribute != nil {
+		value, ok := literalString(attribute)
+		if !ok || !slices.Contains([]string{"question", "assumption", "request"}, value) {
+			return nil
+		}
+		kind = value
+	}
+	concerns := content.Attributes["concerns"]
+	switch {
+	case kind == "request" && concerns == nil:
+		return hcl.Diagnostics{errorDiagnostic(codeUnclassified, content.MissingItemRange, "Missing required argument", "a hotspot with kind = \"request\" must set concerns.")}
+	case kind != "request" && concerns != nil:
+		return hcl.Diagnostics{errorDiagnostic(codeUnclassified, concerns.NameRange, "Unexpected argument", fmt.Sprintf("concerns is allowed only on a hotspot with kind = \"request\". The effective kind is %q.", kind))}
+	}
+	return nil
 }
 
 func (v *modelValidator) validateWorkflow(block *hcl.Block) hcl.Diagnostics {
@@ -94,6 +118,8 @@ func (v *modelValidator) validateWorkflow(block *hcl.Block) hcl.Diagnostics {
 	if owner := content.Attributes["owner"]; owner != nil {
 		diagnostics = append(diagnostics, v.validateOwnerReference(owner)...)
 	}
+	edges := v.workflowEdges(block.Labels[0], content.Blocks)
+	sources := fieldSourceTargets{}
 	for _, child := range content.Blocks {
 		if !workflowAllows(block.Type, child.Type) {
 			diagnostics = append(diagnostics, errorDiagnostic(codeInvalidWorkflowChild, child.DefRange, "Invalid workflow child", fmt.Sprintf("%s blocks are not allowed in %s workflows.", child.Type, block.Type)))
@@ -108,6 +134,8 @@ func (v *modelValidator) validateWorkflow(block *hcl.Block) hcl.Diagnostics {
 			diagnostics = append(diagnostics, v.validateTable(child)...)
 		case "scenario":
 			diagnostics = append(diagnostics, v.validateScenario(block.Type, block.Labels[0], child)...)
+		case "field_source":
+			diagnostics = append(diagnostics, v.validateFieldSource(block.Labels[0], child, edges, sources)...)
 		}
 	}
 	diagnostics = append(diagnostics, v.workflowSmells(content.Blocks)...)
@@ -115,7 +143,7 @@ func (v *modelValidator) validateWorkflow(block *hcl.Block) hcl.Diagnostics {
 }
 
 func workflowAllows(workflowType, childType string) bool {
-	if childType == "table" || childType == "scenario" {
+	if childType == "table" || childType == "scenario" || childType == "field_source" {
 		return true
 	}
 	if childType == "screen_image" {
@@ -234,6 +262,9 @@ func (v *contextValidator) validateFieldList(attribute *hcl.Attribute, seen map[
 
 func (v *contextValidator) validateField(block *hcl.Block, fieldTypeDeclaration bool) hcl.Diagnostics {
 	schema := syntax.FieldSchema()
+	if fieldTypeDeclaration {
+		schema = syntax.FieldTypeSchema()
+	}
 	content, diagnostics := syntax.Content(block.Body, schema)
 	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, fieldRule)...)
 	typeAttribute := content.Attributes["type"]

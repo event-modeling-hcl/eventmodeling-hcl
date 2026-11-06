@@ -49,8 +49,9 @@ func (c Change) Label() string {
 
 // Models returns the changes from base to head. The order follows the unit
 // kinds (actor, team, system, bounded_context, event, aggregate, field_type,
-// workflow, chapter, hotspot, board), then the byte order of the identity
-// inside one kind. Identical models give an empty, non-nil slice.
+// workflow, chapter, hotspot, lifecycle, evidence_source, evidence, decision,
+// board), then the byte order of the identity inside one kind. Identical
+// models give an empty, non-nil slice.
 func Models(base, head *model.Model) []Change {
 	changes := []Change{}
 	changes = append(changes, units(base.Actors, head.Actors, actorUnit, nil)...)
@@ -64,6 +65,10 @@ func Models(base, head *model.Model) []Change {
 	changes = append(changes, units(workflows(base), workflows(head), workflowIdentity, workflowChildren)...)
 	changes = append(changes, units(base.Chapters, head.Chapters, chapterUnit, nil)...)
 	changes = append(changes, units(base.Hotspots, head.Hotspots, hotspotUnit, nil)...)
+	changes = append(changes, units(base.Lifecycles, head.Lifecycles, lifecycleUnit, nil)...)
+	changes = append(changes, units(base.EvidenceSources, head.EvidenceSources, evidenceSourceUnit, nil)...)
+	changes = append(changes, units(base.Evidence, head.Evidence, evidenceUnit, nil)...)
+	changes = append(changes, units(base.Decisions, head.Decisions, decisionUnit, nil)...)
 	if !slices.Equal(base.Board, head.Board) {
 		changes = append(changes, Change{Change: Changed, Kind: "board"})
 	}
@@ -252,5 +257,26 @@ func chapterUnit(chapter model.Chapter) (Change, string) {
 }
 
 func hotspotUnit(hotspot model.Hotspot) (Change, string) {
-	return Change{Kind: "hotspot", ID: hotspot.ID}, hotspot.ID
+	address := source.Address{Kind: "hotspot", ID: hotspot.ID}
+	return Change{Kind: "hotspot", ID: hotspot.ID, Address: address.String()}, hotspot.ID
+}
+
+func lifecycleUnit(lifecycle model.Lifecycle) (Change, string) {
+	address := source.Address{Kind: "lifecycle", ID: lifecycle.ID}
+	return Change{Kind: "lifecycle", ID: lifecycle.ID, Address: address.String()}, lifecycle.ID
+}
+
+func evidenceSourceUnit(evidenceSource model.EvidenceSource) (Change, string) {
+	address := source.Address{Kind: "evidence_source", ID: evidenceSource.ID}
+	return Change{Kind: "evidence_source", ID: evidenceSource.ID, Address: address.String()}, evidenceSource.ID
+}
+
+// evidenceUnit has no address: no reference names an evidence record.
+func evidenceUnit(evidence model.Evidence) (Change, string) {
+	return Change{Kind: "evidence", ID: evidence.ID}, evidence.ID
+}
+
+func decisionUnit(decision model.Decision) (Change, string) {
+	address := source.Address{Kind: "decision", ID: decision.ID}
+	return Change{Kind: "decision", ID: decision.ID, Address: address.String()}, decision.ID
 }

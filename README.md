@@ -4,8 +4,8 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`emhcl` v0.16.0 implements Event Modeling HCL Specification v0.7.0. Releases v0.14.0
-and v0.15.0 implement v0.6.0; v0.12.0 and v0.13.0 implement v0.5.0. A model can
+`emhcl` v0.17.0 implements Event Modeling HCL Specification v0.8.0. Release v0.16.0
+implements v0.7.0. Releases v0.14.0 and v0.15.0 implement v0.6.0. Releases v0.12.0 and v0.13.0 implement v0.5.0. A model can
 be one `.em.hcl` file or a folder of `.em.hcl` files.
 This repository provides a strict validator, canonical formatter, typed semantic model,
 normative language documentation, and executable examples. The domain reference is the upstream [Event Modeling
@@ -25,7 +25,7 @@ preserve the rules and durable artifacts of an Event Modeling session.
 Install the tagged command with Go 1.25 or newer:
 
 ```bash
-go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.16.0
+go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.17.0
 ```
 
 Go writes the executable to `GOBIN`, or to `$(go env GOPATH)/bin` when
@@ -67,6 +67,7 @@ Validate one complete model per invocation:
 emhcl validate examples/minimal.em.hcl
 emhcl validate examples/complete.em.hcl
 emhcl validate examples/pet-management-detailed.em.hcl
+emhcl validate examples/method-facts.em.hcl
 emhcl validate --profile strict examples/complete.em.hcl
 emhcl fmt -w examples/complete.em.hcl
 ```
@@ -358,7 +359,7 @@ required properties (such as `sliceType`, element `fields`/`dependencies` or
 specification `linkedId`), values outside an enum, mistyped values and trailing
 content are import errors that name the offending JSON path.
 
-The native language is Specification **v0.7.0**. Actors are declared at
+The native language is Specification **v0.8.0**. Actors are declared at
 the top level and referenced by screens; workflows have no actor attribute
 or actor inheritance.
 
@@ -443,6 +444,14 @@ contexts no slice exposes and events no workflow references also have no
 equivalent and produce warnings. An event is exported as a copy only when
 another workflow produces it; an event nothing produces stays an original.
 A read model's question is derived from its description or title on import.
+
+The method facts of v0.8.0 have no interchange equivalent. Export warns and
+drops aggregate `identity`, lifecycles, evidence sources, evidence, decisions,
+`field_source` blocks, key flags, and scenario `case`. It omits an
+`empty_history` scenario, because import rejects a view specification without
+given steps. It omits a `then` step with `expect_no_dispatch`. When that
+leaves no `then` step, it omits the scenario. Import accepts a `then` command
+in an automation specification whose one `when` step is a processor.
 
 Warnings do not change the exit code. If native validation still reports
 errors, `import` writes the generated source for repair and exits with code 1;
@@ -602,6 +611,63 @@ The completion event `reminder_requested` is in `readmodel.from`, so it can
 remove the pet from the list. The `pet_management` context declares both
 events.
 
+### Method facts
+
+Specification v0.8.0 adds facts that a modeling method finds. Each fact is
+optional. A model without them keeps its meaning and its diagnostics.
+
+- Scenario `case` names the pattern of a scenario, for example
+  `"happy_path"`, `"state_violation"`, or `"appear"`. A case from the wrong
+  group is error EM304.
+- `empty_history = true` states a read model before any event, in a scenario
+  without `given` steps.
+- A dispatch assertion is a `then` command step in an automation scenario
+  whose `when` step is a processor. `expect_no_dispatch = true` states that
+  the processor does not issue the command. A misplaced flag is error EM304,
+  and a scenario that states both outcomes is error EM305.
+- Aggregate `identity` names the field type of one stream. An event of the
+  aggregate without that field is error EM018.
+- A top-level `lifecycle` states the states and transitions of one aggregate.
+  An invalid lifecycle is error EM017.
+- `evidence_source` and `evidence` record where a fact comes from and how
+  certain it is.
+- `decision` records one choice and its reason.
+- A hotspot can state its `kind`, `category`, `options`, and `concerns`.
+- A `field_source` block in a workflow states which fields give the value of
+  one field. It uses field references such as
+  `command.open_booking.field.guest_name`. An invalid field source is error
+  EM202.
+- `correlation_key` and `deduplication_key` mark key fields of an outside fact.
+
+```hcl
+state_change "open_booking" {
+  command "open_booking" {
+    fields = [field_type.booking.booking_id, field_type.booking.guest_name]
+    to     = [event.booking.booking_opened]
+  }
+
+  field_source {
+    inputs = [command.open_booking.field.guest_name]
+    target = event.booking.booking_opened.field.guest_name
+  }
+
+  scenario "booking_is_opened" {
+    case = "happy_path"
+
+    when {
+      command = command.open_booking
+    }
+
+    then {
+      event = event.booking.booking_opened
+    }
+  }
+}
+```
+
+[`examples/method-facts.em.hcl`](examples/method-facts.em.hcl) uses every
+method fact in one valid model.
+
 Use native values for field examples:
 
 ```hcl
@@ -624,7 +690,8 @@ field "pets" {
 - [Learning guide](https://github.com/event-modeling-hcl/spec/blob/main/guides/learning-event-modeling-hcl.md):
   practice-first Event Modeling and `.em.hcl` instruction.
 - [Minimal example](examples/minimal.em.hcl): smallest useful model.
-- [Complete reference](examples/complete.em.hcl): every supported HCL construct.
+- [Complete reference](examples/complete.em.hcl): every HCL construct of v0.7.0.
+- [Method facts](examples/method-facts.em.hcl): every construct that v0.8.0 adds.
 - [Pet-management port](examples/pet-management-detailed.em.hcl): the supplied
   five-workflow golden model in native HCL.
 - [Language decisions and migration guidance](https://github.com/event-modeling-hcl/spec):
@@ -702,7 +769,7 @@ exhaustiveness, vulnerability, example-validation, and release checks.
 
 ## Boundaries
 
-The supported HCL Specification v0.7.0 resolves references within one model,
+The supported HCL Specification v0.8.0 resolves references within one model,
 one file or one folder, and enforces scoped identity, the board, canonical
 typed flows, scenario shape, explicit field types, field examples, and workflow
 patterns, as the

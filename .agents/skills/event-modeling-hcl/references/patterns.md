@@ -242,15 +242,18 @@ A failure the business tracks is an event (`payment_failed`), specified with
 `then { event = ... }`. Do not collapse that into an error string.
 
 Use a hotspot—not a fabricated failure rule—when the outcome is unresolved.
-Do not invent `expect_no_dispatch` for "the processor does nothing".
+When the business model states that the processor does nothing, write a
+`then` command step with `expect_no_dispatch = true` in the automation action
+form scenario. Do not invent that rule.
 
 ## Information-completeness example
 
 If `order_placed` contains `order_id`, `customer_id`, and `total`, the deciding
 command must provide those values, or `generated = true` plus a `description`
 must state the derivation. If `order_summary` exposes the same fields, each
-must be obtainable from one of its `from` events. Do not encode that lineage
-with `mapping`, `session:`, `latest:`, `derived:`, or `aggregate:`. A field
+must be obtainable from one of its `from` events. Encode that lineage with
+`field_source` blocks, not with `mapping`, `session:`, `latest:`, `derived:`,
+or `aggregate:`. A field
 required only by infrastructure does not belong in a domain contract unless it
 has contract meaning; mark known technical fields with
 `technical_attribute = true`.

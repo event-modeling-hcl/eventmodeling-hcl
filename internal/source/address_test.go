@@ -79,6 +79,7 @@ func TestAddressAt_NamesTheInnermostAddressableDeclaration(t *testing.T) {
 		{"b.em.hcl", "to = [command.register]", "screen.register_pet.pet_form"},
 		{"b.em.hcl", `command "register"`, "command.register_pet.register"},
 		{"b.em.hcl", `title = "Pets"`, "workflow.register_pet"},
+		{"a.em.hcl", `question = "Who`, "hotspot.open_question"},
 		{"b.em.hcl", "given {}", "workflow.register_pet"},
 	} {
 		got, ok := document.AddressAt(rangeOf(t, test.file, sources[test.file], test.marker))
@@ -91,7 +92,7 @@ func TestAddressAt_NamesTheInnermostAddressableDeclaration(t *testing.T) {
 func TestAddressAt_GivesNoAddressOutsideAddressableDeclarations(t *testing.T) {
 	document := decodeFiles(t, map[string]string{"a.em.hcl": addressCatalog, "b.em.hcl": addressWorkflow})
 
-	for _, marker := range []string{"workflows = [workflow.register_pet]\n}\n\nhotspot", `question = "Who`, "board {"} {
+	for _, marker := range []string{"workflows = [workflow.register_pet]\n}\n\nhotspot", "board {"} {
 		if got, ok := document.AddressAt(rangeOf(t, "a.em.hcl", addressCatalog, marker)); ok {
 			t.Errorf("AddressAt(%q) = %q, want no address", marker, got)
 		}

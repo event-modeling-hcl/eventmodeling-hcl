@@ -15,6 +15,10 @@ create additional business elements. If encoding is requested, use the sibling
 [Event Modeling HCL skill](../../event-modeling-hcl/SKILL.md) for legal syntax,
 types, scenarios, validation, and technical reports. Preserve an intent that
 the encoding cannot express directly, and state the gap. Do not invent syntax.
+The HCL encoding has named forms for these method facts: `field_source`,
+`lifecycle`, `evidence_source` and `evidence`, `decision`, hotspot kinds,
+scenario `case`, `empty_history`, and `expect_no_dispatch`. They are not
+descriptions, comments, or hotspots.
 
 Event Modeling does not require Event Sourcing. Model the process as it works
 on paper. Do not add brokers, databases, retries, handlers, or implementation
@@ -195,7 +199,8 @@ Trace sources according to the element:
 Document a derivation on the owning element or scenario. A shared field name
 or reusable domain concept does not prove lineage without a real connection.
 If a required source is not connected, establish the evidenced connection or
-record a hotspot. Never invent a join or a private lineage language.
+record a hotspot. Never invent a join or a private lineage language. The HCL
+skill encodes each established source as a `field_source`.
 
 Use the domain's vocabulary for recurring concepts. Record data meaning and
 precision when known. Prefer decimal precision for money. Distinguish dates
@@ -422,7 +427,8 @@ Make the source of a non-obvious modeling choice visible:
 - Documents: Treat tender text, specifications, and tickets as requirements.
   Preserve deadlines, exclusions, penalties, numbers, and dates verbatim.
   Record conflicting passages in one hotspot that cites both sources.
-  Label conclusions as stated, implied, or assumed.
+  Label conclusions as stated, implied, or assumed. HCL records them as
+  `evidence` with that certainty.
 - Code and schemas: Treat them as hypotheses. Persisted state changes suggest
   events. A person-triggered write suggests a screen and command. A job or
   inbound call suggests a processor. A query suggests a read model. Do not

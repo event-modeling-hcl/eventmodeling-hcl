@@ -2,21 +2,22 @@
 name: event-modeling-hcl
 description: >-
   Author, extend, repair, review, validate, format, split, migrate, import,
-  export, or explain Event Modeling HCL v0.7.0 files and folder models.
+  export, or explain Event Modeling HCL v0.8.0 files and folder models.
   Use for `.em.hcl` syntax, references, scenarios, diagnostics, and emhcl
   commands. For business discovery or business-quality review, use the sibling
   event-modeling skill. When a request turns domain prose into HCL, use
   event-modeling first, then this skill. Do not use this skill for a
   workshop-only discussion with no HCL deliverable.
 compatibility: >-
-  Targets Event Modeling HCL Specification v0.7.0. For machine verification,
-  use emhcl v0.16.0 or newer. v0.14.0 and v0.15.0 implement v0.6.0 and reject
+  Targets Event Modeling HCL Specification v0.8.0. For machine verification,
+  use emhcl v0.17.0 or newer. v0.16.0 implements v0.7.0 and rejects the
+  method facts of v0.8.0. v0.14.0 and v0.15.0 implement v0.6.0 and reject
   a screen `kind`. v0.12.0 and v0.13.0 implement v0.5.0. Older releases
   implement v0.4.0.
 metadata:
-  version: "3.0.0"
-  spec_version: "v0.7.0"
-  emhcl_min: "v0.16.0"
+  version: "3.1.0"
+  spec_version: "v0.8.0"
+  emhcl_min: "v0.17.0"
   author: workspace
   specification: "https://github.com/event-modeling-hcl/spec"
 ---
@@ -31,7 +32,7 @@ prose explanation does not replace a requested model file.
 
 Read these references for the requested operation:
 
-- Read [the language reference](references/language-v0.7.md) before writing,
+- Read [the language reference](references/language-v0.8.md) before writing,
   repairing, reviewing, splitting, migrating, importing, or exporting HCL.
 - Read [the shared edit policy](../event-modeling/references/edit-policy.md)
   before any mutation, including formatting, conversion, and repair. It is the
@@ -43,7 +44,7 @@ Use [event-modeling](../event-modeling/SKILL.md) when business meaning is
 incomplete or the user requests business-quality review. Do not rerun discovery
 for a syntax-only repair whose meaning is already clear.
 
-The normative v0.7.0 specification wins over examples, existing files, and
+The normative v0.8.0 specification wins over examples, existing files, and
 general HCL knowledge. Legal syntax does not prove business quality. Do not
 change business meaning to satisfy the grammar. Report a representation gap
 and return the unresolved decision to business modeling.
@@ -118,10 +119,17 @@ inside it. Use built-in types for one-off fields. Encode identifiers, PII,
 optionality, technical data, cardinality, and examples only when known.
 Use `generated = true` only for system-filled values, never for user input.
 
-Preserve field sources from the business model. Document renames and
-derivations on the owning element or in a scenario `comment`. A `field` has
-no `description` attribute (`EM000`). Do not add a `mapping` lineage language.
-The CLI accepts unchecked strings that do not establish a source contract.
+Preserve field sources from the business model. Encode each one as a
+`field_source` block in the workflow, with `description` for a derivation. A
+`field` has no `description` attribute (`EM000`). Do not add a `mapping`
+lineage language. The CLI accepts unchecked strings that do not establish a
+source contract.
+
+Encode the other method facts that the business model states with their HCL
+forms: scenario `case`, `empty_history`, dispatch assertions and
+`expect_no_dispatch`, aggregate `identity`, `lifecycle`, `evidence_source` and
+`evidence`, `decision`, hotspot `kind`, `category`, `options`, and `concerns`,
+and the key flags. Never invent one to fill a checklist.
 
 Relationships are unquoted HCL traversals, not strings. Write an edge once:
 use `to` on a workflow source, or `from` on the receiving workflow element
@@ -139,15 +147,15 @@ A recorded business failure is an event. Use semantic `comment` blocks for
 notes, not ordinary HCL comments.
 
 Do not invent `linked_copy`, `element_copy`, `storyline`, `query`, `note`,
-`expect_no_dispatch`, or a lineage DSL. Do not add implementation code,
+or a lineage DSL. Do not add implementation code,
 database schemas, brokers, retries, or framework architecture unless asked.
 
 ## Format, validate, and repair
 
 Prefer a compatible repository-local binary, then a PATH-installed binary.
-Check `emhcl version`. v0.7.0 needs v0.16.0 or newer. A checkout's `dev` build
+Check `emhcl version`. v0.8.0 needs v0.17.0 or newer. A checkout's `dev` build
 counts as current only if `emhcl version --format json` reports
-`"spec": "v0.7.0"`. Do not install tooling or run untrusted downloads without
+`"spec": "v0.8.0"`. Do not install tooling or run untrusted downloads without
 the user's request.
 
 Run these gates in order, within the permitted edit scope. `MODEL` is one
@@ -184,6 +192,9 @@ Repair source errors, not diagnostic severity. Diagnostic families are
 only `EM401`–`EM406`. Folder diagnostics name their member file. Board and
 chapter codes include `EM015` missing or repeated board, `EM016` repeated
 board workflow, `EM014` workflow in two chapters, and `EM005` empty chapter.
+Method fact codes are `EM017` lifecycle, `EM018` aggregate identity, `EM202`
+field source, `EM304` misplaced scenario attribute, and `EM305` contradictory
+dispatch assertion.
 
 Use a separate repair counter for each diagnostic code on each element.
 After two unsuccessful repairs, stop editing for that code. Report its

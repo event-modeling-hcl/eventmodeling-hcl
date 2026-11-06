@@ -50,6 +50,7 @@
     if(step.fields && step.fields.length) parts.push(`<div class="sl-step-note">With ${step.fields.map(esc).join(", ")}</div>`);
     if(step.error) parts.push(`<div class="sl-step-error">Fails with: ${esc(step.error)}</div>`);
     if(step.emptyList) parts.push(`<div class="sl-step-note">Expects an empty list</div>`);
+    if(step.noDispatch) parts.push(`<div class="sl-step-note">Expects that the command is not issued</div>`);
     return parts.join("");
   }
 

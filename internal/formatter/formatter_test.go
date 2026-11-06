@@ -159,3 +159,181 @@ func TestFormat_PreservesLeadingComments(t *testing.T) {
 		t.Fatalf("leading comment = %q, want %q", got, want)
 	}
 }
+
+// Each block of RFC 0007 gets the attribute order of the specification, and
+// the order of every list stays as written.
+func TestFormat_OrdersMethodFactAttributes(t *testing.T) {
+	source := []byte(`lifecycle "booking" {
+  state "done" {
+    path = "main"
+    end  = true
+  }
+
+  transition "close" {
+    after   = state.done
+    before  = [state.open, state.held]
+    events  = [event.booking.closed]
+    command = command.close.close
+  }
+
+  invalid_transition "reopen" {
+    before  = [state.done]
+    reason  = "A closed booking stays closed."
+    command = command.reopen.reopen
+  }
+
+  aggregate = aggregate.booking.booking
+}
+
+evidence "rule" {
+  on        = state.booking.done
+  source    = evidence_source.policy
+  location  = "page 3"
+  certainty = "stated"
+}
+
+decision "debt" {
+  on        = workflow.close
+  reason    = "One list."
+  statement = "The list reads two events."
+  signal    = "EM403"
+  kind      = "accepted_debt"
+}
+
+hotspot "refund" {
+  on       = workflow.close
+  concerns = "scenario"
+  options  = ["B", "A"]
+  question = "Refund?"
+  category = "rule"
+  kind     = "request"
+}
+
+state_view "list" {
+  field_source {
+    target      = readmodel.list.field.name
+    inputs      = [event.booking.closed.field.name]
+    description = "Copy."
+  }
+
+  scenario "empty" {
+    empty_history = true
+    case          = "appear"
+
+    then {
+      readmodel          = readmodel.list
+      expect_no_dispatch = true
+      expect_empty_list  = true
+    }
+  }
+}
+
+bounded_context "booking" {
+  aggregate "booking" {
+    identity = field_type.booking_id
+    title    = "Booking"
+  }
+
+  event "closed" {
+    field "name" {
+      deduplication_key = true
+      pii               = true
+      correlation_key   = true
+      id_attribute      = true
+      generated         = true
+      type              = "String"
+    }
+  }
+}
+`)
+	want := `lifecycle "booking" {
+  aggregate = aggregate.booking.booking
+
+  state "done" {
+    end  = true
+    path = "main"
+  }
+
+  transition "close" {
+    command = command.close.close
+    events  = [event.booking.closed]
+    before  = [state.open, state.held]
+    after   = state.done
+  }
+
+  invalid_transition "reopen" {
+    command = command.reopen.reopen
+    reason  = "A closed booking stays closed."
+    before  = [state.done]
+  }
+}
+
+evidence "rule" {
+  certainty = "stated"
+  location  = "page 3"
+  source    = evidence_source.policy
+  on        = state.booking.done
+}
+
+decision "debt" {
+  kind      = "accepted_debt"
+  signal    = "EM403"
+  statement = "The list reads two events."
+  reason    = "One list."
+  on        = workflow.close
+}
+
+hotspot "refund" {
+  kind     = "request"
+  category = "rule"
+  question = "Refund?"
+  options  = ["B", "A"]
+  concerns = "scenario"
+  on       = workflow.close
+}
+
+state_view "list" {
+  field_source {
+    description = "Copy."
+    inputs      = [event.booking.closed.field.name]
+    target      = readmodel.list.field.name
+  }
+
+  scenario "empty" {
+    case          = "appear"
+    empty_history = true
+
+    then {
+      expect_empty_list  = true
+      expect_no_dispatch = true
+      readmodel          = readmodel.list
+    }
+  }
+}
+
+bounded_context "booking" {
+  aggregate "booking" {
+    title    = "Booking"
+    identity = field_type.booking_id
+  }
+
+  event "closed" {
+    field "name" {
+      type              = "String"
+      generated         = true
+      id_attribute      = true
+      correlation_key   = true
+      deduplication_key = true
+      pii               = true
+    }
+  }
+}
+`
+	formatted, diagnostics := Format("model.em.hcl", source)
+	if diagnostics.HasErrors() {
+		t.Fatalf("diagnostics = %s", diagnostics.Error())
+	}
+	if string(formatted) != want {
+		t.Fatalf("formatted =\n%s\nwant\n%s", formatted, want)
+	}
+}

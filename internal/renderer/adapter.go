@@ -359,7 +359,7 @@ func (a *adapter) adaptStep(workflowID string, source model.Step) Step {
 	return Step{
 		Title: title, RefKind: source.Target, Ref: a.referenceTitle(workflowID, source.Ref),
 		Examples: source.Examples, Fields: fieldNames, Error: source.Error,
-		EmptyList: source.ExpectEmptyList,
+		EmptyList: source.ExpectEmptyList, NoDispatch: source.ExpectNoDispatch,
 	}
 }
 

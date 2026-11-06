@@ -95,3 +95,47 @@ func ReferenceList(expression hcl.Expression) []string {
 	}
 	return values
 }
+
+// SplitFieldReference splits the segments of a field reference into the
+// element segments and the field path. An event has the form
+// event.<context>.<id>. A workflow element has the local form <kind>.<id> or
+// the qualified form <kind>.<workflow>.<id>. Each field adds the two segments
+// field.<name>, so the parity of the segment count separates the local form
+// (even) from the qualified forms (odd). It reports false when parts is not a
+// field reference.
+func SplitFieldReference(parts []string) ([]string, []string, bool) {
+	if len(parts) < 4 {
+		return nil, nil, false
+	}
+	base := 3
+	switch {
+	case parts[0] == "event":
+	case ElementHasAddress(parts[0]):
+		if len(parts)%2 == 0 {
+			base = 2
+		}
+	default:
+		return nil, nil, false
+	}
+	if len(parts) < base+2 || (len(parts)-base)%2 != 0 {
+		return nil, nil, false
+	}
+	path := make([]string, 0, (len(parts)-base)/2)
+	for index := base; index < len(parts); index += 2 {
+		if parts[index] != "field" {
+			return nil, nil, false
+		}
+		path = append(path, parts[index+1])
+	}
+	return parts[:base], path, true
+}
+
+// QualifiedElement returns the document-wide ID of the element segments of a
+// field reference: event.<context>.<id>, or <kind>.<workflow>.<id> with
+// workflowID for the local form.
+func QualifiedElement(element []string, workflowID string) string {
+	if len(element) == 2 {
+		return element[0] + "." + workflowID + "." + element[1]
+	}
+	return strings.Join(element, ".")
+}

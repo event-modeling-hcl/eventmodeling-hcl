@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "Create `borrowing.em.hcl` for a library. A member uses a checkout screen to borrow an available book copy. Borrow Book produces Book Borrowed; reject an attempt when the copy is already on loan. Members can view their current loans. When a loan becomes overdue, the system should request an overdue notice without human input. Include UUID member_id and copy_id contracts, concrete Read Model questions, and scenarios. Write the file in the current directory and validate it if the Event Modeling HCL CLI is available.",
-      "expected_output": "A coherent valid v0.7.0 model with one board in business-time order, containing State Change, State View, and Automation workflows with owned Events, reusable field types, explicit field types, canonical flows, and pattern-correct scenarios.",
+      "expected_output": "A coherent valid v0.8.0 model with one board in business-time order, containing State Change, State View, and Automation workflows with owned Events, reusable field types, explicit field types, canonical flows, and pattern-correct scenarios.",
       "files": [],
       "expectations": [
         "Because the request creates an Event Model from domain prose, business meaning is established with the event-modeling skill before event-modeling-hcl encodes it. The HCL skill is not used as a substitute for business discovery.",
@@ -68,7 +68,7 @@
         "The bounded context with all its events, aggregates, and field types is in one file.",
         "The single `board` block moves whole into one file and keeps its workflow list unchanged, so the story order is the same. The chapter keeps its membership; no workflow is in two chapters.",
         "File names may use a prefix for human reading order, but the reply does not rely on file order for the board. No ID is declared twice across files.",
-        "With emhcl v0.16.0 or newer, the folder is formatted with `emhcl fmt -w clinic` or by formatting each member file, and validated with `emhcl validate clinic`. The agent does not falsely claim current fmt refuses folders, validate members separately as complete models, or claim an older CLI verifies v0.7.0.",
+        "With emhcl v0.17.0 or newer, the folder is formatted with `emhcl fmt -w clinic` or by formatting each member file, and validated with `emhcl validate clinic`. The agent does not falsely claim current fmt refuses folders, validate members separately as complete models, or claim an older CLI verifies v0.7.0.",
         "The owner_notice_timing hotspot stays open and attached to processor.notify_owner.owner_notifier, with its original question. No timing rule is invented, the reply does not call the model implementation-ready, and any strict EM406 failure is reported rather than suppressed."
       ]
     },

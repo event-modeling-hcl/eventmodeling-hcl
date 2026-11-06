@@ -41,12 +41,13 @@ func ElementHasAddress(kind string) bool {
 
 // AddressAt returns the address of the innermost declaration that contains
 // the start of rng and has a reference form. Every child of a bounded context
-// (event, aggregate, field_type) has the form <kind>.<context>.<id>. A
-// declaration without a reference form, such as a scenario, gives the address
-// of the declaration around it. It reports false when no declaration with a
-// reference form contains rng: a chapter, a hotspot, the board, and the start
-// of the model (Document.Start), which is the subject of a diagnostic about
-// the model as a whole.
+// (event, aggregate, field_type) has the form <kind>.<context>.<id>, and every
+// part of a lifecycle has the form <kind>.<lifecycle>.<id>. A declaration
+// without a reference form, such as a scenario, gives the address of the
+// declaration around it. It reports false when no declaration with a
+// reference form contains rng: a chapter, an evidence record, the board, and
+// the start of the model (Document.Start), which is the subject of a
+// diagnostic about the model as a whole.
 func (d *Document) AddressAt(rng hcl.Range) (Address, bool) {
 	if rng.Filename == "" || rng == d.parsed.Start() {
 		return Address{}, false
@@ -64,7 +65,13 @@ func (d *Document) AddressAt(rng hcl.Range) (Address, bool) {
 				return Address{Kind: child.Type, Scope: id, ID: child.Labels[0]}, true
 			}
 			return Address{Kind: block.Type, ID: id}, true
-		case "actor", "team", "system":
+		case "actor", "team", "system", "hotspot", "decision", "evidence_source":
+			return Address{Kind: block.Type, ID: id}, true
+		case "lifecycle":
+			children, _, _ := syntax.PartialContent(block.Body, syntax.LifecycleSchema())
+			if child, ok := containingChild(children, rng, everyKind); ok {
+				return Address{Kind: child.Type, Scope: id, ID: child.Labels[0]}, true
+			}
 			return Address{Kind: block.Type, ID: id}, true
 		case "state_change", "state_view", "automation":
 			children, _, _ := syntax.PartialContent(block.Body, syntax.WorkflowSchema())

@@ -57,6 +57,9 @@ func workflowRule(name string) (attributeRule, bool) {
 }
 
 func aggregateRule(name string) (attributeRule, bool) {
+	if name == "identity" {
+		return attributeRule{reference: true}, true
+	}
 	return stringRule(name, "title", "description")
 }
 
@@ -88,7 +91,7 @@ func fieldRule(name string) (attributeRule, bool) {
 		return attributeRule{kind: anyValue}, true
 	case "mapping", "schema":
 		return attributeRule{kind: stringValue}, true
-	case "optional", "technical_attribute", "generated", "id_attribute", "pii":
+	case "optional", "technical_attribute", "generated", "id_attribute", "pii", "correlation_key", "deduplication_key":
 		return attributeRule{kind: boolValue}, true
 	case "cardinality":
 		return attributeRule{kind: stringValue, enum: []string{"List", "Single"}}, true
@@ -105,7 +108,20 @@ func tableRule(name string) (attributeRule, bool) {
 func screenImageRule(name string) (attributeRule, bool) { return stringRule(name, "title", "url") }
 func commentRule(name string) (attributeRule, bool)     { return stringRule(name, "description") }
 
+// commandCases and readModelCases are the two groups of scenario case values.
+// The form of a scenario selects the group.
+var (
+	commandCases   = []string{"happy_path", "variant", "refused_input", "state_violation", "business_duplicate", "limit", "authorization", "alternative_path", "external_failure", "compensation"}
+	readModelCases = []string{"appear", "change", "disappear"}
+)
+
 func scenarioRule(name string) (attributeRule, bool) {
+	switch name {
+	case "case":
+		return attributeRule{kind: stringValue, enum: append(slices.Clone(commandCases), readModelCases...)}, true
+	case "empty_history":
+		return attributeRule{kind: boolValue}, true
+	}
 	return stringRule(name, "title", "description")
 }
 
@@ -117,7 +133,7 @@ func scenarioStepRule(name string) (attributeRule, bool) {
 		return attributeRule{kind: stringListValue}, true
 	case "examples":
 		return attributeRule{kind: objectListValue}, true
-	case "expect_empty_list":
+	case "expect_empty_list", "expect_no_dispatch":
 		return attributeRule{kind: boolValue}, true
 	case "event", "command", "readmodel", "processor", "fields":
 		return attributeRule{reference: true}, true
@@ -160,8 +176,110 @@ func hotspotRule(name string) (attributeRule, bool) {
 		return attributeRule{reference: true}, true
 	case "status":
 		return attributeRule{kind: stringValue, enum: []string{"open", "resolved"}}, true
+	case "kind":
+		return attributeRule{kind: stringValue, enum: []string{"question", "assumption", "request"}}, true
+	case "category":
+		return attributeRule{kind: stringValue, enum: []string{"action", "data", "next", "rule", "example", "view", "who", "time"}}, true
+	case "options":
+		return attributeRule{kind: stringListValue}, true
+	case "concerns":
+		return attributeRule{kind: stringValue, enum: []string{"event", "aggregate", "field_type", "command", "readmodel", "screen", "processor", "scenario", "workflow", "board", "chapter", "actor", "lifecycle", "field_source"}}, true
 	}
 	return attributeRule{}, false
+}
+
+func lifecycleRule(name string) (attributeRule, bool) {
+	if name == "aggregate" {
+		return attributeRule{reference: true}, true
+	}
+	return stringRule(name, "title", "description")
+}
+
+func stateRule(name string) (attributeRule, bool) {
+	switch name {
+	case "end":
+		return attributeRule{kind: boolValue}, true
+	case "path":
+		return attributeRule{kind: stringValue, enum: []string{"main", "cancel", "failure", "compensation"}}, true
+	}
+	return stringRule(name, "title", "description")
+}
+
+func transitionRule(name string) (attributeRule, bool) {
+	switch name {
+	case "before", "after", "command", "events":
+		return attributeRule{reference: true}, true
+	}
+	return stringRule(name, "title", "description", "reason")
+}
+
+func evidenceSourceRule(name string) (attributeRule, bool) {
+	if name == "kind" {
+		return attributeRule{kind: stringValue, enum: []string{"document", "code", "application", "person"}}, true
+	}
+	return stringRule(name, "title", "description", "location")
+}
+
+func evidenceRule(name string) (attributeRule, bool) {
+	switch name {
+	case "on", "source":
+		return attributeRule{reference: true}, true
+	case "certainty":
+		return attributeRule{kind: stringValue, enum: []string{"stated", "implied", "assumed"}}, true
+	}
+	return stringRule(name, "title", "description", "location")
+}
+
+func decisionRule(name string) (attributeRule, bool) {
+	switch name {
+	case "on":
+		return attributeRule{reference: true}, true
+	case "kind":
+		return attributeRule{kind: stringValue, enum: []string{"choice", "accepted_debt"}}, true
+	case "signal":
+		return attributeRule{kind: stringValue, enum: []string{"EM401", "EM402", "EM403", "EM404", "EM405", "EM406"}}, true
+	}
+	return stringRule(name, "title", "description", "statement", "reason")
+}
+
+func fieldSourceRule(name string) (attributeRule, bool) {
+	switch name {
+	case "inputs", "target":
+		return attributeRule{reference: true}, true
+	}
+	return stringRule(name, "description")
+}
+
+// nonEmptyText reports a text value that the language requires to be
+// non-empty when it is empty or holds only whitespace. A value of another
+// kind is already reported by validateLiteralAttributes.
+func nonEmptyText(attribute *hcl.Attribute) hcl.Diagnostics {
+	if attribute == nil {
+		return nil
+	}
+	value, diagnostics := attribute.Expr.Value(nil)
+	if diagnostics.HasErrors() || value.IsNull() || !value.IsWhollyKnown() {
+		return nil
+	}
+	empty := func(item cty.Value) bool {
+		return !item.IsNull() && item.Type().Equals(cty.String) && strings.TrimSpace(item.AsString()) == ""
+	}
+	if value.Type().Equals(cty.String) {
+		if empty(value) {
+			return hcl.Diagnostics{errorDiagnostic(codeInvalidAttribute, attribute.Expr.Range(), "Invalid attribute value", fmt.Sprintf("%s must be a non-empty string.", attribute.Name))}
+		}
+		return nil
+	}
+	if !isSequence(value) {
+		return nil
+	}
+	iterator := value.ElementIterator()
+	for iterator.Next() {
+		if _, item := iterator.Element(); empty(item) {
+			return hcl.Diagnostics{errorDiagnostic(codeInvalidAttribute, attribute.Expr.Range(), "Invalid attribute value", fmt.Sprintf("every entry of %s must be a non-empty string.", attribute.Name))}
+		}
+	}
+	return nil
 }
 
 func stringRule(name string, allowed ...string) (attributeRule, bool) {

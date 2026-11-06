@@ -160,7 +160,8 @@ function openSliceDetail(s, place){
           `<div class="cn">${esc(t.title)}</div>`+
           (t.ref?refChip(t.refKind,t.ref):"")+
           (t.error?`<div class="ex err-msg">${esc(t.error)}</div>`:"")+
-          (t.emptyList?`<span class="flag">expect_empty_list</span>`:"")+`</div></div>`);
+          (t.emptyList?`<span class="flag">expect_empty_list</span>`:"")+
+          (t.noDispatch?`<span class="flag">expect_no_dispatch</span>`:"")+`</div></div>`);
       });
       return `<div class="scenario"><div class="sh">${esc(scn.title)}</div>${rows.join("")}`+
         (scn.comments||[]).map(comment=>`<div class="comment">💬 ${esc(comment)}</div>`).join("")+`</div>`;

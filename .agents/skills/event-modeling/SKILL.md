@@ -181,6 +181,12 @@ boundaries, ordered flows, fields and sources, scenario intent, uncertainty,
 and evidence. Include applicable workflow statuses, named approvals, locked
 consumers, and blocked chain changes from the shared edit policy.
 
+HCL has a form for each of these method facts: `field_source` for a field
+source, `lifecycle` for the states of an aggregate, `evidence_source` and
+`evidence` for a source and its certainty, `decision` for a choice and its
+reason, scenario `case`, and `expect_no_dispatch` for a processor that issues
+no command. The HCL skill chooses the syntax.
+
 The HCL skill must preserve this meaning while choosing legal encodings. If the
 format cannot express an intent directly, retain the intent and identify the
 gap. Do not weaken a rule or invent syntax to hide that gap.

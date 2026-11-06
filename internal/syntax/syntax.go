@@ -154,6 +154,10 @@ func ModelSchema() hcl.BodySchema {
 		{Type: "system", LabelNames: []string{"id"}},
 		{Type: "chapter", LabelNames: []string{"id"}},
 		{Type: "hotspot", LabelNames: []string{"id"}},
+		{Type: "lifecycle", LabelNames: []string{"id"}},
+		{Type: "evidence_source", LabelNames: []string{"id"}},
+		{Type: "evidence", LabelNames: []string{"id"}},
+		{Type: "decision", LabelNames: []string{"id"}},
 		{Type: "state_change", LabelNames: []string{"id"}},
 		{Type: "state_view", LabelNames: []string{"id"}},
 		{Type: "automation", LabelNames: []string{"id"}},
@@ -179,7 +183,7 @@ func BoundedContextSchema() hcl.BodySchema {
 
 // AggregateSchema is the schema of an aggregate block's body.
 func AggregateSchema() hcl.BodySchema {
-	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}}}
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}, {Name: "identity"}}}
 }
 
 // EventSchema is the schema of an event block's body.
@@ -203,7 +207,7 @@ func WorkflowSchema() hcl.BodySchema {
 			{Type: "command", LabelNames: []string{"id"}}, {Type: "readmodel", LabelNames: []string{"id"}},
 			{Type: "screen", LabelNames: []string{"id"}}, {Type: "screen_image", LabelNames: []string{"id"}},
 			{Type: "processor", LabelNames: []string{"id"}}, {Type: "table", LabelNames: []string{"id"}},
-			{Type: "scenario", LabelNames: []string{"id"}},
+			{Type: "scenario", LabelNames: []string{"id"}}, {Type: "field_source"},
 		},
 	}
 }
@@ -227,8 +231,16 @@ func ElementSchema(kind string) hcl.BodySchema {
 	return hcl.BodySchema{Attributes: attributes, Blocks: []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}}}
 }
 
-// FieldSchema is the schema of a field/subfield/field_type block's body.
+// FieldSchema is the schema of a field/subfield block's body.
 func FieldSchema() hcl.BodySchema {
+	schema := FieldTypeSchema()
+	schema.Attributes = append(schema.Attributes, hcl.AttributeSchema{Name: "correlation_key"}, hcl.AttributeSchema{Name: "deduplication_key"})
+	return schema
+}
+
+// FieldTypeSchema is the schema of a field_type block's body. It is the field
+// schema without the key flags, which state a role of one field.
+func FieldTypeSchema() hcl.BodySchema {
 	return hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{
 			{Name: "type"}, {Name: "example"}, {Name: "mapping"}, {Name: "optional"},
@@ -239,6 +251,11 @@ func FieldSchema() hcl.BodySchema {
 	}
 }
 
+// FieldSourceSchema is the schema of a workflow field_source block's body.
+func FieldSourceSchema() hcl.BodySchema {
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "description"}, {Name: "inputs", Required: true}, {Name: "target", Required: true}}}
+}
+
 // TableSchema is the schema of a table block's body.
 func TableSchema() hcl.BodySchema {
 	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "fields"}}, Blocks: []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}}}
@@ -247,7 +264,7 @@ func TableSchema() hcl.BodySchema {
 // ScenarioSchema is the schema of a scenario block's body.
 func ScenarioSchema() hcl.BodySchema {
 	return hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}},
+		Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}, {Name: "case"}, {Name: "empty_history"}},
 		Blocks:     []hcl.BlockHeaderSchema{{Type: "given"}, {Type: "when"}, {Type: "then"}, {Type: "comment"}},
 	}
 }
@@ -257,7 +274,7 @@ func ScenarioStepSchema() hcl.BodySchema {
 	return hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{
 			{Name: "title"}, {Name: "tags"}, {Name: "examples"}, {Name: "event"}, {Name: "command"},
-			{Name: "readmodel"}, {Name: "processor"}, {Name: "error"}, {Name: "expect_empty_list"}, {Name: "fields"},
+			{Name: "readmodel"}, {Name: "processor"}, {Name: "error"}, {Name: "expect_empty_list"}, {Name: "expect_no_dispatch"}, {Name: "fields"},
 		},
 		Blocks: []hcl.BlockHeaderSchema{{Type: "field", LabelNames: []string{"name"}}},
 	}
@@ -285,7 +302,65 @@ func ChapterSchema() hcl.BodySchema {
 
 // HotspotSchema is the schema of a hotspot block's body.
 func HotspotSchema() hcl.BodySchema {
-	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "question", Required: true}, {Name: "description"}, {Name: "on"}, {Name: "status"}}}
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{
+		{Name: "question", Required: true}, {Name: "description"}, {Name: "on"}, {Name: "status"},
+		{Name: "kind"}, {Name: "category"}, {Name: "options"}, {Name: "concerns"},
+	}}
+}
+
+// LifecycleSchema is the schema of a lifecycle block's body.
+func LifecycleSchema() hcl.BodySchema {
+	return hcl.BodySchema{
+		Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}, {Name: "aggregate", Required: true}},
+		Blocks: []hcl.BlockHeaderSchema{
+			{Type: "state", LabelNames: []string{"id"}},
+			{Type: "transition", LabelNames: []string{"id"}},
+			{Type: "invalid_transition", LabelNames: []string{"id"}},
+		},
+	}
+}
+
+// StateSchema is the schema of a lifecycle state block's body.
+func StateSchema() hcl.BodySchema {
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}, {Name: "end"}, {Name: "path"}}}
+}
+
+// TransitionSchema is the schema of a lifecycle transition block's body.
+func TransitionSchema() hcl.BodySchema {
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{
+		{Name: "title"}, {Name: "description"},
+		{Name: "before", Required: true}, {Name: "after", Required: true}, {Name: "command", Required: true}, {Name: "events", Required: true},
+	}}
+}
+
+// InvalidTransitionSchema is the schema of a lifecycle invalid_transition
+// block's body.
+func InvalidTransitionSchema() hcl.BodySchema {
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{
+		{Name: "title"}, {Name: "description"},
+		{Name: "before", Required: true}, {Name: "command", Required: true}, {Name: "reason", Required: true},
+	}}
+}
+
+// EvidenceSourceSchema is the schema of an evidence_source block's body.
+func EvidenceSourceSchema() hcl.BodySchema {
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}, {Name: "kind", Required: true}, {Name: "location"}}}
+}
+
+// EvidenceSchema is the schema of an evidence block's body.
+func EvidenceSchema() hcl.BodySchema {
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{
+		{Name: "title"}, {Name: "description"},
+		{Name: "on", Required: true}, {Name: "source"}, {Name: "certainty", Required: true}, {Name: "location"},
+	}}
+}
+
+// DecisionSchema is the schema of a decision block's body.
+func DecisionSchema() hcl.BodySchema {
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{
+		{Name: "title"}, {Name: "description"},
+		{Name: "statement", Required: true}, {Name: "reason", Required: true}, {Name: "kind"}, {Name: "signal"}, {Name: "on"},
+	}}
 }
 
 // ScreenImageSchema is the schema of a screen_image block's body.
