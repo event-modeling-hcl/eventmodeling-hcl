@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`emhcl` v0.17.1 implements Event Modeling HCL Specification v0.8.0. Release v0.16.0
+`emhcl` v0.18.0 implements Event Modeling HCL Specification v0.8.0. Release v0.16.0
 implements v0.7.0. Releases v0.14.0 and v0.15.0 implement v0.6.0. Releases v0.12.0 and v0.13.0 implement v0.5.0. A model can
 be one `.em.hcl` file or a folder of `.em.hcl` files.
 This repository provides a strict validator, canonical formatter, typed semantic model,
@@ -25,7 +25,7 @@ preserve the rules and durable artifacts of an Event Modeling session.
 Install the tagged command with Go 1.25 or newer:
 
 ```bash
-go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.17.1
+go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.18.0
 ```
 
 Go writes the executable to `GOBIN`, or to `$(go env GOPATH)/bin` when
@@ -47,7 +47,7 @@ the [GitHub Releases page](https://github.com/event-modeling-hcl/eventmodeling-h
 Verify a downloaded archive with that release's `checksums.txt`:
 
 ```bash
-archive=emhcl_0.15.0_linux_amd64.tar.gz
+archive=emhcl_0.18.0_linux_amd64.tar.gz
 grep " ${archive}$" checksums.txt | sha256sum -c -
 # macOS: grep " ${archive}$" checksums.txt | shasum -a 256 -c -
 ```
@@ -57,7 +57,7 @@ With GitHub CLI 2.49.0 or newer, verify the downloaded archive was produced by
 this repository's release workflow:
 
 ```bash
-gh attestation verify emhcl_0.15.0_linux_amd64.tar.gz \
+gh attestation verify emhcl_0.18.0_linux_amd64.tar.gz \
   --repo event-modeling-hcl/eventmodeling-hcl
 ```
 
@@ -88,7 +88,7 @@ identifies a complete Event Modeling document to this validator. Check the
 installed binary version with `emhcl version`.
 
 Render a valid model as a self-contained, interactive HTML canvas with chapter
-pages, five views, and a shared detail drawer for each slice's scenarios:
+pages, six views, and a shared detail drawer for each slice's scenarios:
 
 ```bash
 emhcl diagram examples/complete.em.hcl -o complete.html
@@ -107,6 +107,16 @@ views follow the board. Off-board workflows (workflows that the board does not
 list) never enter the story; the canvas lists them separately under
 **Off-board workflows**. A construct without a `title` is shown by its ID; the
 tool never derives a title from the label.
+
+Select Index to browse a numbered list of slices under each chapter.
+Chapters appear in model order. Slices within each chapter follow board order.
+Numbering starts at 1 in each chapter. The Index shows only slice titles at first.
+Select Show flows to add small previews of screens, commands, events, read models, and automations.
+The previews include source events from other slices.
+Arrows show the order of stages within a slice, not connections between slices.
+Select a slice title to open its scenarios, or a chapter label to open that chapter.
+The Index covers the whole board and excludes off-board workflows.
+You can bookmark it with the `#index` URL fragment.
 
 Chapters are the top-level navigation. The **Chapter** picker in the toolbar
 lists every chapter in ID order, and the ‹ › arrows step to the previous or next chapter

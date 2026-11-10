@@ -30,6 +30,7 @@ __STYLES_SLIDES__</style>
       <a class="btn chapter-step" id="chapter-next" aria-label="Next chapter" title="Next chapter">›</a>
     </div>
     <div class="seg" id="f-view"><span class="fkey">View</span></div>
+    <a class="toolbtn" id="t-index" href="#index" title="All slice titles by chapter">Index</a>
     <a class="toolbtn" id="t-contextmap" href="#contextmap" title="Bounded contexts of the whole model">Context Map</a>
     <a class="toolbtn" id="t-offboard" href="#offboard" title="Workflows the board does not list" hidden>Off-board</a>
     <div class="seg" id="f-zoom"><span class="fkey">Zoom</span><button class="btn" id="z-out" title="Zoom out (-)" aria-label="Zoom out">−</button><button class="btn zoom-level" id="z-reset" title="Reset zoom to 100% (0)" aria-label="Reset zoom">100%</button><button class="btn" id="z-in" title="Zoom in (+)" aria-label="Zoom in">+</button><button class="btn" id="z-fit" title="Fit width (F)" aria-label="Fit to width">Fit</button></div>
@@ -49,6 +50,11 @@ __STYLES_SLIDES__</style>
 </header>
 
 <div class="workspace">
+  <main class="index-scroll" id="board-index" aria-label="Story index" hidden>
+    <div class="index-heading"><h2>Index</h2><label class="switch"><input type="checkbox" id="index-flows"><span class="track"></span><span>Show flows</span></label></div>
+    <p class="index-intro">Browse slices by chapter. Select a title to open its scenarios.</p>
+    <div class="index-track" id="index-track" role="region" aria-label="Slices by chapter" tabindex="0"></div>
+  </main>
   <main class="chapter-overview-scroll" id="board-chapters" aria-label="Chapter overview" hidden></main>
   <main class="chapter-overview-scroll offboard-scroll" id="board-offboard" aria-label="Off-board workflows" hidden></main>
   <main class="slides" id="board-slides" aria-label="Slides" hidden></main>

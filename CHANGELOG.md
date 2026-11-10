@@ -6,13 +6,28 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+## [v0.18.0] - 2026-11-10
+
+This release adds an Index view to the HTML diagram.
+The Event Modeling HCL language stays at Specification v0.8.0.
+Existing models need no changes.
+
+### Added
+
+- The HTML Index view lists slice titles vertically under each chapter.
+  Each chapter starts its numbered list at 1. Slices follow board order within each chapter.
+  Select a title to open its scenarios, or a chapter name to open its Model view.
+- Show flows adds small previews of screens, commands, events, read models, and automations to the Index.
+  The previews include source events from other slices. Off-board workflows stay outside the Index.
+
 ### Changed
 
-- The agent skills now separate business modeling from HCL operations.
+- The agent skills separate business modeling from HCL operations.
   `event-modeling` handles discovery, workshop drafts, and business review.
-  `event-modeling-hcl` v3.0.0 handles HCL encoding and CLI checks. Copy both
-  directories together. Both use one edit policy that also protects shared
-  contracts consumed by locked workflows. See [Agent skills](README.md#agent-skills).
+  `event-modeling-hcl` v3.0.0 handles HCL encoding and CLI checks.
+  Both use one edit policy that protects shared contracts consumed by locked workflows.
+  The skills live in [emhcl-plugin](https://github.com/event-modeling-hcl/emhcl-plugin), not this repository.
+  See [Agent skills](README.md#agent-skills) for installation.
 - Skill evaluations include concrete existing-model fixtures, business-only
   requests, syntax-only repair, and shared-contract lock checks. Folder
   formatting expectations match the supported CLI, and migration expectations

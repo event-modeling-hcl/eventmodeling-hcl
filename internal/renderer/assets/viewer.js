@@ -29,6 +29,7 @@ const chapterHref = id => "#chapter/" + encodeURIComponent(id);
 //   #chapters | #contextmap | #offboard | #chapter/<id>[/<view>] | #<view>   with  #…/slides/<n>
 function parseHash(hash){
   if(hash === "#chapters") return {page:"chapters"};
+  if(hash === "#index") return {page:"index"};
   if(hash === "#offboard") return {page:"offboard"};
   if(hash === "#contextmap") return {page:"contextmap"};
   const match = hash.match(/^#(?:chapter\/([^/]+)\/?)?(model|compact|storming|slides)?(?:\/(\d+))?$/);
@@ -230,7 +231,7 @@ document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeDrawer(); })
 
 /* --------------------------- shared namespace for the other views --------------------------- */
 const EMC = {
-  MODEL, FULL_MODEL, OFF_BOARD, chapters, chapterHref, ELEMENTS, SLICE_OF, EDGES, NEIGHBORS,
+  MODEL, FULL_MODEL, OFF_BOARD, chapters, chapterHref, chapterSlices, ELEMENTS, SLICE_OF, EDGES, NEIGHBORS,
   el, esc, statusVar, openSlice, openSliceDetail,
   KIND_LABEL, kindLabel, hasWireframe, PAT_SVG, PATTERN_LABEL, PATTERN_NOTE, STATUS_LABEL, ACTOR_SVG, GEAR_SVG,
   ctxTitle, ctxExternal, aggTitle, eventCtx,
@@ -904,6 +905,7 @@ document.addEventListener("keydown", e=>{
 // document loads, so moving to another chapter reloads the page at the new fragment.
 const boardModel = $("#board"), boardES = $("#board-es"), boardCM = $("#board-cm"), boardCompact = $("#board-compact");
 const overviewEl = $("#board-chapters"), offBoardEl = $("#board-offboard"), slidesEl = $("#board-slides"), canvasEl = $(".canvas-scroll"), legendEl = $("#legend");
+const indexEl = $("#board-index"), indexLink = $("#t-index");
 const fView = $("#f-view"), fFiltersEl = $("#f-filters"), contextMapLink = $("#t-contextmap"), offBoardLink = $("#t-offboard");
 const chapterNav = $("#chapter-nav"), chapterPicker = $("#chapter-picker"), chapterMenu = $("#chapter-menu");
 const chapterPrev = $("#chapter-prev"), chapterNext = $("#chapter-next");
@@ -971,6 +973,7 @@ const VIEW_HINTS = {
   storming: "Adjacent notes show local flow; dashed arrows connect sequential workflows; independent flows run in parallel.",
   contextmap: "Bounded contexts of the whole model and the upstream → downstream relationships derived from cross-context event consumption.",
   chapters: "Each chapter previews its first and last slice. Open a chapter to see its Model, Compact, Storming, and Slides views.",
+  index: "Slices are numbered within each chapter, in board order. Flow previews show stages, not connections between slices.",
   offboard: "Workflows the board does not list. They have no place in the story sequence, the chapters, or the slides. Click one for its scenarios.",
   slides: "One slice per slide: the screen, the examples, then the steps behind the screen. Use ← and → or the buttons at the bottom.",
 };
@@ -1043,6 +1046,8 @@ function renderNavigation(route){
   else contextMapLink.removeAttribute("aria-current");
   if(route.page === "offboard") offBoardLink.setAttribute("aria-current", "page");
   else offBoardLink.removeAttribute("aria-current");
+  if(route.page === "index") indexLink.setAttribute("aria-current", "page");
+  else indexLink.removeAttribute("aria-current");
   const canvasBoard = route.page === "board" && isCanvasView(route.view);
   fZoomEl.hidden = !canvasBoard;
   fFiltersEl.hidden = !canvasBoard;
@@ -1077,13 +1082,19 @@ function showPage(name, route){
   overviewEl.hidden = !overview;
   offBoardEl.hidden = !offBoard;
   slidesEl.hidden = !slides;
-  canvasEl.hidden = overview || offBoard || slides;
-  legendEl.hidden = overview || offBoard || slides;
+  const index = name === "index";
+  indexEl.hidden = !index;
+  canvasEl.hidden = overview || offBoard || slides || index;
+  legendEl.hidden = overview || offBoard || slides || index;
   boardModel.hidden = name !== "model";
   boardES.hidden = name !== "storming";
   boardCM.hidden = name !== "contextmap";
   boardCompact.hidden = name !== "compact";
   $("#foot-hint").textContent = (VIEW_HINTS[name] || "") + (isCanvasView(name) ? BOARD_HINT : "");
+  if(index){
+    window.renderIndex && window.renderIndex();
+    return;
+  }
   if(overview){
     window.renderChapters && window.renderChapters();
     return;
@@ -1122,6 +1133,10 @@ function renderRoute(){
     document.title = "All chapters · " + FULL_MODEL.title;
     renderStats(FULL_MODEL, "the whole model");
     showPage("chapters");
+  } else if(route.page === "index"){
+    document.title = "Index · " + FULL_MODEL.title;
+    renderStats(FULL_MODEL, "the whole model");
+    showPage("index");
   } else if(route.page === "contextmap"){
     document.title = "Context Map · " + FULL_MODEL.title;
     renderStats(FULL_MODEL, "the whole model");

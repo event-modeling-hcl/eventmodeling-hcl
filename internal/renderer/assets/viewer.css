@@ -616,6 +616,27 @@ button{font-family:inherit}
 .chapter-empty-model{max-width:1240px;margin:auto}
 .chapter-overview.ui-group{border-style:dashed}
 .chapter-link.ui-label{color:var(--ink-soft)}
+/* ----------------------- chapter story index --------------------- */
+.index-scroll{flex:1;min-height:0;min-width:0;overflow:auto;padding:24px clamp(14px,3vw,40px);background:var(--bg)}
+.index-heading{display:flex;align-items:center;gap:32px}
+.index-heading h2{margin:0;font-family:var(--font-cond);font-size:24px}
+.index-intro{margin:8px 0 24px;color:var(--ink-soft);font-size:13px}
+.index-track{display:grid;gap:28px;padding:4px 4px 24px;max-width:960px}
+.index-track:focus-visible,.index-title:focus-visible,.index-chapter a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.index-group{min-width:0}
+.index-chapter{margin:0;padding:0 0 10px;border-bottom:2px solid var(--line);font-family:var(--font-cond);font-size:15px}
+.index-chapter a{color:var(--ink-soft);text-decoration:none}
+.index-chapter a:hover{color:var(--accent-ink);text-decoration:underline}
+.index-slices{margin:8px 0 0;padding-left:2.5em;list-style:decimal}
+.index-slice{padding-left:4px}
+.index-title{display:block;width:100%;min-height:44px;padding:0;border:0;background:none;color:var(--ink);font:inherit;font-size:14px;font-weight:650;line-height:1.4;text-align:left;overflow-wrap:anywhere;cursor:pointer}
+.index-title:hover{color:var(--accent-ink);text-decoration:underline}
+.index-flow{display:none}
+.show-flows .index-flow{display:flex;align-items:center;gap:16px;margin:0 0 16px;max-width:100%;overflow-x:auto;padding:4px 0}
+.index-stage{position:relative;display:flex;flex-direction:column;gap:5px;width:90px;flex:none}
+.index-stage+.index-stage::before{content:"→";position:absolute;right:100%;width:16px;text-align:center;color:var(--ink-faint);top:calc(50% - 10px)}
+.index-flow .timeline-node{padding:5px 6px}
+.index-flow .timeline-node-title{font-size:10px}
 /* ----------------------- off-board workflows --------------------- */
 .offboard-intro{margin:0;color:var(--ink-soft);font-style:italic}
 .offboard-card .chapter-overview-header{align-items:center}
