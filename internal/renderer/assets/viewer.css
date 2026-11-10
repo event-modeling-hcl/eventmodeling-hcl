@@ -532,10 +532,11 @@ button{font-family:inherit}
 .gwt+.gwt{border-top:1px dashed var(--line-soft)}
 .gwt .k{flex:none; width:52px; font-family:var(--font-cond); font-weight:800; font-stretch:condensed;
   text-transform:uppercase; letter-spacing:.06em; font-size:10px; padding:3px 0; text-align:center;
-  border-radius:6px; color:#fff}
-.gwt.given .k{background:var(--read-line)}
-.gwt.when  .k{background:var(--command-line)}
-.gwt.then  .k{background:var(--event-line)}
+  border-radius:6px; color:#fff; background:var(--ink-faint)}
+.gwt[data-kind="readmodel"] .k{background:var(--read-line)}
+.gwt[data-kind="command"] .k{background:var(--command-line)}
+.gwt[data-kind="event"] .k{background:var(--event-line)}
+.gwt[data-kind="processor"] .k{background:var(--proc-line)}
 .gwt.then.err .k{background:var(--hot-line)}
 .gwt .c{flex:1; min-width:0}
 .gwt .c .cn{font-size:12.5px; font-weight:600; line-height:1.3}

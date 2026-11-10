@@ -55,8 +55,10 @@
 .sl-gwt{display:grid; grid-template-columns:56px minmax(0,1fr); gap:10px; margin-top:8px}
 .sl-gwt-key{font-family:var(--font-cond); font-weight:800; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); padding-top:2px}
 .sl-gwt-body{border-left:3px solid var(--line); padding:1px 0 1px 12px; min-width:0}
-.sl-when .sl-gwt-body{border-left-color:var(--command-line)}
-.sl-then .sl-gwt-body{border-left-color:var(--event-line)}
+.sl-gwt[data-kind="readmodel"] .sl-gwt-body{border-left-color:var(--read-line)}
+.sl-gwt[data-kind="command"] .sl-gwt-body{border-left-color:var(--command-line)}
+.sl-gwt[data-kind="event"] .sl-gwt-body{border-left-color:var(--event-line)}
+.sl-gwt[data-kind="processor"] .sl-gwt-body{border-left-color:var(--proc-line)}
 .sl-then.failed .sl-gwt-body{border-left-color:var(--st-blocked)}
 .sl-step-title{font-weight:650; font-size:14px}
 .sl-step-note{color:var(--ink-soft); font-size:13px; margin-top:2px}

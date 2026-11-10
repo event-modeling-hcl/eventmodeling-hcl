@@ -18,6 +18,17 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
   formatting expectations match the supported CLI, and migration expectations
   distinguish meaningful titles from redundant ID-derived titles.
 
+## [v0.17.1] - 2026-11-10
+
+### Fixed
+
+- HTML scenarios use the referenced element type for colors in the detail drawer and Slides.
+  Read models are green, commands are blue, and events are orange.
+- Automation slices show read model → processor → command → event, including flows with feedback arrows.
+  Compact keeps input and output events in separate boxes when they share a bounded context.
+- Chapter views show source events from other chapters and keep their arrows to local read models and processors.
+  The source workflows stay in their own chapters.
+
 ## [v0.17.0] - 2026-11-06
 
 This release implements Event Modeling HCL Specification v0.8.0 ([spec RFC 0007](https://github.com/event-modeling-hcl/spec/blob/main/rfcs/0007-method-facts.md), Method Facts in the Model). The model can now state facts that earlier versions kept in descriptions, comments, or hotspots. Every v0.7.0 model stays valid with the same codes and the same severities, and `emhcl fmt` gives the same text for it. Each new rule applies only to new syntax. `version.Spec` is `v0.8.0`.

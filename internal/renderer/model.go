@@ -126,6 +126,7 @@ type Step struct {
 	Title      string          `json:"title"`
 	RefKind    string          `json:"refKind,omitempty"`
 	Ref        string          `json:"ref,omitempty"`
+	RefID      string          `json:"refId,omitempty"`
 	Examples   json.RawMessage `json:"examples,omitempty"`
 	Fields     []string        `json:"fields,omitempty"`
 	Error      string          `json:"error,omitempty"`

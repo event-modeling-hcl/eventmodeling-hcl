@@ -89,15 +89,17 @@
     const boxes = new Map();
     events.forEach(({e})=>{
       const ctx = EMC.eventCtx(e);
-      if(!boxes.has(ctx)) boxes.set(ctx, {ctx, events:[], width:0, given:false, minStage:Infinity, cmds:[], rms:[]});
-      const box = boxes.get(ctx);
+      const key = ctx + ":" + (e.given ? "input" : "output");
+      if(!boxes.has(key)) boxes.set(key, {ctx, events:[], width:0, given:false, minStage:Infinity, cmds:[], rms:[]});
+      const box = boxes.get(key);
       box.width = Math.max(box.width, CARD_WIDTH + BOX_CHROME);
       box.events.push(e);
       box.given = box.given || !!e.given;
       box.minStage = Math.min(box.minStage, e.stage||0);
       EMC.EDGES.forEach(([a,b])=>{
         if(b===e.id && byId.get(a) && byId.get(a).kind==="command") box.cmds.push(byId.get(a));
-        if(a===e.id && byId.get(b) && byId.get(b).kind==="readmodel") box.rms.push(byId.get(b));
+        // Feedback events follow the command, not the read model they update.
+        if(a===e.id && byId.get(b)?.kind==="readmodel" && stageOf(byId.get(b))>stageOf(e)) box.rms.push(byId.get(b));
       });
     });
     const order = [...boxes.values()].sort((a,b)=>
@@ -215,11 +217,11 @@
 
   function eventsCell(slice, sliceIx, ctxOrder, colors){
     const cell = EMC.el("div","cell band events");
-    const events = slice.elements.map((e,ix)=>({e,ix})).filter(x=>x.e.kind==="event");
+    const indexOf = new Map(slice.elements.map((e,ix)=>[e.id,ix]));
     let any = false;
     const plan = slicePlan(slice);
-    plan.order.forEach(({ctx, width, margin})=>{
-      const items = events.filter(x=>EMC.eventCtx(x.e)===ctx)
+    plan.order.forEach(({ctx, events, width, margin})=>{
+      const items = events.map(e=>({e,ix:indexOf.get(e.id)}))
         .sort((a,b)=>((a.e.stage||0)-(b.e.stage||0)) || (a.ix-b.ix));
       if(!items.length) return;
       any = true;

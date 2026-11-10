@@ -57,7 +57,7 @@
   function scenarioHTML(scenario){
     const rows = [];
     const add = (key, step, failed) => rows.push(
-      `<div class="sl-gwt sl-${key.toLowerCase()}${failed?" failed":""}"><span class="sl-gwt-key">${key}</span><div class="sl-gwt-body">${stepHTML(step)}</div></div>`);
+      `<div class="sl-gwt sl-${key.toLowerCase()}${failed?" failed":""}" data-kind="${esc(step.refKind||"")}"><span class="sl-gwt-key">${key}</span><div class="sl-gwt-body">${stepHTML(step)}</div></div>`);
     (scenario.given || []).forEach(step=>add("Given", step));
     if(scenario.when) add("When", scenario.when);
     (scenario.then || []).forEach(step=>add("Then", step, !!step.error));

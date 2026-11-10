@@ -39,8 +39,37 @@ function parseHash(hash){
 }
 const requestedChapter = (parseHash(location.hash) || {}).chapterId || null;
 const activeChapter = chapters.find(chapter => chapter.id === requestedChapter);
-const sliceById = new Map(FULL_MODEL.slices.map(slice => [slice.id, slice]));
-const scopedSlices = activeChapter ? activeChapter.slices.map(id => sliceById.get(id)).filter(Boolean) : FULL_MODEL.slices;
+// A chapter keeps its own workflows, but must also show their upstream events.
+// Copy each missing source into its first consumer, retaining its shared ID so
+// every edge in this chapter still connects. Never move the full-board event.
+function chapterSlices(model, chapter){
+  const sliceById = new Map(model.slices.map(slice => [slice.id, slice]));
+  const slices = chapter.slices.map(id => sliceById.get(id)).filter(Boolean);
+  const present = new Set(slices.flatMap(slice => slice.elements.map(element => element.id)));
+  const events = new Map(model.slices.flatMap(slice => slice.elements)
+    .filter(element => element.kind === "event").map(element => [element.id, element]));
+  const incoming = new Map();
+  (model.edges || []).forEach(edge => {
+    if(!incoming.has(edge.to)) incoming.set(edge.to, []);
+    incoming.get(edge.to).push(edge.from);
+  });
+  return slices.map(slice => {
+    const sources = [];
+    const include = id => {
+      if(present.has(id) || !events.has(id)) return;
+      present.add(id);
+      sources.push({...events.get(id), given:true, stage:0});
+    };
+    slice.elements.forEach(element => (incoming.get(element.id) || []).forEach(include));
+    (slice.scenarios || []).forEach(scenario => (scenario.given || []).forEach(step => include(step.refId)));
+    if(!sources.length) return slice;
+    // Reserve an upstream stage without changing the existing local ordering.
+    const stageCount = slice.stageCount || Math.max(0, ...slice.elements.map(element => element.stage || 0)) + 1;
+    return {...slice, stageCount:stageCount + 1,
+      elements:[...slice.elements.map(element => ({...element, stage:(element.stage || 0) + 1})), ...sources]};
+  });
+}
+const scopedSlices = activeChapter ? chapterSlices(FULL_MODEL, activeChapter) : FULL_MODEL.slices;
 const scopedElementIds = new Set(scopedSlices.flatMap(slice => slice.elements.map(element => element.id)));
 const MODEL = activeChapter ? {
   ...FULL_MODEL,
@@ -145,18 +174,18 @@ function openSliceDetail(s, place){
     const sc = s.scenarios.map(scn=>{
       const rows = [];
       (scn.given||[]).forEach(g=>{
-        rows.push(`<div class="gwt given"><span class="k">Given</span><div class="c">`+
+        rows.push(`<div class="gwt given" data-kind="${esc(g.refKind||"")}"><span class="k">Given</span><div class="c">`+
           `<div class="cn">${esc(g.title)}</div>`+ (g.ref?refChip(g.refKind,g.ref):"")+
           (g.examples?`<div class="ex">${esc(JSON.stringify(g.examples))}</div>`:"")+`</div></div>`);
       });
       if(scn.when){
         const w=scn.when;
-        rows.push(`<div class="gwt when"><span class="k">When</span><div class="c">`+
+        rows.push(`<div class="gwt when" data-kind="${esc(w.refKind||"")}"><span class="k">When</span><div class="c">`+
           `<div class="cn">${esc(w.title)}</div>`+(w.ref?refChip(w.refKind,w.ref):"")+
           (w.fields && w.fields.length?`<div class="ex">${w.fields.map(esc).join(", ")}</div>`:"")+`</div></div>`);
       }
       (scn.then||[]).forEach(t=>{
-        rows.push(`<div class="gwt then${t.error?" err":""}"><span class="k">Then</span><div class="c">`+
+        rows.push(`<div class="gwt then${t.error?" err":""}" data-kind="${esc(t.refKind||"")}"><span class="k">Then</span><div class="c">`+
           `<div class="cn">${esc(t.title)}</div>`+
           (t.ref?refChip(t.refKind,t.ref):"")+
           (t.error?`<div class="ex err-msg">${esc(t.error)}</div>`:"")+

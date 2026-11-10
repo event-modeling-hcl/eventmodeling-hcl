@@ -171,15 +171,23 @@ func assignLayout(slices []Slice, edges []Edge) {
 	for sliceIndex := range slices {
 		slice := &slices[sliceIndex]
 		stages := make(map[string]int, len(slice.Elements))
-		local := make(map[string]bool, len(slice.Elements))
+		naturalStages := make(map[string]int, len(slice.Elements))
 		for _, element := range slice.Elements {
-			local[element.ID] = true
-			stages[element.ID] = naturalStage(slice.Type, element)
+			stage := naturalStage(slice.Type, element)
+			naturalStages[element.ID] = stage
+			stages[element.ID] = stage
 		}
 		for range slice.Elements {
 			changed := false
 			for _, edge := range edges {
-				if !local[edge.From] || !local[edge.To] || stages[edge.To] > stages[edge.From] {
+				fromStage, fromLocal := naturalStages[edge.From]
+				toStage, toLocal := naturalStages[edge.To]
+				if !fromLocal || !toLocal || stages[edge.To] > stages[edge.From] {
+					continue
+				}
+				// Outcome events can feed the automation's own read model or
+				// processor without becoming forward layout constraints.
+				if (slice.Type == string(model.Automation) || slice.Type == translationPattern) && fromStage > toStage {
 					continue
 				}
 				stages[edge.To] = stages[edge.From] + 1
@@ -358,6 +366,7 @@ func (a *adapter) adaptStep(workflowID string, source model.Step) Step {
 	}
 	return Step{
 		Title: title, RefKind: source.Target, Ref: a.referenceTitle(workflowID, source.Ref),
+		RefID:    nodeIDForReference(workflowID, source.Ref),
 		Examples: source.Examples, Fields: fieldNames, Error: source.Error,
 		EmptyList: source.ExpectEmptyList, NoDispatch: source.ExpectNoDispatch,
 	}

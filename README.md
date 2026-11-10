@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/event-modeling-hcl/eventmodeling-hcl.svg)](https://pkg.go.dev/github.com/event-modeling-hcl/eventmodeling-hcl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-`emhcl` v0.17.0 implements Event Modeling HCL Specification v0.8.0. Release v0.16.0
+`emhcl` v0.17.1 implements Event Modeling HCL Specification v0.8.0. Release v0.16.0
 implements v0.7.0. Releases v0.14.0 and v0.15.0 implement v0.6.0. Releases v0.12.0 and v0.13.0 implement v0.5.0. A model can
 be one `.em.hcl` file or a folder of `.em.hcl` files.
 This repository provides a strict validator, canonical formatter, typed semantic model,
@@ -25,7 +25,7 @@ preserve the rules and durable artifacts of an Event Modeling session.
 Install the tagged command with Go 1.25 or newer:
 
 ```bash
-go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.17.0
+go install github.com/event-modeling-hcl/eventmodeling-hcl/cmd/emhcl@v0.17.1
 ```
 
 Go writes the executable to `GOBIN`, or to `$(go env GOPATH)/bin` when
@@ -129,6 +129,17 @@ label, not a chapter. Models without chapters show the whole board in every
 view. Overview previews show board order, not causal connections between
 chapters.
 
+Chapter views show source events from other chapters when a local slice consumes them.
+The source workflows stay in their own chapters.
+The event arrows still connect to the local read models and processors.
+
+Scenario colors identify the referenced element, not the Given, When, or Then label.
+Read models are green, commands are blue, and events are orange.
+The detail drawer and Slides use these same colors.
+
+Automation slices place the read model before the processor, followed by the command and its output event.
+Feedback arrows do not change this order.
+
 - **Model** — content-adaptive slices, left-to-right flow stages, dedicated
   screen, processor, model, and event swimlanes, and typed flow arrows. Domain
   events use Event Storming orange; events owned by external bounded contexts
@@ -149,7 +160,15 @@ chapters.
   translation). The derivation is heuristic
   and both the relationship labels and the layout may change in a future
   release.
-- **Compact** — the same slices and cards as Model, with one events row instead of a lane per aggregate. Within a slice, a bounded context's box always sits to the right of the command that emits its events and to the left of the read model its events feed; an automation slice therefore shows the upstream (given) event's box first, left of its read model, then the box for the event the command produces. Each bounded context is a dashed, rounded rectangle with a translucent colour and its title (its ID when it has no title). Colours are assigned in context ID order (colour 1 to the first non-external context, colour 2 to the next); they are not part of the HCL spec. External bounded contexts are always pink. Arrows go from commands to events (solid) and from events to read models, exactly as in Model. The event's aggregate (cube icon) is a sticky stuck on top of the event with no arrows of its own; an external event carries a pink external-system sticky (globe icon) in its place.
+- Compact uses the same slices and cards as Model, with one events row instead of a lane per aggregate.
+  Each bounded context has a dashed box with its title, or its ID when it has no title.
+  Input and output events use separate boxes, even when they share a bounded context.
+  Input events appear before the read model. Output events appear after their command.
+  Feedback arrows point back to the read model without changing this order.
+  Colors follow context ID order and are not part of the HCL specification.
+  External bounded contexts are pink.
+  Arrows connect commands to events and events to read models, as in Model.
+  Each event has an aggregate note above it, or an external-system note for an external event.
 - **Slides** — one slice per slide, for readers who do not know Event Modeling.
   Each slide shows the slice's screen first: the `screen_image` screenshot,
   with the fields of the screen at the same stage, or a wireframe made from the
