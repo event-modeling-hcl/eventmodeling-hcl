@@ -13,7 +13,7 @@ import (
 func TestModels_CoversEveryTopLevelCollectionOfTheModel(t *testing.T) {
 	// OffBoard is derived from Board and Workflows. Edges are part of the
 	// value of their workflow.
-	covered := []string{"Actors", "Owners", "Contexts", "Board", "OffBoard", "Workflows", "Chapters", "Hotspots", "Lifecycles", "EvidenceSources", "Evidence", "Decisions", "Edges"}
+	covered := []string{"Actors", "Owners", "Contexts", "Board", "OffBoard", "Workflows", "Chapters", "Storylines", "Hotspots", "Lifecycles", "EvidenceSources", "Evidence", "Decisions", "Edges"}
 	fields := reflect.TypeFor[model.Model]()
 	for index := range fields.NumField() {
 		if name := fields.Field(index).Name; !slices.Contains(covered, name) {
@@ -32,5 +32,30 @@ func TestModels_EdgeChangeMarksItsWorkflowOnly(t *testing.T) {
 	want := []Change{{Change: Changed, Kind: "workflow", ID: "b", Address: "workflow.b"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Models = %#v, want %#v", got, want)
+	}
+}
+
+func TestModels_ComparesStorylinesByIDAndChapterOrder(t *testing.T) {
+	base := &model.Model{Storylines: []model.Storyline{
+		{ID: "care", Chapters: []string{"chapter.treat"}},
+		{ID: "intake", Chapters: []string{"chapter.register", "chapter.check_in"}},
+	}}
+	head := &model.Model{Storylines: []model.Storyline{
+		{ID: "billing", Chapters: []string{"chapter.pay"}},
+		{ID: "intake", Chapters: []string{"chapter.check_in", "chapter.register"}},
+	}}
+
+	got := Models(base, head)
+
+	want := []Change{
+		{Change: Added, Kind: "storyline", ID: "billing"},
+		{Change: Removed, Kind: "storyline", ID: "care"},
+		{Change: Changed, Kind: "storyline", ID: "intake"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Models = %#v, want %#v", got, want)
+	}
+	if label := got[0].Label(); label != "storyline billing" {
+		t.Fatalf("Label = %q, want %q", label, "storyline billing")
 	}
 }
