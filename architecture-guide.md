@@ -1,6 +1,6 @@
 # Architecture Guide
 
-This guide describes how `emhcl` is organized. It also shows how the design uses Axiomatic Design to keep changes predictable. The guide describes the current repository. The language contract is in the [Event Modeling HCL specification](https://github.com/event-modeling-hcl/spec). The tool implements Specification v0.8.0: a model is one file or one folder, a `board` block sets the story order, file layout has no meaning, an `automation` scenario has an action form and a view form, a screen has a kind, `"ui"` or `"api"`, and a model can state the method facts of RFC 0007.
+This guide describes how `emhcl` is organized. It also shows how the design uses Axiomatic Design to keep changes predictable. The guide describes the current repository. The language contract is in the [Event Modeling HCL specification](https://github.com/event-modeling-hcl/spec). The tool implements Specification v0.8.0: a model is one file or one folder, a `board` block sets the story order, file layout has no meaning, an `automation` scenario has an action form and a view form, a screen has a kind, `"ui"` or `"api"`, and a model can state the method facts of RFC 0007. The tool also accepts a `storyline` block that the specification does not define yet (see [Storylines in the pipeline](#storylines-in-the-pipeline)).
 
 The [v0.5.0 review record](v0.5.0-review.md) records the status before the fixes, the conformance defects that the review reproduced, and the difference between the local diagonal authoring controls and the decoupled semantic pipeline. The section [Known deviations](#known-deviations) lists the places where the current code does not follow this guide.
 
@@ -82,7 +82,7 @@ The DP8 column has an `X` in every row from FR8 down, and a `0` in the FR1 row. 
 
 - FR2: The loader decides which files `syntax.Document.Body()` merges with `hcl.MergeFiles`. `source.Decode` only wraps that document, but every reference that DP2 interprets comes from the merged body.
 - FR3: No rule depends on the number of files. One-file and folder models use the same rules. The byte order of member files fixes only three things: which declaration a duplicate diagnostic reports as the first one, where a repeated `board` is reported, and where a missing `board` (EM015) is reported. A missing board is reported at the start of the first file.
-- FR4: The model does not depend on file order. `Model.Workflows` is the board sequence, then the off-board workflows (`Model.OffBoard`) in ID byte order. Catalog items, chapters, chapter members, hotspots, lifecycles, evidence sources, evidence, decisions, workflow elements, tables, screen images, and scenarios are sorted by ID. The states, transitions, and invalid transitions of a lifecycle are sorted by ID. The field sources of a workflow are sorted by the text of the target reference. Elements sort by kind and then ID. Scenario step order and explicit reference lists (`to`, `from`, the board) keep their source order. The fields of an element are the entries of the `fields` list in source order, then the `field` blocks in source order. Edges follow the workflow order, then element ID order. Inside one element, all `to` edges come before all `from` edges, each in list order. An edge whose source is an event of an external bounded context has `External` set. `TitlePresent` distinguishes omission from a literal empty `Title`. No title is derived.
+- FR4: The model does not depend on file order. `Model.Workflows` is the board sequence, then the off-board workflows (`Model.OffBoard`) in ID byte order. Catalog items, chapters, chapter members, storylines, hotspots, lifecycles, evidence sources, evidence, decisions, workflow elements, tables, screen images, and scenarios are sorted by ID. The states, transitions, and invalid transitions of a lifecycle are sorted by ID. The field sources of a workflow are sorted by the text of the target reference. Elements sort by kind and then ID. Scenario step order and explicit reference lists (`to`, `from`, the board, the chapters of a storyline) keep their source order. The fields of an element are the entries of the `fields` list in source order, then the `field` blocks in source order. Edges follow the workflow order, then element ID order. Inside one element, all `to` edges come before all `from` edges, each in list order. An edge whose source is an event of an external bounded context has `External` set. `TitlePresent` distinguishes omission from a literal empty `Title`. No title is derived.
 - FR5, FR7, and FR6: These rows depend on DP8 through DP2, DP3, and DP4, in the same way that the guide treats DP1.
 
 FR9 is included even though migration is separate from the native pipeline. DP9 reads raw syntax through DP1 and DP8 and checks its output through DP2 and DP3. The application adapters expose migration, so FR6 also depends on DP9. The reverse influence is absent: migration does not alter the native validator's acceptance rules.
@@ -180,12 +180,12 @@ FR5 includes the HTML diagram. `internal/renderer` changes the canonical model i
 
 | Child FR | Acceptance criterion | DP | Location |
 | --- | --- | --- | --- |
-| FR5.1: Scope each page to one chapter or to the whole model | A fragment gives the same chapter every time. Slices follow the board. Board workflows outside every chapter appear in a "Not in a chapter" UI group, not as a chapter. Off-board workflows never enter the story and are listed separately. | DP5.1: Route grammar and load-time scoping | `parseHash`, `normalizeChapters`, and `MODEL` at the top of `viewer.js` |
+| FR5.1: Scope each page to one chapter or to the whole model | A fragment gives the same chapter every time. Slices follow the board. Board workflows outside every chapter appear in a "Not in a chapter" UI group, not as a chapter. Off-board workflows never enter the story and are listed separately. With storylines, the chapters come in storyline groups, and chapters in no storyline appear in a "Not in a storyline" UI group. | DP5.1: Route grammar and load-time scoping | `parseHash`, `normalizeChapters`, `groupChapters`, and `MODEL` at the top of `viewer.js` |
 | FR5.2: Give every view the same read-only facts | Each view reads elements, edges, labels, and the slice timeline from one place | DP5.2: Shared index and helpers | `ELEMENTS`, `EDGES`, `NEIGHBORS`, and `EMC.sliceTimeline` in `viewer.js` |
 | FR5.3: Show the details of one slice on request | The drawer shows the scenarios and elements of the slice that the reader selects | DP5.3: Detail drawer | `openSlice` in `viewer.js` |
 | FR5.4: Filter the boards by status and bounded context | One filter state applies to every board. The controls offer only values on the current board. | DP5.4: Filter owner | `filterState`, `applyFilters`, and `EMC.onFilterChange` in `viewer.js` |
 | FR5.5: Draw the Model, Compact, Storming, and Context Map boards | Each board renders on its own. The Model, Compact, and Storming boards apply the filter state. The Context Map shows no filter bar and no drawer. | DP5.5: Board renderers | `renderEventModel` in `viewer.js`, `viewer.compact.js`, `viewer.eventstorming.js`, `viewer.contextmap.js` |
-| FR5.6: Preview every chapter | Each card shows the first and last slice of its chapter | DP5.6: Chapter overview | `viewer.chapters.js` |
+| FR5.6: Preview every chapter | Each card shows the first and last slice of its chapter. With storylines, the cards stand under the titles of their storylines. | DP5.6: Chapter overview | `viewer.chapters.js` |
 | FR5.7: Present one slice to readers who do not know Event Modeling | The slide shows the screen, then the examples, then the open questions, then the event model of the slice | DP5.7: Slides | `viewer.slides.js` |
 | FR5.9: List the off-board workflows | The `#offboard` page lists each off-board workflow with its timeline and opens its details on request | DP5.9: Off-board page | `renderOffBoard` and `openSliceDetail` in `viewer.js` |
 | FR5.8: Navigate between pages and views | Each fragment shows one page. Browser Back works. Links work inside the sandboxed `srcdoc` frame of the playground. | DP5.8: Navigation | `parseRoute`, `renderNavigation`, `showPage`, and the fragment click handler in `viewer.js` |
@@ -246,7 +246,7 @@ The need adds one child of FR2 and five children of FR6:
 
 | FR | Acceptance criterion | DP |
 | --- | --- | --- |
-| FR2.1: Turn a source range into the address of a declaration | Each reference form gets its innermost declaration. A chapter, an evidence record, the board, and the model start (`Document.Start`) get no address. A hotspot gets `hotspot.<id>`, and a state gets `state.<lifecycle>.<id>`. An offset in one member file never matches a block of another file. | DP2.1: `source.Address`, `source.ElementHasAddress`, and `(*source.Document).AddressAt`, with `syntax.BlockRange` for the extent of a block |
+| FR2.1: Turn a source range into the address of a declaration | Each reference form gets its innermost declaration. A chapter, a storyline, an evidence record, the board, and the model start (`Document.Start`) get no address. A hotspot gets `hotspot.<id>`, and a state gets `state.<lifecycle>.<id>`. An offset in one member file never matches a block of another file. | DP2.1: `source.Address`, `source.ElementHasAddress`, and `(*source.Document).AddressAt`, with `syntax.BlockRange` for the extent of a block |
 | FR6.1: Report diagnostics as data | For every model in `examples/` and `testdata/` and each profile, `validate --format json` gives the text diagnostics in the same order | DP6.1: The JSON tags of `app.Diagnostic`, `Diagnostics.MarshalJSON`, and the one `--format` parser in `internal/cli` |
 | FR6.2: Compare two models by declaration | A block in another member file or a new layout gives no entry. Each edit gives exactly its entry. | DP6.2: `internal/compare`, `app.DiffPaths`, and the `diff` command |
 | FR6.3: Report the layout of each member file | `fmt --check` names exactly the member files that differ from `fmt` output | DP6.3: `app.FormatPath`, which reads the members through `app.ReadModel`, and the `--check` option |
@@ -309,6 +309,23 @@ Inside DP3, the new rules form four children. FR3.A is the scenario facts, FR3.B
 | FR3.C Records | X | X | 0 | X |
 
 The matrix is lower triangular. RFC 0007 section 6.3 gives the one influence across the children: record attach targets read the lifecycle declarations and the field declarations. A rename or a removal of a state, a transition, or a field breaks each record that names it (`EM102`). The repair is a rename of the reference, as for every other identity. No scenario rule reads a lifecycle, and no lifecycle rule reads `identity` or the flow edges.
+
+## Storylines in the pipeline
+
+A `storyline` block groups chapters. Like the method facts, it adds no top-level FR and no top-level DP. Each part is a child of an existing DP, so the tool matrix keeps its lower triangular form.
+
+| Parent DP | Children that the storyline block adds |
+| --- | --- |
+| DP1 Syntax | `StorylineSchema`: an optional `title` and `description`, and a required `chapters` list. |
+| DP3 Validation | `validateStoryline` and `collectStorylineChapters` in `validator/structure.go` and `validator/references.go`. An empty list is `EM005`, a repeated entry is `EM002`, a chapter in two storylines is `EM019`, and an entry that is not a declared `chapter.<id>` is `EM101` or `EM102`. `referenceExists` resolves `chapter.<id>`. No attach target and no flow root accepts a chapter, so no other rule changes. |
+| DP4 Model | `Model.Storylines` in ID order. The chapters list of a storyline keeps its source order. |
+| DP5 Output | The formatter ranks `chapters` with `workflows`. In the renderer, `adaptStorylines` orders the storylines by the board position of the first slice of their chapters, and `navigationOrder` sends the chapters in that order. In the viewer, `groupChapters` groups the chapters for the picker, the overview, and the Index. |
+| DP6.2 Diff | `internal/compare` compares storylines after chapters (change rule 23). A storyline has no address, as a chapter has none. |
+| DP7 Interchange | Export writes a warning and drops the storylines. |
+
+The board stays the only source of story order. The renderer derives the order of the storylines from the board. The chapters list of a storyline sets only the order of the chapters inside that storyline. A model without storylines gives the same view model order and the same HTML pages as before.
+
+Change rule 1 puts the specification first. The specification does not define the `storyline` block yet, so `version.Spec` stays `v0.8.0`. The block needs a specification RFC before a release states a new specification version.
 
 ## Requirements for the agent skills
 

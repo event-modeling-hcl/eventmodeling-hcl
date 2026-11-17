@@ -109,7 +109,8 @@ list) never enter the story; the canvas lists them separately under
 tool never derives a title from the label.
 
 Select Index to browse a numbered list of slices under each chapter.
-Chapters appear in model order. Slices within each chapter follow board order.
+Chapters appear in model order, or by storyline when the model has storylines.
+Slices within each chapter follow board order.
 Numbering starts at 1 in each chapter. The Index shows only slice titles at first.
 Select Show flows to add small previews of screens, commands, events, read models, and automations.
 The previews include source events from other slices.
@@ -119,7 +120,7 @@ The Index covers the whole board and excludes off-board workflows.
 You can bookmark it with the `#index` URL fragment.
 
 Chapters are the top-level navigation. The **Chapter** picker in the toolbar
-lists every chapter in ID order, and the ‹ › arrows step to the previous or next chapter
+lists every chapter in ID order, or by storyline when the model has storylines, and the ‹ › arrows step to the previous or next chapter
 while keeping the current view. Model, Compact, Storming, and Slides always show only the
 selected chapter's slices, in board order; **Context Map** always covers the whole model. Status,
 bounded-context, and field-detail options live behind **Filters**, which shows how
@@ -142,6 +143,16 @@ chapters.
 Chapter views show source events from other chapters when a local slice consumes them.
 The source workflows stay in their own chapters.
 The event arrows still connect to the local read models and processors.
+
+When a model has storylines (see [Storylines](#storylines)), the **Chapter**
+picker, the **All chapters** overview, and the Index show the chapters under
+the title of their storyline. The storylines follow the board: a storyline
+comes at the board position of the first slice of its chapters. A storyline
+without a board workflow comes last, in ID order. The chapters of a storyline
+follow its `chapters` list. Chapters in no storyline come last, in ID order,
+under **Not in a storyline**; this is a UI label, not a storyline. The ‹ ›
+arrows and the slides follow the same order. Storylines do not change the URL
+fragments of the chapters.
 
 Scenario colors identify the referenced element, not the Given, When, or Then label.
 Read models are green, commands are blue, and events are orange.
@@ -241,11 +252,39 @@ and `chapter` blocks may live in any member file. A workflow in two chapters is
 error EM014; a workflow listed twice in one chapter is error EM002. Chapters
 never change the board, and the board never changes chapters.
 
+### Storylines
+
+A storyline groups chapters, for example the chapters of one part of the
+product. `storyline` blocks may live in any member file:
+
+```hcl
+storyline "care" {
+  title       = "Care"
+  description = "The pet comes to the clinic for a visit."
+  chapters    = [chapter.booking, chapter.treatment]
+}
+```
+
+`title` and `description` are optional. The `chapters` list is required and
+names at least one chapter (error EM005). Each entry is a `chapter.<id>`
+reference to a declared chapter (EM101, EM102). A chapter listed twice in one
+storyline is error EM002, and a chapter in two storylines is error EM019. A
+chapter in no storyline is valid and gets no diagnostic in any profile.
+
+The order of the `chapters` list is the reading order of the chapters in the
+diagram. Storylines never change the board or the chapters. The diagram orders
+the storylines by the board. `examples/storylines.em.hcl` shows two
+storylines.
+
+The `storyline` block is not in Specification v0.8.0 yet. The Event Modeling
+JSON has slice `storylines`, which are a different concept: `export` drops the
+`storyline` blocks with a warning.
+
 ### Split a file into a folder
 
 1. Make a new folder for the model.
 2. Move the `board` and the catalog blocks (`bounded_context`, `actor`, `team`, `system`) into one file, for example `00-catalog.em.hcl`.
-3. Move the `chapter` blocks into any file, for example `01-chapters.em.hcl`.
+3. Move the `chapter` and `storyline` blocks into any file, for example `01-chapters.em.hcl`.
 4. Move each workflow block into its own file, for example `10-register-pet.em.hcl`.
 5. Move the other blocks, such as `hotspot`, into any file, for example `90-hotspots.em.hcl`.
 6. Move each block whole. Do not split one block over two files.
@@ -273,14 +312,14 @@ Every `.em.hcl` file directly in the folder is a member of the model. The tool
 ignores subfolders, other files, and files with a name that starts with a dot.
 It reads the member files in byte order of their names; this order only fixes
 which location a diagnostic reports first. The typed model orders catalog
-items, chapters, hotspots, workflow elements, and scenarios by ID, and
-workflows by the board.
+items, chapters, storylines, hotspots, workflow elements, and scenarios by
+ID, and workflows by the board.
 
 The model contains all top-level blocks of all member files. A reference in
 one file can point to a block in any other member file. IDs are global across
 files, within the same ID space as in a one-file model. Each block kind has its
-own ID space: actors, teams, systems, bounded contexts, chapters, and hotspots
-each have a separate space, and all workflow kinds share one space. The same ID
+own ID space: actors, teams, systems, bounded contexts, chapters, storylines,
+and hotspots each have a separate space, and all workflow kinds share one space. The same ID
 twice in one space is error EM002, in one file or in two. The detail of that
 error gives the location of the first declaration as `file:line:column`.
 
@@ -456,7 +495,7 @@ including numbers, booleans, lists and `null`, are carried as JSON text strings
 and decoded on import for non-textual or `List` fields.
 
 Conversion is **not a lossless canvas archive**. Warnings disclose omitted
-storylines, assignments/tickets, actor roles/tags and specification
+slice storylines, assignments/tickets, actor roles/tags and specification
 attachment/layout bookkeeping. Properties outside the schema are rejected
 rather than omitted.
 The JSON actor list cannot associate different actors with individual screens.
@@ -465,7 +504,7 @@ references to a single actor only; more than one distinct actor in a workflow
 is a hard export error, not a choice of the first actor or a warning-only loss.
 If only some screens reference the sole actor, export omits slice associations
 with a warning instead of assigning that actor to previously unassigned screens.
-Chapters, hotspots, teams/systems, aggregate catalog identities, unused actor
+Chapters, `storyline` blocks, hotspots, teams/systems, aggregate catalog identities, unused actor
 declarations, context/aggregate/actor descriptions, non-context workflow
 owners, read-model questions, `external_trigger`, screen `kind = "api"`, error-step titles that differ
 from the error text, explicit context titles equal to their label, bounded
@@ -721,6 +760,7 @@ field "pets" {
 - [Minimal example](examples/minimal.em.hcl): smallest useful model.
 - [Complete reference](examples/complete.em.hcl): every HCL construct of v0.7.0.
 - [Method facts](examples/method-facts.em.hcl): every construct that v0.8.0 adds.
+- [Storylines](examples/storylines.em.hcl): chapters grouped by storyline.
 - [Pet-management port](examples/pet-management-detailed.em.hcl): the supplied
   five-workflow golden model in native HCL.
 - [Language decisions and migration guidance](https://github.com/event-modeling-hcl/spec):
