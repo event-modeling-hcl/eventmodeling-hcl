@@ -21,6 +21,7 @@ func buildIndex(document *source.Document) (modelIndex, hcl.Diagnostics) {
 		catalogEvents:    map[string]bool{},
 		fieldTypes:       map[string]fieldTypeRef{},
 		chapters:         map[string]bool{},
+		storylines:       map[string]bool{},
 		hotspots:         map[string]bool{},
 		systems:          map[string]bool{},
 		teams:            map[string]bool{},
@@ -53,6 +54,8 @@ func buildIndex(document *source.Document) (modelIndex, hcl.Diagnostics) {
 			diagnostics = append(diagnostics, index.addNamedSymbol(index.systems, block, "system")...)
 		case "chapter":
 			diagnostics = append(diagnostics, index.addNamedSymbol(index.chapters, block, "chapter")...)
+		case "storyline":
+			diagnostics = append(diagnostics, index.addNamedSymbol(index.storylines, block, "storyline")...)
 		case "hotspot":
 			diagnostics = append(diagnostics, index.addNamedSymbol(index.hotspots, block, "hotspot")...)
 		case "lifecycle":

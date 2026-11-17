@@ -121,6 +121,38 @@ func TestFormat_PreservesFieldShorthandsAndRanksFieldsAttribute(t *testing.T) {
 	}
 }
 
+func TestFormat_OrdersStorylineAttributes(t *testing.T) {
+	source := []byte(`storyline "intake" {
+  chapters = [
+    chapter.registration,
+    chapter.arrival,
+  ]
+  description = "The pet arrives."
+  title = "Intake"
+}
+`)
+	const want = `storyline "intake" {
+  title       = "Intake"
+  description = "The pet arrives."
+  chapters = [
+    chapter.registration,
+    chapter.arrival,
+  ]
+}
+`
+	formatted, diagnostics := Format("model.em.hcl", source)
+	if diagnostics.HasErrors() {
+		t.Fatalf("diagnostics = %s", diagnostics.Error())
+	}
+	if got := string(formatted); got != want {
+		t.Fatalf("formatted = %q, want %q", got, want)
+	}
+	again, _ := Format("model.em.hcl", formatted)
+	if !bytes.Equal(again, formatted) {
+		t.Fatalf("second format = %q, want idempotent %q", again, formatted)
+	}
+}
+
 func TestFormat_IsIdempotentForShippedExamples(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "..", "examples", "*.em.hcl"))
 	if err != nil {

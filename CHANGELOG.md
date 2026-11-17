@@ -6,6 +6,27 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+This release adds the `storyline` block, which groups chapters.
+The block is not in Event Modeling HCL Specification v0.8.0 yet, so `version.Spec` stays `v0.8.0`.
+Models without storylines need no changes, and their diagrams do not change.
+
+### Added
+
+- A top-level `storyline` block groups chapters. It has an optional `title` and `description` and a required `chapters` list of `chapter.<id>` references.
+  An empty list is `EM005`. A chapter listed twice in one storyline is `EM002`. A chapter in two storylines is `EM019`.
+  An entry of another kind is `EM101`, and an unknown chapter is `EM102`. A chapter in no storyline gets no diagnostic in any profile.
+- The typed IR holds `storylines` in ID order. Each storyline keeps its `chapters` list in source order.
+  `emhcl diff` reports added, removed, and changed storylines.
+- The HTML Chapter picker, the All chapters overview, and the Index show the chapters under the titles of their storylines.
+  Storylines follow the board: a storyline comes at the board position of the first slice of its chapters.
+  A storyline without a board workflow comes last, in ID order. The chapters of a storyline follow its `chapters` list.
+  Chapters in no storyline come last, in ID order, under "Not in a storyline". The ‹ › arrows and the slides follow the same order.
+  Chapter URL fragments do not change.
+- `emhcl fmt` writes the `chapters` list of a storyline after `title` and `description`.
+- `emhcl export` warns that `storyline` blocks have no interchange equivalent and drops them.
+  The slice `storylines` of the Event Modeling JSON are a different concept.
+- `examples/storylines.em.hcl` has two storylines whose ID order differs from the board order.
+
 ## [v0.18.0] - 2026-11-10
 
 This release adds an Index view to the HTML diagram.

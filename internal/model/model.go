@@ -3,7 +3,8 @@
 // The model is independent of file layout: the story sequence comes only from
 // the board, and every other collection is sorted by its qualified ID in byte
 // order. Field order, scenario step order, and the order of explicit reference
-// lists (from, to, and the board) keep their source order. TitlePresent records
+// lists (from, to, the board, and the chapters of a storyline) keep their
+// source order. TitlePresent records
 // whether the source states a title, including a literal empty string.
 package model
 
@@ -62,6 +63,7 @@ type Model struct {
 	OffBoard        []string         `json:"off_board,omitempty"`
 	Workflows       []Workflow       `json:"workflows,omitempty"`
 	Chapters        []Chapter        `json:"chapters,omitempty"`
+	Storylines      []Storyline      `json:"storylines,omitempty"`
 	Hotspots        []Hotspot        `json:"hotspots,omitempty"`
 	Lifecycles      []Lifecycle      `json:"lifecycles,omitempty"`
 	EvidenceSources []EvidenceSource `json:"evidence_sources,omitempty"`
@@ -265,6 +267,17 @@ type Chapter struct {
 	Workflows    []string `json:"workflows,omitempty"`
 }
 
+// Storyline groups chapters. Chapters lists chapter.<id> references in the
+// order of the source list, which is the reading order of the chapters. A
+// storyline sets no board order.
+type Storyline struct {
+	ID           string   `json:"id"`
+	Title        string   `json:"title,omitempty"`
+	TitlePresent bool     `json:"title_present,omitempty"`
+	Description  string   `json:"description,omitempty"`
+	Chapters     []string `json:"chapters,omitempty"`
+}
+
 // Hotspot is an open record. HotspotKind is the effective kind: "question"
 // when the source omits kind.
 type Hotspot struct {
@@ -393,6 +406,8 @@ func Build(doc *validator.ValidatedDocument) *Model {
 			model.Contexts = append(model.Contexts, decodeContext(block, sourceDocument))
 		case "chapter":
 			model.Chapters = append(model.Chapters, decodeChapter(block))
+		case "storyline":
+			model.Storylines = append(model.Storylines, decodeStoryline(block))
 		case "hotspot":
 			model.Hotspots = append(model.Hotspots, decodeHotspot(block))
 		case "lifecycle":
@@ -411,6 +426,7 @@ func Build(doc *validator.ValidatedDocument) *Model {
 	slices.SortFunc(model.Owners, func(a, b Owner) int { return cmp.Compare(a.Kind+"."+a.ID, b.Kind+"."+b.ID) })
 	slices.SortFunc(model.Contexts, func(a, b Context) int { return cmp.Compare(a.ID, b.ID) })
 	slices.SortFunc(model.Chapters, func(a, b Chapter) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(model.Storylines, func(a, b Storyline) int { return cmp.Compare(a.ID, b.ID) })
 	slices.SortFunc(model.Hotspots, func(a, b Hotspot) int { return cmp.Compare(a.ID, b.ID) })
 	slices.SortFunc(model.Lifecycles, func(a, b Lifecycle) int { return cmp.Compare(a.ID, b.ID) })
 	slices.SortFunc(model.EvidenceSources, func(a, b EvidenceSource) int { return cmp.Compare(a.ID, b.ID) })
@@ -766,6 +782,12 @@ func decodeChapter(block *hcl.Block) Chapter {
 	workflows := traversalList(content.Attributes["workflows"])
 	slices.Sort(workflows)
 	return Chapter{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Description: stringValue(content.Attributes["description"]), Workflows: workflows}
+}
+
+// decodeStoryline keeps the chapters list in source order.
+func decodeStoryline(block *hcl.Block) Storyline {
+	content, _ := syntax.Content(block.Body, syntax.StorylineSchema())
+	return Storyline{ID: block.Labels[0], Title: stringValue(content.Attributes["title"]), TitlePresent: content.Attributes["title"] != nil, Description: stringValue(content.Attributes["description"]), Chapters: traversalList(content.Attributes["chapters"])}
 }
 
 func decodeHotspot(block *hcl.Block) Hotspot {

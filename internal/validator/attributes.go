@@ -168,6 +168,13 @@ func chapterRule(name string) (attributeRule, bool) {
 	return stringRule(name, "title", "description")
 }
 
+func storylineRule(name string) (attributeRule, bool) {
+	if name == "chapters" {
+		return attributeRule{reference: true}, true
+	}
+	return stringRule(name, "title", "description")
+}
+
 func hotspotRule(name string) (attributeRule, bool) {
 	switch name {
 	case "question", "description":

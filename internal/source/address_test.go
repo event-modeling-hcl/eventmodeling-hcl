@@ -102,6 +102,15 @@ func TestAddressAt_GivesNoAddressOutsideAddressableDeclarations(t *testing.T) {
 	}
 }
 
+func TestAddressAt_GivesNoAddressInsideAStoryline(t *testing.T) {
+	storyline := "storyline \"intake\" {\n  chapters = [chapter.intake]\n}\n"
+	document := decodeFiles(t, map[string]string{"a.em.hcl": addressCatalog, "c.em.hcl": storyline})
+
+	if got, ok := document.AddressAt(rangeOf(t, "c.em.hcl", storyline, "chapter.intake")); ok {
+		t.Errorf("AddressAt(storyline entry) = %q, want no address", got)
+	}
+}
+
 // A block that starts at byte 0 keeps its address for a diagnostic on its
 // header. Only the empty start range of the model has no address.
 func TestAddressAt_BlockAtFileStartKeepsItsAddress(t *testing.T) {

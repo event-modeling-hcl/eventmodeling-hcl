@@ -45,9 +45,9 @@ func ElementHasAddress(kind string) bool {
 // part of a lifecycle has the form <kind>.<lifecycle>.<id>. A declaration
 // without a reference form, such as a scenario, gives the address of the
 // declaration around it. It reports false when no declaration with a
-// reference form contains rng: a chapter, an evidence record, the board, and
-// the start of the model (Document.Start), which is the subject of a
-// diagnostic about the model as a whole.
+// reference form contains rng: a chapter, a storyline, an evidence record, the
+// board, and the start of the model (Document.Start), which is the subject of
+// a diagnostic about the model as a whole.
 func (d *Document) AddressAt(rng hcl.Range) (Address, bool) {
 	if rng.Filename == "" || rng == d.parsed.Start() {
 		return Address{}, false

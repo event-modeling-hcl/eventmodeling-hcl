@@ -3,6 +3,7 @@ package interchange_test
 import (
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -58,6 +59,22 @@ func TestExportSpecificationLinksSliceAndDisclosesLosses(t *testing.T) {
 		if !strings.Contains(strings.Join(warnings, "\n"), want) {
 			t.Fatalf("missing %q warning: %v", want, warnings)
 		}
+	}
+}
+
+func TestExportDisclosesDroppedStorylines(t *testing.T) {
+	m := &model.Model{
+		Board:      []string{"w"},
+		Workflows:  []model.Workflow{{ID: "w", Kind: model.StateChange}},
+		Chapters:   []model.Chapter{{ID: "c", Workflows: []string{"workflow.w"}}},
+		Storylines: []model.Storyline{{ID: "s", Chapters: []string{"chapter.c"}}},
+	}
+	_, warnings, err := interchange.Export(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "storyline blocks have no interchange equivalent and were not exported"; !slices.Contains(warnings, want) {
+		t.Fatalf("warnings = %v, want %q", warnings, want)
 	}
 }
 

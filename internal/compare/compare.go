@@ -49,8 +49,8 @@ func (c Change) Label() string {
 
 // Models returns the changes from base to head. The order follows the unit
 // kinds (actor, team, system, bounded_context, event, aggregate, field_type,
-// workflow, chapter, hotspot, lifecycle, evidence_source, evidence, decision,
-// board), then the byte order of the identity inside one kind. Identical
+// workflow, chapter, storyline, hotspot, lifecycle, evidence_source, evidence,
+// decision, board), then the byte order of the identity inside one kind. Identical
 // models give an empty, non-nil slice.
 func Models(base, head *model.Model) []Change {
 	changes := []Change{}
@@ -64,6 +64,7 @@ func Models(base, head *model.Model) []Change {
 	changes = append(changes, units(fieldTypes(base), fieldTypes(head), catalogUnit[model.FieldType]("field_type"), nil)...)
 	changes = append(changes, units(workflows(base), workflows(head), workflowIdentity, workflowChildren)...)
 	changes = append(changes, units(base.Chapters, head.Chapters, chapterUnit, nil)...)
+	changes = append(changes, units(base.Storylines, head.Storylines, storylineUnit, nil)...)
 	changes = append(changes, units(base.Hotspots, head.Hotspots, hotspotUnit, nil)...)
 	changes = append(changes, units(base.Lifecycles, head.Lifecycles, lifecycleUnit, nil)...)
 	changes = append(changes, units(base.EvidenceSources, head.EvidenceSources, evidenceSourceUnit, nil)...)
@@ -254,6 +255,11 @@ func workflowChildren(base, head workflowValue) []Change {
 
 func chapterUnit(chapter model.Chapter) (Change, string) {
 	return Change{Kind: "chapter", ID: chapter.ID}, chapter.ID
+}
+
+// storylineUnit has no address, as a chapter has none.
+func storylineUnit(storyline model.Storyline) (Change, string) {
+	return Change{Kind: "storyline", ID: storyline.ID}, storyline.ID
 }
 
 func hotspotUnit(hotspot model.Hotspot) (Change, string) {

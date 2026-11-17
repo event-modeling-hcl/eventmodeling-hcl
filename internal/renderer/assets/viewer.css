@@ -183,6 +183,9 @@ button{font-family:inherit}
 .chapter-menu a:first-child[href="#chapters"]{border-bottom:1px solid var(--line-soft); border-radius:3px 3px 0 0; margin-bottom:2px}
 .chapter-menu .n, .chapter-menu .c{font-family:var(--font-mono); font-size:10.5px; color:var(--ink-faint)}
 .chapter-menu .t{overflow-wrap:anywhere}
+/* storyline titles group the chapters of the picker */
+.chapter-menu-storyline{margin:8px 10px 2px; font-family:var(--font-cond); font-size:10.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint); overflow-wrap:anywhere}
+.chapter-menu-storyline.ui-label{font-weight:400; letter-spacing:0; text-transform:none}
 #t-contextmap{text-decoration:none; white-space:nowrap}
 #t-contextmap[aria-current="page"]{background:var(--accent); border-color:var(--accent); color:#fff}
 #t-offboard{text-decoration:none; white-space:nowrap}
@@ -597,7 +600,7 @@ button{font-family:inherit}
 .chapter-overview:hover,.chapter-overview:focus-within{border-color:var(--accent)}
 .chapter-overview-header{display:flex;align-items:baseline;gap:10px;min-width:0;margin-bottom:10px}
 .chapter-number{color:var(--ink-faint);font-size:11px}
-.chapter-overview-header h2{margin:0;font-family:var(--font-cond);font-size:17px;line-height:1.25;overflow-wrap:anywhere}
+.chapter-overview-header h2,.chapter-overview-header h3{margin:0;font-family:var(--font-cond);font-size:17px;line-height:1.25;overflow-wrap:anywhere}
 .chapter-link{color:var(--ink);text-decoration:none}
 .chapter-link::after{content:"";position:absolute;inset:0;border-radius:4px}
 .chapter-overview:hover .chapter-link{color:var(--accent-ink);text-decoration:underline}
@@ -609,13 +612,18 @@ button{font-family:inherit}
 .chapter-preview.two-slices{grid-template-columns:repeat(2,minmax(0,1fr))}
 .chapter-preview.many-slices{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
 .chapter-slice{min-width:0;overflow:hidden;border:1px solid var(--line-soft);border-radius:3px;background:var(--panel);padding:10px 12px}
-.chapter-slice h3{margin:0 0 6px;font-size:13px;line-height:1.3;overflow-wrap:anywhere}
+.chapter-slice h3,.chapter-slice h4{margin:0 0 6px;font-size:13px;line-height:1.3;overflow-wrap:anywhere}
 .chapter-omission{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:var(--ink-soft);font-size:11px;text-align:center}
 .chapter-omission [aria-hidden]{color:var(--accent);font-size:18px;line-height:.8}
 .chapter-empty,.chapter-empty-model{margin:0;padding:14px;color:var(--ink-soft);font-style:italic}
 .chapter-empty-model{max-width:1240px;margin:auto}
 .chapter-overview.ui-group{border-style:dashed}
 .chapter-link.ui-label{color:var(--ink-soft)}
+/* storylines group the chapter cards under their titles */
+.storyline-group{max-width:1240px;margin:0 auto}
+.storyline-group+.storyline-group{margin-top:28px}
+.storyline-heading{margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid var(--line);font-family:var(--font-cond);font-size:20px;line-height:1.25;overflow-wrap:anywhere}
+.storyline-heading.ui-label{font-weight:400}
 /* ----------------------- chapter story index --------------------- */
 .index-scroll{flex:1;min-height:0;min-width:0;overflow:auto;padding:24px clamp(14px,3vw,40px);background:var(--bg)}
 .index-heading{display:flex;align-items:center;gap:32px}
@@ -624,6 +632,9 @@ button{font-family:inherit}
 .index-track{display:grid;gap:28px;padding:4px 4px 24px;max-width:960px}
 .index-track:focus-visible,.index-title:focus-visible,.index-chapter a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .index-group{min-width:0}
+.index-storyline-group{display:grid;gap:20px;min-width:0}
+.index-storyline{margin:0;font-family:var(--font-cond);font-size:19px;overflow-wrap:anywhere}
+.index-storyline.ui-label{font-weight:400}
 .index-chapter{margin:0;padding:0 0 10px;border-bottom:2px solid var(--line);font-family:var(--font-cond);font-size:15px}
 .index-chapter a{color:var(--ink-soft);text-decoration:none}
 .index-chapter a:hover{color:var(--accent-ink);text-decoration:underline}

@@ -1,10 +1,11 @@
 /* Chapter overview: one card per chapter, previewing its first and last slice.
-   The group of board workflows in no chapter carries a viewer label, styled apart. */
+   The group of board workflows in no chapter carries a viewer label, styled apart.
+   With storylines, the cards of each storyline stand under its title. */
 (function(){
-  function sliceSummary(slice){
+  function sliceSummary(slice, level){
     const node = document.createElement("section");
     node.className = "chapter-slice";
-    const heading = document.createElement("h3");
+    const heading = document.createElement("h" + (level + 1));
     heading.textContent = slice.title;
     node.append(heading, EMC.sliceTimeline(slice));
     return node;
@@ -24,54 +25,68 @@
       host.appendChild(empty);
       return;
     }
-    const list = document.createElement("div");
-    list.className = "chapter-list";
-    records.forEach((chapter,index)=>{
-      const card = document.createElement("article");
-      card.className = "chapter-overview" + (chapter.ui ? " ui-group" : "");
-      const sliceIDs = (chapter.slices || []).filter(id=>slices.has(id));
-      const header = document.createElement("div");
-      header.className = "chapter-overview-header";
-      const number = document.createElement("span");
-      number.className = "chapter-number mono";
-      number.textContent = chapter.ui ? "" : String(index+1).padStart(2,"0");
-      const title = document.createElement("h2");
-      // One link per card; CSS stretches its hit area over the whole card.
-      const link = document.createElement("a");
-      link.className = "chapter-link" + (chapter.ui ? " ui-label" : "");
-      link.href = EMC.chapterHref(chapter.id) + "/model";
-      link.textContent = chapter.title;
-      title.appendChild(link);
-      const count = document.createElement("span");
-      count.className = "chapter-count mono";
-      count.textContent = `${sliceIDs.length} ${sliceIDs.length===1?"slice":"slices"}`;
-      header.append(number,title,count);
-      card.appendChild(header);
-      const preview = document.createElement("div");
-      const ordered = sliceIDs.map(id=>slices.get(id));
-      preview.className = "chapter-preview " + (ordered.length===1 ? "one-slice" : ordered.length===2 ? "two-slices" : "many-slices");
-      if(!ordered.length){
-        const noSlices = document.createElement("p");
-        noSlices.className = "chapter-empty";
-        noSlices.textContent = "No slices";
-        preview.appendChild(noSlices);
-      } else {
-        const addSlice = slice => preview.appendChild(sliceSummary(slice));
-        addSlice(ordered[0]);
-        if(ordered.length > 2){
-          const omitted = ordered.length-2;
-          const omission = document.createElement("div");
-          omission.className = "chapter-omission mono";
-          omission.innerHTML = `<span aria-hidden="true">···</span><span>${omitted} more ${omitted===1?"slice":"slices"}</span>`;
-          preview.appendChild(omission);
-        }
-        if(ordered.length > 1) addSlice(ordered[ordered.length-1]);
-      }
-      card.appendChild(preview);
-      list.appendChild(card);
+    // Without storylines, the cards form one list with no heading. With storylines,
+    // each group is a section with its own heading, so the card titles go one level down.
+    const grouped = EMC.STORYLINES.length > 0;
+    const level = grouped ? 3 : 2;
+    EMC.chapterGroups.forEach(group=>{
+      const list = document.createElement("div");
+      list.className = "chapter-list";
+      group.chapters.forEach(chapter=>list.appendChild(chapterCard(chapter, records.indexOf(chapter), slices, level)));
+      if(!grouped){ host.appendChild(list); return; }
+      const section = document.createElement("section");
+      section.className = "storyline-group";
+      const heading = document.createElement("h2");
+      heading.className = "storyline-heading" + (group.ui ? " ui-label" : "");
+      heading.textContent = group.title;
+      section.append(heading, list);
+      host.appendChild(section);
     });
-    host.appendChild(list);
   };
+  function chapterCard(chapter, index, slices, level){
+    const card = document.createElement("article");
+    card.className = "chapter-overview" + (chapter.ui ? " ui-group" : "");
+    const sliceIDs = (chapter.slices || []).filter(id=>slices.has(id));
+    const header = document.createElement("div");
+    header.className = "chapter-overview-header";
+    const number = document.createElement("span");
+    number.className = "chapter-number mono";
+    number.textContent = chapter.ui ? "" : String(index+1).padStart(2,"0");
+    const title = document.createElement("h" + level);
+    // One link per card; CSS stretches its hit area over the whole card.
+    const link = document.createElement("a");
+    link.className = "chapter-link" + (chapter.ui ? " ui-label" : "");
+    link.href = EMC.chapterHref(chapter.id) + "/model";
+    link.textContent = chapter.title;
+    title.appendChild(link);
+    const count = document.createElement("span");
+    count.className = "chapter-count mono";
+    count.textContent = `${sliceIDs.length} ${sliceIDs.length===1?"slice":"slices"}`;
+    header.append(number,title,count);
+    card.appendChild(header);
+    const preview = document.createElement("div");
+    const ordered = sliceIDs.map(id=>slices.get(id));
+    preview.className = "chapter-preview " + (ordered.length===1 ? "one-slice" : ordered.length===2 ? "two-slices" : "many-slices");
+    if(!ordered.length){
+      const noSlices = document.createElement("p");
+      noSlices.className = "chapter-empty";
+      noSlices.textContent = "No slices";
+      preview.appendChild(noSlices);
+    } else {
+      const addSlice = slice => preview.appendChild(sliceSummary(slice, level));
+      addSlice(ordered[0]);
+      if(ordered.length > 2){
+        const omitted = ordered.length-2;
+        const omission = document.createElement("div");
+        omission.className = "chapter-omission mono";
+        omission.innerHTML = `<span aria-hidden="true">···</span><span>${omitted} more ${omitted===1?"slice":"slices"}</span>`;
+        preview.appendChild(omission);
+      }
+      if(ordered.length > 1) addSlice(ordered[ordered.length-1]);
+    }
+    card.appendChild(preview);
+    return card;
+  }
 })();
 
 /* The index reads the full board, never a chapter-scoped copy. */
@@ -85,17 +100,33 @@
   window.renderIndex = function(){
     if(rendered) return;
     rendered = true;
-    const {FULL_MODEL, chapters, el, esc} = EMC;
+    const {FULL_MODEL, chapters, chapterGroups, STORYLINES, el, esc} = EMC;
     const slices = FULL_MODEL.slices || [];
     const positions = new Map(slices.map((slice,index)=>[slice.id,index+1]));
-    const groups = chapters.length ? chapters.map(chapter=>{
-      const members = new Set(chapter.slices);
-      return {chapter, slices:slices.filter(slice=>members.has(slice.id))};
-    }) : [{chapter:null, slices}];
-    groups.forEach(({chapter,slices})=>{
+    // With storylines, the chapters of each storyline stand in a section under its
+    // title, and the chapter headings go one level down.
+    const grouped = STORYLINES.length > 0;
+    const groups = chapters.length ? [] : [{chapter:null, slices, parent:track}];
+    chapterGroups.forEach(storyline=>{
+      const members = storyline.chapters.map(chapter=>{
+        const ids = new Set(chapter.slices);
+        return {chapter, slices:slices.filter(slice=>ids.has(slice.id))};
+      }).filter(member=>member.slices.length);
+      if(!members.length) return;
+      let parent = track;
+      if(grouped){
+        parent = el("section","index-storyline-group");
+        const heading = el("h3","index-storyline" + (storyline.ui ? " ui-label" : ""));
+        heading.textContent = storyline.title;
+        parent.appendChild(heading);
+        track.appendChild(parent);
+      }
+      members.forEach(member=>groups.push({...member, parent}));
+    });
+    groups.forEach(({chapter,slices,parent})=>{
       if(!slices.length) return;
       const group = el("section","index-group");
-      const heading = el("h3","index-chapter");
+      const heading = el(grouped ? "h4" : "h3","index-chapter");
       if(chapter){
         const link = el("a","",esc(chapter.title));
         link.href = EMC.chapterHref(chapter.id) + "/model";
@@ -105,7 +136,7 @@
       } else heading.textContent = "Story:";
       const list = el("ol","index-slices");
       group.append(heading,list);
-      track.appendChild(group);
+      parent.appendChild(group);
       slices.forEach(slice=>{
         const item = el("li","index-slice");
         item.dataset.sliceId = slice.id;

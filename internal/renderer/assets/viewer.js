@@ -24,6 +24,25 @@ const normalizeChapters = model => {
   return chapters;
 };
 const chapters = normalizeChapters(FULL_MODEL);
+// Storylines group the chapters. The model sends the chapters in navigation order:
+// the chapters of each storyline, storyline by storyline, then the chapters in no
+// storyline. Each run of chapters with the same storyline forms one group; a group
+// with no storyline carries a viewer label. Without storylines, one group holds
+// every chapter and shows no heading.
+const STORYLINES = FULL_MODEL.storylines || [];
+const groupChapters = (chapters, storylines) => {
+  const owner = new Map();
+  storylines.forEach(storyline => storyline.chapters.forEach(id => owner.set(String(id), storyline)));
+  const groups = [];
+  chapters.forEach(chapter => {
+    const storyline = owner.get(chapter.id) || null;
+    const last = groups[groups.length - 1];
+    if(last && last.storyline === storyline) last.chapters.push(chapter);
+    else groups.push({storyline, title: storyline ? storyline.title : "Not in a storyline", ui: !storyline, chapters:[chapter]});
+  });
+  return groups;
+};
+const chapterGroups = groupChapters(chapters, STORYLINES);
 const chapterHref = id => "#chapter/" + encodeURIComponent(id);
 // The route grammar has one owner. Load-time chapter scoping and navigation both read it.
 //   #chapters | #contextmap | #offboard | #chapter/<id>[/<view>] | #<view>   with  #…/slides/<n>
@@ -231,7 +250,7 @@ document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeDrawer(); })
 
 /* --------------------------- shared namespace for the other views --------------------------- */
 const EMC = {
-  MODEL, FULL_MODEL, OFF_BOARD, chapters, chapterHref, chapterSlices, ELEMENTS, SLICE_OF, EDGES, NEIGHBORS,
+  MODEL, FULL_MODEL, OFF_BOARD, chapters, chapterGroups, STORYLINES, chapterHref, chapterSlices, ELEMENTS, SLICE_OF, EDGES, NEIGHBORS,
   el, esc, statusVar, openSlice, openSliceDetail,
   KIND_LABEL, kindLabel, hasWireframe, PAT_SVG, PATTERN_LABEL, PATTERN_NOTE, STATUS_LABEL, ACTOR_SVG, GEAR_SVG,
   ctxTitle, ctxExternal, aggTitle, eventCtx,
@@ -977,6 +996,10 @@ const VIEW_HINTS = {
   offboard: "Workflows the board does not list. They have no place in the story sequence, the chapters, or the slides. Click one for its scenarios.",
   slides: "One slice per slide: the screen, the examples, then the steps behind the screen. Use ← and → or the buttons at the bottom.",
 };
+if(STORYLINES.length){
+  VIEW_HINTS.chapters = "Chapters are grouped by storyline. " + VIEW_HINTS.chapters;
+  VIEW_HINTS.index = "Chapters are grouped by storyline. " + VIEW_HINTS.index;
+}
 const BOARD_HINT = " Hover to trace a flow · click for scenarios · Ctrl/⌘ + scroll to zoom, +/−/0 keys.";
 const isCanvasView = name => name === "model" || name === "compact" || name === "storming";
 // How a chapter group is named in running text: a model chapter is quoted; the
@@ -1012,11 +1035,15 @@ function renderNavigation(route){
     if(chapters.length > 1){
       items.push(`<a href="#chapters"${route.page==="chapters"?' aria-current="page"':""}><span class="n"></span><span class="t">All chapters</span><span class="c">overview</span></a>`);
     }
-    chapters.forEach((item, index)=>{
-      const count = item.slices.length;
-      items.push(`<a href="${esc(viewHref(view, item))}"${item===chapter?' aria-current="page"':""}>`+
-        `<span class="n">${item.ui ? "" : String(index+1).padStart(2,"0")}</span><span class="t${item.ui ? " ui-label" : ""}">${esc(item.title)}</span>`+
-        `<span class="c">${count} slice${count===1?"":"s"}</span></a>`);
+    // With storylines, each group starts with the title of its storyline.
+    chapterGroups.forEach(group=>{
+      if(STORYLINES.length) items.push(`<p class="chapter-menu-storyline${group.ui ? " ui-label" : ""}">${esc(group.title)}</p>`);
+      group.chapters.forEach(item=>{
+        const index = chapters.indexOf(item), count = item.slices.length;
+        items.push(`<a href="${esc(viewHref(view, item))}"${item===chapter?' aria-current="page"':""}>`+
+          `<span class="n">${item.ui ? "" : String(index+1).padStart(2,"0")}</span><span class="t${item.ui ? " ui-label" : ""}">${esc(item.title)}</span>`+
+          `<span class="c">${count} slice${count===1?"":"s"}</span></a>`);
+      });
     });
     chapterMenu.innerHTML = items.join("");
     const index = chapter ? chapters.indexOf(chapter) : -1;
