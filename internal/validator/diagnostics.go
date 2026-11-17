@@ -15,7 +15,7 @@ const (
 	codeDuplicateID               diagnosticCode = "EM002"
 	codeInvalidBlockLabel         diagnosticCode = "EM003"
 	codeInvalidWorkflowChild      diagnosticCode = "EM004"
-	codeInvalidChapter            diagnosticCode = "EM005"
+	codeEmptyMembership           diagnosticCode = "EM005"
 	codeInvalidAttribute          diagnosticCode = "EM007"
 	codeInvalidEnum               diagnosticCode = "EM008"
 	codeInvalidFieldType          diagnosticCode = "EM009"
@@ -25,6 +25,7 @@ const (
 	codeBoardRepeatsWorkflow      diagnosticCode = "EM016"
 	codeInvalidLifecycle          diagnosticCode = "EM017"
 	codeMissingIdentityField      diagnosticCode = "EM018"
+	codeChapterInTwoStorylines    diagnosticCode = "EM019"
 
 	codeInvalidReference    diagnosticCode = "EM101"
 	codeUnresolvedReference diagnosticCode = "EM102"

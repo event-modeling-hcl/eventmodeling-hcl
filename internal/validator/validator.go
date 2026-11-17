@@ -102,6 +102,7 @@ type modelIndex struct {
 	catalogEvents    map[string]bool
 	fieldTypes       map[string]fieldTypeRef
 	chapters         map[string]bool
+	storylines       map[string]bool
 	hotspots         map[string]bool
 	systems          map[string]bool
 	teams            map[string]bool
@@ -124,6 +125,9 @@ type modelValidator struct {
 	index modelIndex
 	// chaptered maps each workflow listed by a chapter to that chapter's id.
 	chaptered map[string]string
+	// storylined maps each chapter listed by a storyline to that storyline's
+	// id.
+	storylined map[string]string
 	// lifecycleAggregates maps each aggregate named by a lifecycle to the
 	// first lifecycle that names it.
 	lifecycleAggregates map[string]string
@@ -141,7 +145,7 @@ type contextValidator struct {
 // and finally the whole-model shelf-anti-pattern smell check.
 func validateBody(document *source.Document) hcl.Diagnostics {
 	index, diagnostics := buildIndex(document)
-	validator := &modelValidator{index: index, chaptered: map[string]string{}, lifecycleAggregates: map[string]string{}}
+	validator := &modelValidator{index: index, chaptered: map[string]string{}, storylined: map[string]string{}, lifecycleAggregates: map[string]string{}}
 	content, contentDiagnostics := syntax.Content(document.Parsed().Body(), syntax.ModelSchema())
 	diagnostics = append(diagnostics, contentDiagnostics...)
 	var boards hcl.Blocks
@@ -158,6 +162,8 @@ func validateBody(document *source.Document) hcl.Diagnostics {
 			diagnostics = append(diagnostics, validator.validateOwner(block)...)
 		case "chapter":
 			diagnostics = append(diagnostics, validator.validateChapter(block)...)
+		case "storyline":
+			diagnostics = append(diagnostics, validator.validateStoryline(block)...)
 		case "hotspot":
 			diagnostics = append(diagnostics, validator.validateHotspot(block)...)
 		case "lifecycle":

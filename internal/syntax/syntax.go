@@ -153,6 +153,7 @@ func ModelSchema() hcl.BodySchema {
 		{Type: "team", LabelNames: []string{"id"}},
 		{Type: "system", LabelNames: []string{"id"}},
 		{Type: "chapter", LabelNames: []string{"id"}},
+		{Type: "storyline", LabelNames: []string{"id"}},
 		{Type: "hotspot", LabelNames: []string{"id"}},
 		{Type: "lifecycle", LabelNames: []string{"id"}},
 		{Type: "evidence_source", LabelNames: []string{"id"}},
@@ -298,6 +299,11 @@ func OwnerSchema(kind string) hcl.BodySchema {
 // ChapterSchema is the schema of a chapter block's body.
 func ChapterSchema() hcl.BodySchema {
 	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}, {Name: "workflows", Required: true}}}
+}
+
+// StorylineSchema is the schema of a storyline block's body.
+func StorylineSchema() hcl.BodySchema {
+	return hcl.BodySchema{Attributes: []hcl.AttributeSchema{{Name: "title"}, {Name: "description"}, {Name: "chapters", Required: true}}}
 }
 
 // HotspotSchema is the schema of a hotspot block's body.

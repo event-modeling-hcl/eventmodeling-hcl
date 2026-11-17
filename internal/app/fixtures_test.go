@@ -87,6 +87,7 @@ func TestValidate_InvalidFoldersProduceExpectedErrors(t *testing.T) {
 	}{
 		{"duplicate-workflow", "EM002"},
 		{"workflow-in-two-chapters", "EM014"},
+		{"chapter-in-two-storylines", "EM019"},
 	}
 
 	for _, tc := range testCases {

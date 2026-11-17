@@ -63,35 +63,38 @@ func (v *modelValidator) validateReferenceList(attribute *hcl.Attribute, expecte
 	return diagnostics
 }
 
-// workflowEntry is one entry of a workflows list that names a declared
-// workflow.
-type workflowEntry struct {
+// listEntry is one entry of a membership list (the board, chapter
+// workflows, storyline chapters) that names a declared block.
+type listEntry struct {
 	id      string
 	subject hcl.Range
 }
 
 // declaredWorkflowEntries returns the entries of a workflows list that name a
-// declared workflow, in list order. validateReferenceList reports malformed and
-// unresolved entries; they take no part in membership or board checks.
-func (v *modelValidator) declaredWorkflowEntries(attribute *hcl.Attribute) []workflowEntry {
+// declared workflow, in list order.
+func (v *modelValidator) declaredWorkflowEntries(attribute *hcl.Attribute) []listEntry {
+	return v.declaredEntries(attribute, "workflow")
+}
+
+// declaredEntries returns the entries of a list that name a declared <kind>.<id>
+// block, in list order. validateReferenceList reports malformed and unresolved
+// entries; they take no part in membership or board checks.
+func (v *modelValidator) declaredEntries(attribute *hcl.Attribute, kind string) []listEntry {
 	expressions, diagnostics := hcl.ExprList(attribute.Expr)
 	if diagnostics.HasErrors() {
 		return nil
 	}
-	entries := make([]workflowEntry, 0, len(expressions))
+	entries := make([]listEntry, 0, len(expressions))
 	for _, expression := range expressions {
 		traversal, traversalDiagnostics := hcl.AbsTraversalForExpr(expression)
 		if traversalDiagnostics.HasErrors() {
 			continue
 		}
 		parts, ok := traversalParts(traversal)
-		if !ok || len(parts) != 2 || parts[0] != "workflow" {
+		if !ok || len(parts) != 2 || parts[0] != kind || !v.referenceExists(parts, "") {
 			continue
 		}
-		if _, declared := v.index.workflows[parts[1]]; !declared {
-			continue
-		}
-		entries = append(entries, workflowEntry{id: parts[1], subject: expression.Range()})
+		entries = append(entries, listEntry{id: parts[1], subject: expression.Range()})
 	}
 	return entries
 }
@@ -113,6 +116,27 @@ func (v *modelValidator) collectChapterWorkflows(chapter string, attribute *hcl.
 			continue
 		}
 		v.chaptered[entry.id] = chapter
+	}
+	return diagnostics
+}
+
+// collectStorylineChapters records each declared chapter listed by storyline in
+// v.storylined. A chapter repeated in the same list is EM002; a chapter
+// already recorded for an earlier storyline block is EM019 on the later entry.
+func (v *modelValidator) collectStorylineChapters(storyline string, attribute *hcl.Attribute) hcl.Diagnostics {
+	var diagnostics hcl.Diagnostics
+	listed := map[string]bool{}
+	for _, entry := range v.declaredEntries(attribute, "chapter") {
+		if listed[entry.id] {
+			diagnostics = append(diagnostics, errorDiagnostic(codeDuplicateID, entry.subject, "Duplicate storyline chapter", fmt.Sprintf("chapter.%s is listed more than once in storyline.%s.", entry.id, storyline)))
+			continue
+		}
+		listed[entry.id] = true
+		if owner, exists := v.storylined[entry.id]; exists {
+			diagnostics = append(diagnostics, errorDiagnostic(codeChapterInTwoStorylines, entry.subject, "Chapter in several storylines", fmt.Sprintf("chapter.%s is already in storyline.%s.", entry.id, owner)))
+			continue
+		}
+		v.storylined[entry.id] = storyline
 	}
 	return diagnostics
 }
@@ -212,6 +236,8 @@ func (v *modelValidator) referenceExists(parts []string, workflowID string) bool
 			return v.index.actors[parts[1]]
 		case "bounded_context":
 			return v.index.boundedContexts[parts[1]]
+		case "chapter":
+			return v.index.chapters[parts[1]]
 		case "system":
 			return v.index.systems[parts[1]]
 		case "team":

@@ -48,7 +48,24 @@ func (v *modelValidator) validateChapter(block *hcl.Block) hcl.Diagnostics {
 		diagnostics = append(diagnostics, v.validateReferenceList(workflows, "workflow", "")...)
 		diagnostics = append(diagnostics, v.collectChapterWorkflows(block.Labels[0], workflows)...)
 		if references, referenceDiagnostics := hcl.ExprList(workflows.Expr); !referenceDiagnostics.HasErrors() && len(references) == 0 {
-			diagnostics = append(diagnostics, errorDiagnostic(codeInvalidChapter, workflows.Expr.Range(), "Invalid chapter", "chapter must contain at least one workflow."))
+			diagnostics = append(diagnostics, errorDiagnostic(codeEmptyMembership, workflows.Expr.Range(), "Invalid chapter", "chapter must contain at least one workflow."))
+		}
+	}
+	return diagnostics
+}
+
+// validateStoryline checks one storyline block: its body, and that its
+// chapters list names at least one declared chapter, each at most once in the
+// list and in at most one storyline of the model.
+func (v *modelValidator) validateStoryline(block *hcl.Block) hcl.Diagnostics {
+	schema := syntax.StorylineSchema()
+	content, diagnostics := syntax.Content(block.Body, schema)
+	diagnostics = append(diagnostics, validateLiteralAttributes(content.Attributes, schema.Attributes, storylineRule)...)
+	if chapters := content.Attributes["chapters"]; chapters != nil {
+		diagnostics = append(diagnostics, v.validateReferenceList(chapters, "chapter", "")...)
+		diagnostics = append(diagnostics, v.collectStorylineChapters(block.Labels[0], chapters)...)
+		if references, referenceDiagnostics := hcl.ExprList(chapters.Expr); !referenceDiagnostics.HasErrors() && len(references) == 0 {
+			diagnostics = append(diagnostics, errorDiagnostic(codeEmptyMembership, chapters.Expr.Range(), "Invalid storyline", "storyline must contain at least one chapter."))
 		}
 	}
 	return diagnostics
