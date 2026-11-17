@@ -105,6 +105,9 @@ func Export(m *model.Model) (*Document, []string, error) {
 	if len(m.Chapters) > 0 {
 		e.warn("chapters have no interchange equivalent and were not exported")
 	}
+	if len(m.Storylines) > 0 {
+		e.warn("storyline blocks have no interchange equivalent and were not exported")
+	}
 	if len(m.Hotspots) > 0 {
 		e.warn("hotspots have no interchange equivalent and were not exported")
 	}

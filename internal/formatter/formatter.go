@@ -141,7 +141,7 @@ func attributeRank(blockType, name string) int {
 		return 170
 	case "sketched", "prototype", "list_element", "url", "examples", "expect_empty_list", "expect_no_dispatch":
 		return 180
-	case "workflows":
+	case "workflows", "chapters":
 		return 190
 	case "on":
 		// Evidence and decisions state their semantic configuration before
