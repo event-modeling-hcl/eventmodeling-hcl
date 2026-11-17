@@ -19,6 +19,7 @@ type ViewModel struct {
 	Contexts   map[string]Context `json:"contexts"`
 	ContextMap ContextMap         `json:"contextMap"`
 	Chapters   []Chapter          `json:"chapters"`
+	Storylines []Storyline        `json:"storylines"`
 	Hotspots   []Hotspot          `json:"hotspots"`
 	Slices     []Slice            `json:"slices"`
 	OffBoard   []Slice            `json:"offBoard"`
@@ -62,6 +63,14 @@ type Chapter struct {
 	ID     string   `json:"id"`
 	Title  string   `json:"title"`
 	Slices []string `json:"slices"`
+}
+
+// Storyline lists the IDs of its chapters in the order of its chapters list.
+// The viewer shows the chapters of one storyline under its title.
+type Storyline struct {
+	ID       string   `json:"id"`
+	Title    string   `json:"title"`
+	Chapters []string `json:"chapters"`
 }
 
 type Hotspot struct {

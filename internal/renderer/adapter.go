@@ -76,6 +76,8 @@ func BuildViewModel(title string, source *model.Model) *ViewModel {
 	assignLayout(view.Slices, view.Edges)
 	assignLayout(view.OffBoard, view.Edges)
 	view.Chapters = a.adaptChapters(source.Chapters)
+	view.Storylines = a.adaptStorylines(source.Storylines, view.Chapters)
+	view.Chapters = navigationOrder(view.Chapters, view.Storylines)
 	view.ContextMap = a.buildContextMap()
 	view.Hotspots = a.adaptHotspots(source.Hotspots)
 	return view
@@ -639,6 +641,71 @@ func (a *adapter) adaptChapters(source []model.Chapter) []Chapter {
 		chapters = append(chapters, Chapter{ID: chapter.ID, Title: label(chapter.Title, chapter.ID, chapter.TitlePresent), Slices: slices})
 	}
 	return chapters
+}
+
+// adaptStorylines orders the storylines by the board, the only source of story
+// order: a storyline takes the board position of the first slice of its
+// chapters. A storyline without a board workflow comes after the others, in
+// ID order. Each storyline keeps the order of its chapters list. chapters are
+// the adapted chapters, whose slices follow the board.
+func (a *adapter) adaptStorylines(source []model.Storyline, chapters []Chapter) []Storyline {
+	position := make(map[string]int, len(a.model.Board))
+	for index, id := range a.model.Board {
+		position[id] = index
+	}
+	start := make(map[string]int, len(chapters))
+	for _, chapter := range chapters {
+		if len(chapter.Slices) > 0 {
+			start[chapter.ID] = position[chapter.Slices[0]]
+		}
+	}
+	storylines := make([]Storyline, 0, len(source))
+	starts := make(map[string]int, len(source))
+	for _, storyline := range source {
+		ids := make([]string, 0, len(storyline.Chapters))
+		first := len(a.model.Board)
+		for _, reference := range storyline.Chapters {
+			id := lastPart(reference)
+			ids = append(ids, id)
+			if index, ok := start[id]; ok {
+				first = min(first, index)
+			}
+		}
+		starts[storyline.ID] = first
+		storylines = append(storylines, Storyline{ID: storyline.ID, Title: label(storyline.Title, storyline.ID, storyline.TitlePresent), Chapters: ids})
+	}
+	// The model sorts storylines by ID, so the stable sort keeps ID order for
+	// the storylines without a board workflow.
+	sort.SliceStable(storylines, func(left, right int) bool { return starts[storylines[left].ID] < starts[storylines[right].ID] })
+	return storylines
+}
+
+// navigationOrder returns the chapters in the order of the Chapter picker:
+// the chapters of each storyline, storyline by storyline, then the chapters in
+// no storyline in their model order (by ID). Without storylines, the order
+// does not change.
+func navigationOrder(chapters []Chapter, storylines []Storyline) []Chapter {
+	if len(storylines) == 0 {
+		return chapters
+	}
+	byID := make(map[string]Chapter, len(chapters))
+	for _, chapter := range chapters {
+		byID[chapter.ID] = chapter
+	}
+	ordered := make([]Chapter, 0, len(chapters))
+	placed := make(map[string]bool, len(chapters))
+	for _, storyline := range storylines {
+		for _, id := range storyline.Chapters {
+			ordered = append(ordered, byID[id])
+			placed[id] = true
+		}
+	}
+	for _, chapter := range chapters {
+		if !placed[chapter.ID] {
+			ordered = append(ordered, chapter)
+		}
+	}
+	return ordered
 }
 
 func (a *adapter) ownerTitle(reference string) string {
