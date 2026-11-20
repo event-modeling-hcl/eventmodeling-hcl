@@ -33,7 +33,7 @@ __STYLES_SLIDES__</style>
     <a class="toolbtn" id="t-index" href="#index" title="All slice titles by chapter">Index</a>
     <a class="toolbtn" id="t-contextmap" href="#contextmap" title="Bounded contexts of the whole model">Context Map</a>
     <a class="toolbtn" id="t-offboard" href="#offboard" title="Workflows the board does not list" hidden>Off-board</a>
-    <div class="seg" id="f-zoom"><span class="fkey">Zoom</span><button class="btn" id="z-out" title="Zoom out (-)" aria-label="Zoom out">−</button><button class="btn zoom-level" id="z-reset" title="Reset zoom to 100% (0)" aria-label="Reset zoom">100%</button><button class="btn" id="z-in" title="Zoom in (+)" aria-label="Zoom in">+</button><button class="btn" id="z-fit" title="Fit width (F)" aria-label="Fit to width">Fit</button></div>
+    <div class="seg" id="f-zoom"><span class="fkey">Zoom</span><button class="btn" id="z-out" title="Zoom out (-)" aria-label="Zoom out">−</button><button class="btn zoom-level" id="z-reset" title="Reset zoom to 100% (0)" aria-label="Reset zoom">100%</button><button class="btn" id="z-in" title="Zoom in (+)" aria-label="Zoom in">+</button><button class="btn" id="z-fit" title="Fit width (F)" aria-label="Fit to width">Fit</button><button class="btn" id="z-all" title="Fit the whole board (1)" aria-label="Fit the whole board">All</button></div>
     <details class="popover filters" id="f-filters">
       <summary class="toolbtn">Filters<span class="filters-count" id="filters-count" hidden></span><span class="cv" aria-hidden="true">▾</span></summary>
       <div class="popover-panel filters-panel">
@@ -113,6 +113,11 @@ __STYLES_SLIDES__</style>
         <marker id="ah-compact-hot" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 L2.4 4.5 Z" fill="var(--wire-hot)"></path></marker>
       </defs></svg>
     </div>
+  </div>
+  <div class="slice-labels" id="slice-labels" hidden></div>
+  <div class="minimap" id="minimap" hidden>
+    <div class="minimap-head"><span>Map</span><span class="mono">M</span></div>
+    <div class="minimap-body" id="minimap-body" role="img" aria-label="Map of the board: drag to move"></div>
   </div>
 
   <details class="legend" id="legend">

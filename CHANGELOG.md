@@ -6,6 +6,21 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+### Added
+
+- The HTML diagram navigates large boards. A chapter of 20 slices draws a board about
+  12,600 px wide, and the zoom stopped at 25%, a third of its width.
+  - The zoom goes down to 5%. **All** (key `1`) fits the whole board, in width and height.
+  - Drag the canvas to move; Space + drag, or the middle button, moves over the cards.
+    A drag never opens a card.
+  - A minimap (key `M`) shows one stripe for each slice and the visible part of the board.
+    Click or drag it to move.
+  - Below 70%, the cards hide their fields, question, tags, previews and hotspot stickies,
+    and their names grow; an open hotspot shows as a `?` badge. Below 20%, the cards keep
+    only their color. The cards keep their size, so nothing moves when the level changes.
+  - While the slice titles are hidden, a bar above the canvas names each slice at a constant
+    size. A click on a label opens the slice at 100%.
+
 ## [v0.18.0] - 2026-11-10
 
 This release adds an Index view to the HTML diagram.
