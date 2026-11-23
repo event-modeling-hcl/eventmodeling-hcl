@@ -255,3 +255,34 @@ func TestRenderHTML_ListsOffBoardWorkflowsOnTheirOwnPage(t *testing.T) {
 		t.Error("viewer still derives labels by title-casing IDs")
 	}
 }
+
+func TestRenderHTML_HasLargeBoardNavigation(t *testing.T) {
+	view := &ViewModel{
+		Title:    "Navigation",
+		Version:  version.Spec,
+		Actors:   map[string]Actor{},
+		Contexts: map[string]Context{},
+		Slices:   []Slice{{ID: "example", Type: "state_change", Title: "Example"}},
+	}
+	html, err := RenderHTML(view)
+	if err != nil {
+		t.Fatalf("render HTML: %v", err)
+	}
+	for _, tc := range []struct {
+		name     string
+		expected string
+	}{
+		{name: "zoom down to 5%", expected: "ZOOM_MIN = 0.05"},
+		{name: "fit the whole board", expected: `id="z-all"`},
+		{name: "slice labels at a constant size", expected: `id="slice-labels"`},
+		{name: "minimap", expected: `id="minimap"`},
+		{name: "level of detail", expected: `[data-detail="blocks"]`},
+		{name: "drag to move", expected: ".canvas-scroll.panning"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if !strings.Contains(html, tc.expected) {
+				t.Errorf("HTML missing %q", tc.expected)
+			}
+		})
+	}
+}

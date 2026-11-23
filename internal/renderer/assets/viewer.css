@@ -678,3 +678,50 @@ button{font-family:inherit}
   .timeline{overflow-x:auto;overscroll-behavior-inline:contain}
   .timeline-track{grid-template-columns:repeat(var(--timeline-stages),minmax(120px,1fr))}
 }
+
+/* ---- Navigation of large boards ----
+   Level of detail: the zoom sets data-detail on the board, and --zoom-step to the zoom rounded down
+   to a step. The cards keep their size (visibility, not display), so nothing moves when the level
+   changes. "names": the payload goes and the names grow. "blocks": the cards keep only their color.
+   The slice titles move to a bar of labels at a constant size, as the labels of a map. */
+.canvas-scroll.can-pan{cursor:grab}
+.canvas-scroll.space-pan, .canvas-scroll.space-pan *{cursor:grab !important}
+.canvas-scroll.panning, .canvas-scroll.panning *{cursor:grabbing !important; user-select:none !important}
+
+[data-detail] .card .fields, [data-detail] .card .q, [data-detail] .card .tags,
+[data-detail] .card .image-preview, [data-detail] .card .wire-frame,
+[data-detail] .card .proc-head .gear, [data-detail] .hotspot{visibility:hidden}
+/* A card name stays at least 8px on screen: 8px / zoom, up to 40px on the board, which is 8px at 20%,
+   where the cards become blocks. A long word breaks rather than leaves its card. */
+[data-detail] .card .ct{font-size:clamp(14px, calc(8px / var(--zoom-step, 1)), 40px); line-height:1.12; font-weight:600;
+  overflow-wrap:anywhere; hyphens:auto}
+[data-detail] .card:has(.hotspot:not(.is-resolved))::after{
+  content:"?"; position:absolute; z-index:8;
+  top:calc(-6px / var(--zoom-step, 1)); right:calc(-6px / var(--zoom-step, 1));
+  width:calc(16px / var(--zoom-step, 1)); height:calc(16px / var(--zoom-step, 1)); border-radius:50%;
+  background:var(--hot-sticky-fill); color:var(--hot-sticky-ink);
+  font:700 calc(11px / var(--zoom-step, 1))/calc(16px / var(--zoom-step, 1)) system-ui, sans-serif; text-align:center;
+  box-shadow:0 0 0 calc(2px / var(--zoom-step, 1)) var(--board)}
+[data-detail] .slice-head > *{visibility:hidden}
+[data-detail="blocks"] .card .ct, [data-detail="blocks"] .card .kind{visibility:hidden}
+
+.slice-labels{position:absolute; z-index:20; height:30px; overflow:hidden; pointer-events:none}
+.slice-labels .sl{position:absolute; top:0; height:30px; box-sizing:border-box; padding:7px 8px;
+  font:600 12.5px/16px var(--sans, system-ui, sans-serif); color:var(--panel); background:var(--ink);
+  border-right:1px solid var(--line); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  pointer-events:auto; cursor:zoom-in}
+.slice-labels .sl:hover{background:var(--accent)}
+.slice-labels .sl b{font-weight:700; opacity:.65; margin-right:6px}
+.slice-labels .sl.narrow{padding:7px 0; text-align:center; text-overflow:clip; font-size:11px}
+.slice-labels .sl.narrow b{margin:0; opacity:.85}
+
+.minimap{position:absolute; right:14px; bottom:14px; z-index:21; padding:6px; border-radius:8px;
+  background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow-lg);
+  font:11px var(--sans, system-ui, sans-serif); color:var(--ink-soft); touch-action:none}
+.minimap-head{display:flex; justify-content:space-between; gap:12px; margin:0 2px 4px}
+.minimap-body{position:relative; cursor:pointer; background:var(--surface); border-radius:3px; overflow:hidden}
+.minimap-body .ms{position:absolute; top:0; bottom:0; border-right:1px solid var(--line)}
+.minimap-body .ms:nth-child(even){background:var(--rail)}
+.minimap-body .mv{position:absolute; box-sizing:border-box; border:2px solid var(--accent);
+  background:color-mix(in srgb, var(--accent) 14%, transparent); border-radius:2px; pointer-events:none}
+@media print{ .slice-labels, .minimap{display:none !important} }

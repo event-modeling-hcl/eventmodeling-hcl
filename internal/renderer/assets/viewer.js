@@ -816,7 +816,8 @@ $("#t-theme").onclick=()=>{ themeIx=(themeIx+1)%THEMES.length; applyTheme(); };
 applyTheme();
 
 /* --------------------------- zoom --------------------------- */
-const ZOOM_MIN = 0.25, ZOOM_MAX = 2, ZOOM_STEPS = [0.25,0.33,0.5,0.67,0.8,0.9,1,1.1,1.25,1.5,1.75,2];
+// A board of 20 slices is about 12,000 px wide: 25% still shows a third of it, so the zoom goes down to 5%.
+const ZOOM_MIN = 0.05, ZOOM_MAX = 2, ZOOM_STEPS = [0.05,0.1,0.15,0.2,0.25,0.33,0.5,0.67,0.8,0.9,1,1.1,1.25,1.5,1.75,2];
 const zoomByView = {model:1, storming:1, compact:1};
 const fZoomEl = $("#f-zoom");
 function zoomBoard(){
@@ -852,7 +853,9 @@ function setZoom(z, anchor){
     sc.scrollTop += (br2.top + py*z) - anchor.y;
   });
   updateZoomLabel();
+  applyDetail();
   relayoutAll();
+  updateNavigation();
 }
 function zoomIn(){
   const cur = zoomByView[document.body.dataset.view];
@@ -877,6 +880,7 @@ $("#z-out").onclick = zoomOut;
 $("#z-in").onclick = zoomIn;
 $("#z-reset").onclick = () => setZoom(1);
 $("#z-fit").onclick = zoomFit;
+$("#z-all").onclick = zoomFitAll;
 document.querySelector(".canvas-scroll").addEventListener("wheel", e=>{
   if(!(e.ctrlKey || e.metaKey)) return;
   if(!zoomBoard()) return;
@@ -894,9 +898,168 @@ document.addEventListener("keydown", e=>{
   else if(e.key === "-" || e.key === "_") zoomOut();
   else if(e.key === "0") setZoom(1);
   else if(e.key === "f" || e.key === "F") zoomFit();
+  else if(e.key === "1") zoomFitAll();
+  else if(e.key === "m" || e.key === "M"){ minimapOff = !minimapOff; updateNavigation(); }
   else return;
   e.preventDefault();
 });
+
+/* --------------------------- navigation of large boards --------------------------- */
+// Fit the whole board in both directions, where Fit fits its width.
+function zoomFitAll(){
+  const board = zoomBoard();
+  if(!board) return;
+  const sc = document.querySelector(".canvas-scroll");
+  const cs = getComputedStyle(sc), z = zoomByView[document.body.dataset.view] || 1, r = board.getBoundingClientRect();
+  const aw = sc.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const ah = sc.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  setZoom(Math.min(1, aw / (r.width / z), ah / (r.height / z)));
+  scrollNoSmooth(sc, ()=>{ sc.scrollLeft = 0; sc.scrollTop = 0; });
+}
+
+// Level of detail. Below 70% the payload goes and the names grow ("names"); below 20% the cards keep
+// only their color ("blocks"). A margin around each threshold keeps the level from flickering, and the
+// names grow by steps, so the cards are laid out again only when a step changes.
+const DETAIL_STEPS = [1, 0.7, 0.5, 0.35, 0.25, 0.18, 0.12, 0.08, 0.05];
+function applyDetail(){
+  const board = zoomBoard();
+  if(!board) return;
+  const z = zoomByView[document.body.dataset.view] || 1;
+  const cur = board.dataset.detail || "";
+  let next = z < 0.2 ? "blocks" : z < 0.7 ? "names" : "";
+  if(next !== cur && (Math.abs(z - 0.7) < 0.03 || Math.abs(z - 0.2) < 0.01)) next = cur;
+  if(next) board.dataset.detail = next; else delete board.dataset.detail;
+  const step = DETAIL_STEPS.find(s => s <= z + 1e-6) || DETAIL_STEPS[DETAIL_STEPS.length - 1];
+  board.style.setProperty("--zoom-step", String(step));
+}
+
+// Drag to move: on the canvas, or anywhere with Space held, or with the middle button. A drag never
+// ends in a click, so a card opens only on a click without a move.
+(function(){
+  const sc = document.querySelector(".canvas-scroll");
+  let drag = null, space = false, quiet = false;
+  const control = t => t.closest && t.closest("button,a,input,select,textarea,summary,label,[contenteditable]");
+  sc.addEventListener("pointerdown", e=>{
+    if(!zoomBoard() || (e.button !== 0 && e.button !== 1)) return;
+    if(e.button === 0 && !space && control(e.target)) return;
+    drag = {x:e.clientX, y:e.clientY, left:sc.scrollLeft, top:sc.scrollTop, id:e.pointerId, moving:false};
+    if(e.button === 1 || space) e.preventDefault();
+  });
+  sc.addEventListener("mousedown", e=>{ if(zoomBoard() && e.button === 0 && (space || !control(e.target))) e.preventDefault(); });
+  window.addEventListener("pointermove", e=>{
+    if(!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if(!drag.moving){
+      if(Math.abs(dx) + Math.abs(dy) < 5) return;
+      drag.moving = true; sc.classList.add("panning"); sc.style.scrollBehavior = "auto";
+      try{ sc.setPointerCapture(drag.id); }catch(_){}
+    }
+    sc.scrollLeft = drag.left - dx; sc.scrollTop = drag.top - dy;
+  });
+  const end = ()=>{
+    if(!drag) return;
+    if(drag.moving){ quiet = true; setTimeout(()=>{ quiet = false; }, 0); }
+    drag = null; sc.classList.remove("panning"); sc.style.scrollBehavior = "";
+  };
+  window.addEventListener("pointerup", end);
+  window.addEventListener("pointercancel", end);
+  document.addEventListener("click", e=>{ if(quiet){ e.preventDefault(); e.stopPropagation(); quiet = false; } }, true);
+  document.addEventListener("keydown", e=>{
+    if(e.key !== " " || e.ctrlKey || e.metaKey || e.altKey || !zoomBoard()) return;
+    const t = e.target;
+    if(t && (/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t.tagName) || t.isContentEditable)) return;
+    space = true; sc.classList.add("space-pan"); e.preventDefault();
+  });
+  document.addEventListener("keyup", e=>{ if(e.key === " "){ space = false; sc.classList.remove("space-pan"); } });
+  sc.addEventListener("scroll", ()=> requestAnimationFrame(updateNavigationOnScroll), {passive:true});
+  window.addEventListener("resize", ()=> updateNavigation());
+})();
+
+// The bar of slice labels, at a constant size, while the slice titles are hidden; and the minimap,
+// one stripe for each slice and a frame for the visible part. A label opens its slice at 100%.
+let minimapOff = false, minimapScale = 1;
+function sliceHeads(board){ return board ? [...board.querySelectorAll(".slice-head")] : []; }
+function updateSliceLabels(){
+  const bar = $("#slice-labels"), board = zoomBoard();
+  if(!board || !board.dataset.detail){ bar.hidden = true; return; }
+  const sc = document.querySelector(".canvas-scroll"), sr = sc.getBoundingClientRect();
+  bar.hidden = false;
+  bar.style.left = sc.offsetLeft + "px"; bar.style.top = sc.offsetTop + "px"; bar.style.width = sc.clientWidth + "px";
+  bar.innerHTML = sliceHeads(board).map((h, i)=>{
+    const r = h.getBoundingClientRect();
+    const left = Math.max(r.left, sr.left), right = Math.min(r.right, sr.left + sc.clientWidth);
+    if(right - left < 14) return "";
+    const idx = (h.querySelector(".slice-idx") || {}).textContent || String(i + 1);
+    const name = (h.querySelector(".ttl") || {}).textContent || "";
+    const w = right - left;
+    return `<div class="sl${w < 40 ? " narrow" : ""}" data-i="${i}" title="${esc(idx + " · " + name)}" style="left:${left - sr.left}px;width:${w}px"><b>${esc(idx)}</b>${w > 70 ? esc(name) : ""}</div>`;
+  }).join("");
+}
+$("#slice-labels").addEventListener("click", e=>{
+  const label = e.target.closest(".sl"), board = zoomBoard();
+  if(!label || !board) return;
+  const head = sliceHeads(board)[+label.dataset.i];
+  if(!head) return;
+  setZoom(1);
+  requestAnimationFrame(()=>{
+    const sc = document.querySelector(".canvas-scroll");
+    const r = head.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+    scrollNoSmooth(sc, ()=>{ sc.scrollLeft += r.left - sr.left - 24; sc.scrollTop = 0; });
+  });
+});
+function placeMinimapFrame(){
+  const sc = document.querySelector(".canvas-scroll"), f = $("#minimap-body .mv");
+  if(!f) return;
+  f.style.left = sc.scrollLeft * minimapScale + "px"; f.style.top = sc.scrollTop * minimapScale + "px";
+  f.style.width = Math.max(6, sc.clientWidth * minimapScale) + "px"; f.style.height = Math.max(6, sc.clientHeight * minimapScale) + "px";
+}
+function updateMinimap(){
+  const map = $("#minimap"), body = $("#minimap-body"), board = zoomBoard();
+  const sc = document.querySelector(".canvas-scroll");
+  const drawerOpen = $("#drawer").getAttribute("aria-hidden") !== "true";
+  const fits = sc.scrollWidth <= sc.clientWidth + 4 && sc.scrollHeight <= sc.clientHeight + 4;
+  if(!board || minimapOff || drawerOpen || fits){ map.hidden = true; return; }
+  map.hidden = false;
+  const W = sc.scrollWidth, H = sc.scrollHeight, sr = sc.getBoundingClientRect();
+  minimapScale = Math.min(240 / W, 150 / H);
+  body.style.width = Math.max(40, W * minimapScale) + "px"; body.style.height = Math.max(20, H * minimapScale) + "px";
+  body.innerHTML = sliceHeads(board).map(h=>{
+    const r = h.getBoundingClientRect();
+    return `<div class="ms" style="left:${(r.left - sr.left + sc.scrollLeft) * minimapScale}px;width:${Math.max(1, r.width * minimapScale)}px"></div>`;
+  }).join("") + `<div class="mv"></div>`;
+  placeMinimapFrame();
+}
+(function(){
+  const body = $("#minimap-body");
+  let moving = false;
+  const jump = e=>{
+    const sc = document.querySelector(".canvas-scroll"), r = body.getBoundingClientRect();
+    scrollNoSmooth(sc, ()=>{
+      sc.scrollLeft = (e.clientX - r.left) / minimapScale - sc.clientWidth / 2;
+      sc.scrollTop = (e.clientY - r.top) / minimapScale - sc.clientHeight / 2;
+    });
+  };
+  body.addEventListener("pointerdown", e=>{ moving = true; try{ body.setPointerCapture(e.pointerId); }catch(_){} jump(e); e.preventDefault(); });
+  body.addEventListener("pointermove", e=>{ if(moving) jump(e); });
+  body.addEventListener("pointerup", ()=>{ moving = false; });
+  new MutationObserver(()=> updateNavigation()).observe($("#drawer"), {attributes:true, attributeFilter:["aria-hidden"]});
+})();
+function updateNavigationOnScroll(){
+  placeMinimapFrame();
+  const board = zoomBoard();
+  if(board && board.dataset.detail) updateSliceLabels();
+}
+let navigationTimer = 0;
+function updateNavigation(){
+  clearTimeout(navigationTimer);
+  navigationTimer = setTimeout(()=>{
+    const sc = document.querySelector(".canvas-scroll");
+    sc.classList.toggle("can-pan", !!zoomBoard());
+    applyDetail();
+    updateSliceLabels();
+    updateMinimap();
+  }, 60);
+}
 
 /* --------------------------- navigation --------------------------- */
 // Chapters are the top-level navigation: Model, Compact, Storming, and Slides always show
@@ -977,7 +1140,7 @@ const VIEW_HINTS = {
   offboard: "Workflows the board does not list. They have no place in the story sequence, the chapters, or the slides. Click one for its scenarios.",
   slides: "One slice per slide: the screen, the examples, then the steps behind the screen. Use ← and → or the buttons at the bottom.",
 };
-const BOARD_HINT = " Hover to trace a flow · click for scenarios · Ctrl/⌘ + scroll to zoom, +/−/0 keys.";
+const BOARD_HINT = " Hover to trace a flow · click for scenarios · drag to move · Ctrl/⌘ + scroll or pinch to zoom, +/−/0 keys, 1: whole board, M: map.";
 const isCanvasView = name => name === "model" || name === "compact" || name === "storming";
 // How a chapter group is named in running text: a model chapter is quoted; the
 // viewer's own group label is not.
@@ -1078,6 +1241,7 @@ function renderOffBoard(){
 
 function showPage(name, route){
   document.body.dataset.view = name;
+  updateNavigation();
   const overview = name === "chapters", offBoard = name === "offboard", slides = name === "slides";
   overviewEl.hidden = !overview;
   offBoardEl.hidden = !offBoard;
