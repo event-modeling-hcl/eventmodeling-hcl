@@ -16,7 +16,7 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
   - A minimap (key `M`) shows one stripe for each slice and the visible part of the board.
     Click or drag it to move.
   - Below 70%, the cards hide their fields, question, tags, previews and hotspot stickies,
-    and their names grow; an open hotspot shows as a `?` badge. Below 20%, the cards keep
+    and their names stay at least 8px on screen; an open hotspot shows as a `?` badge. Below 20%, the cards keep
     only their color. The cards keep their size, so nothing moves when the level changes.
   - While the slice titles are hidden, a bar above the canvas names each slice at a constant
     size. A click on a label opens the slice at 100%.
