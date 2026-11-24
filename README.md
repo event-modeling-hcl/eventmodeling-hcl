@@ -61,6 +61,11 @@ gh attestation verify emhcl_0.18.0_linux_amd64.tar.gz \
   --repo event-modeling-hcl/eventmodeling-hcl
 ```
 
+Each release also attaches `emhcl.wasm`, the WebAssembly build that the
+[playground](web/playground) runs, and the `wasm_exec.js` of the Go toolchain
+that built it. Load both in a page to run emhcl in a browser. `checksums.txt`
+lists both files, and they have the same build provenance as the archives.
+
 Validate one complete model per invocation:
 
 ```bash

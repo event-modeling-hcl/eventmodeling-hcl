@@ -41,3 +41,5 @@ jobs:
             dist/**/*.tar.gz
             dist/**/*.zip
             dist/checksums.txt
+            web/playground/emhcl.wasm
+            web/playground/wasm_exec.js

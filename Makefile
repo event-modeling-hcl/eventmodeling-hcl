@@ -69,10 +69,10 @@ model-valid: model-fmt-check ## Validate MODEL with the default (valid) profile.
 model-ready: model-valid ## Validate MODEL with the strict profile: the implementation-ready gate.
 	$(BINARY) validate --profile strict "$(MODEL)"
 
-build-wasm: ## Build the WebAssembly playground module into web/playground/.
+build-wasm: ## Build the WebAssembly module and wasm_exec.js into web/playground/.
 	@mkdir -p $(WASM_DIR)
 	$(GO) run ./cmd/playground-seed examples/minimal.em.hcl > $(WASM_DIR)/seed.js
-	GOOS=js GOARCH=wasm $(GO) build -o $(WASM_DIR)/emhcl.wasm ./cmd/wasm
+	GOOS=js GOARCH=wasm $(GO) build -trimpath -o $(WASM_DIR)/emhcl.wasm ./cmd/wasm
 	@wasm_exec="$$($(GO) env GOROOT)/lib/wasm/wasm_exec.js"; \
 	if [ ! -f "$$wasm_exec" ]; then wasm_exec="$$($(GO) env GOROOT)/misc/wasm/wasm_exec.js"; fi; \
 	if [ ! -f "$$wasm_exec" ]; then \

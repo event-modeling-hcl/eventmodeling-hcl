@@ -2,6 +2,12 @@ version: 2
 
 project_name: emhcl
 
+before:
+  hooks:
+    # Builds web/playground/emhcl.wasm and copies the wasm_exec.js of the
+    # same Go toolchain. Both are attached to the release below.
+    - make build-wasm
+
 builds:
   - id: emhcl
     main: ./cmd/emhcl
@@ -34,6 +40,9 @@ archives:
 
 checksum:
   name_template: checksums.txt
+  extra_files:
+    - glob: web/playground/emhcl.wasm
+    - glob: web/playground/wasm_exec.js
 
 changelog:
   disable: true
@@ -42,3 +51,6 @@ release:
   github:
     owner: event-modeling-hcl
     name: eventmodeling-hcl
+  extra_files:
+    - glob: web/playground/emhcl.wasm
+    - glob: web/playground/wasm_exec.js
