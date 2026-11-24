@@ -6,6 +6,17 @@ and typed IR. The authoritative Event Modeling HCL language history is in the
 
 ## [Unreleased]
 
+### Added
+
+- Each release attaches `emhcl.wasm`, the WebAssembly build that the playground runs,
+  and the `wasm_exec.js` of the Go toolchain that built it.
+  `checksums.txt` lists both files, and both have GitHub build provenance.
+  Tools that run emhcl in a browser can pin a release instead of building Go.
+
+### Changed
+
+- `make build-wasm` builds with `-trimpath`, so `emhcl.wasm` does not depend on the checkout path.
+
 ## [v0.18.0] - 2026-11-10
 
 This release adds an Index view to the HTML diagram.
